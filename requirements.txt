@@ -1,0 +1,10 @@
+numpy>=1.26,<2.0
+scipy>=1.12,<1.14
+astropy>=6.0
+skyfield>=1.49
+jplephem>=2.22
+pyswisseph>=2.10.03
+timezonefinder>=6.1.0
+pytz>=2024.1
+fastapi>=0.115
+uvicorn[standard]>=0.30

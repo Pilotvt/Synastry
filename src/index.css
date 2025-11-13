@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* FIX: Tailwind preflight ломает размеры тайлов Leaflet */
+.leaflet-container img,
+.leaflet-container .leaflet-tile,
+.leaflet-container .leaflet-marker-icon,
+.leaflet-container .leaflet-marker-shadow {max-width: none !important;}
+
+html, body, #root { height: 100%; }

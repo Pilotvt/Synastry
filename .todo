@@ -1,0 +1,4 @@
+- [x] Remove YMap3 component and map service from application.
+- [x] Update App.tsx UI to drop map section.
+- [x] Clean up Yandex Maps script/config references.
+- [x] Run npm build to verify.
