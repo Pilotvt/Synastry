@@ -1,73 +1,48 @@
-# React + TypeScript + Vite
+Synastry
+Synastry — десктопное и веб-приложение для ведической астрологии (Джйотиш): анализ совместимости, расчёт натальных карт, нумерология и работа с астрономическими данными.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Основные функции
+Астрологическая совместимость: расчёт и анализ совместимости по ведическим методам Джйотиш.
+Построение натальных карт: поддержка различных систем домов, расчёт планет, лунных узлов, аспектов.
+Нумерология: вычисление базовых и производных чисел, анализ дат рождения.
+Работа с астрономическими эфемеридами: поддержка файлов .bsp, расчёт затмений, положения планет.
+Справочник городов: быстрый поиск и выбор города для расчёта карты.
+Интерфейс для ручного и автоматического обновления: проверка наличия новой версии, скачивание и установка.
+Экспорт и импорт данных: сохранение результатов, экспорт в текстовые и графические форматы.
+Многоязычная поддержка: русский и английский интерфейс, локализованные описания.
 
-Currently, two official plugins are available:
+Быстрый старт
+Перейдите в раздел Releases и скачайте последнюю версию установщика для Windows.
+Запустите установку и следуйте инструкциям.
+Запуск программы
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+После установки откройте приложение Synastry.
+При первом запуске авторизируйтесь по имайл, затем подтвердите почту в письме.
 
-## React Compiler
+Построение натальной карты
+Введите данные имя, фамилию, дату рождения (дата, время, место).
+Нажмите «Рассчитать» — программа построит карту и покажет подробный анализ.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Натальная карта
+Далее вы видите свою натальную карту и описание восходящего знака.
+Подробное описание натальной карты, описание характеристик всех планет, описание Лунной карты (всех планет в этой карте),
+описание Солнечной карты (всех планет в этой карте), кармические задачи на жизнь, вопросы здоровья - доступны после покупки лицензии.
 
-## Expanding the ESLint configuration
+Анализ совместимости
+Перейдите в раздел «Совместимость».
+Введите данные двух (или более) людей.
+Получите отчёт по совместимости согласно ведическим принципам Джйотиш.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Страница "Профиль"
+Здесь вы видите свою страницу и анкеты других пользователей, с местом их жительства (если указано) и ВАШ % совместимости с этим человеком.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Обновление программы
+В меню «Справка» выберите «Проверить обновление».
+Если доступна новая версия, следуйте инструкциям для скачивания и установки.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Требования
+Windows 10/11 (для десктопной версии)
+Node.js, npm (для сборки из исходников)
+Интернет для обновлений и загрузки городов
+Обратная связь и поддержка
+Вопросы и предложения: @pilotvt - telegram, email: vitalya.vt@mail.ru
