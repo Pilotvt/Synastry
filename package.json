@@ -1,0 +1,117 @@
+{
+  "name": "synastry-ui",
+  "private": true,
+  "version": "1.0.0-beta",
+  "description": "Desktop application for Jyotish natal charts, synastry, and muhurtas with real IAU constellations.",
+  "type": "module",
+  "main": "electron/main.js",
+  "author": "Vitaliy Alekseev",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "backend:setup": "python scripts/build_backend_env.py",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:ui": "vitest --ui",
+    "desktop:dev": "npm run build && electron electron/main.js",
+    "desktop:pack": "electron-builder --dir",
+    "desktop:build": "npm run build && npm run backend:setup && electron-builder",
+    "dist": "npm run desktop:build",
+    "pack": "npm run desktop:pack",
+    "generate:license": "node scripts/generate-license-key.mjs",
+    "generate:cities": "node scripts/split_cities_by_country.cjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.80.0",
+    "cities.json": "^1.1.50",
+    "moment": "^2.30.1",
+    "moment-timezone": "^0.6.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.5",
+    "tz-lookup": "^6.1.25",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/moment": "^2.11.29",
+    "@types/moment-timezone": "^0.5.13",
+    "@types/node": "^24.6.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@types/react-router-dom": "^5.3.3",
+    "@vitejs/plugin-react": "^5.0.4",
+    "@vitest/coverage-v8": "^2.1.9",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "eslint": "^9.36.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.22",
+    "globals": "^16.4.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.45.0",
+    "vite": "^7.1.7",
+    "vitest": "^2.1.9"
+  },
+  "build": {
+    "appId": "com.synastry.desktop",
+    "productName": "Synastry",
+    "directories": {
+      "output": "release",
+      "buildResources": "electron/resources"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "app/**/*",
+      "data/**/*",
+      "ephe/**/*",
+      "iau_constellations/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js",
+      "win32metadata": {
+        "ProductName": "Synastry",
+        "FileDescription": "Synastry"
+      }
+    },
+    "asar": true,
+    "asarUnpack": [
+      "app/**",
+      "data/**",
+      "ephe/**",
+      "iau_constellations/**"
+    ],
+    "extraResources": [
+      {
+        "from": "python-env",
+        "to": "python"
+      },
+      {
+        "from": "de421.bsp",
+        "to": "de421.bsp"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
