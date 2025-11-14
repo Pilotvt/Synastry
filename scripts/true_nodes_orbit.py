@@ -6,7 +6,7 @@ from pathlib import Path
 from astropy.coordinates import SkyCoord, BarycentricTrueEcliptic
 import astropy.units as u
 
-root = Path('c:/Users/user/synastry-ui')
+root = Path('c:/Users/user/Git/Synastry')
 loader = Loader(str(root))
 eph = loader('de421.bsp')
 ts = load.timescale()

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { scoreSynastry, type ChartPayload } from '../synastry/scoring';
 import { applyKujaPenaltySimple } from '../synastry/kuja_simple';
@@ -10,6 +10,9 @@ import { computeDirectionalSynastry } from '../synastry/directionalSummary';
 import { useNetStatus } from '../context/NetStatusContext';
 import './UserProfilePage.css';
 import { latinToRuName } from '../utils/transliterate';
+import { readSavedChart, writeSavedChart } from '../utils/savedChartStorage';
+import { readProfileFromStorage, isOwnerMatch } from '../utils/profileStorage';
+import { isChartSessionFromFile } from '../utils/fromFileSession';
 type UserProfile = {
   personName: string;
   lastName: string;
@@ -52,6 +55,7 @@ type OtherProfilePreview = {
   gender: "male" | "female" | null;
   typeazh: string;
   chart: ChartPayload;
+  chartSignature: string | null;
 };
 type CompatibilityPreview = {
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -62,8 +66,22 @@ type CompatibilityPreview = {
   hasCurrentKuja: boolean;
   hasOtherKuja: boolean;
   error?: string;
+  chartSignature: string | null;
 };
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+
+const readSavedChartSource = (ownerId?: string | null): Record<string, unknown> | null => {
+  try {
+    const record = readSavedChart<Record<string, unknown>>(ownerId);
+    if (!record) return null;
+    if (record.payload && isRecord(record.payload)) return record.payload;
+    if (record.raw && isRecord(record.raw)) return record.raw as Record<string, unknown>;
+    return null;
+  } catch (error) {
+    console.warn('Failed to read saved chart source', error);
+    return null;
+  }
+};
 function normalizeGender(value: unknown): "male" | "female" | null {
   if (value === 'male' || value === 'female') return value;
   if (typeof value !== 'string') return null;
@@ -317,6 +335,7 @@ const restoreCachedOtherProfile = (value: unknown): OtherProfilePreview | null =
   } else if (isRecord(value.chart)) {
     chart = value.chart as Record<string, unknown>;
   }
+  const chartSignature = computeChartSignature(chart);
   return {
     id: value.id,
     personName,
@@ -332,7 +351,27 @@ const restoreCachedOtherProfile = (value: unknown): OtherProfilePreview | null =
     gender,
     typeazh,
     chart,
+    chartSignature,
   };
+};
+function stableStringify(value: unknown): string {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
+  return `{${entries.map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`).join(',')}}`;
+}
+
+const computeChartSignature = (chart: ChartPayload): string | null => {
+  if (!chart) return null;
+  try {
+    return stableStringify(chart);
+  } catch (error) {
+    console.warn('Failed to compute chart signature', error);
+    return null;
+  }
 };
 // Build a person identity fingerprint using core fields. If these change, it's a different person.
 function personFingerprint(p: Partial<UserProfile> | null | undefined): string {
@@ -368,6 +407,16 @@ const UserProfilePage: React.FC = () => {
   const [compatibilityMap, setCompatibilityMap] = useState<Record<string, CompatibilityPreview>>({});
   const compatibilityRef = useRef<Record<string, CompatibilityPreview>>({});
   const { isOnline } = useNetStatus();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search || '');
+  const arrivedFromFile = params.get('fromFile') === '1';
+  const fromFileSession = isChartSessionFromFile();
+  const fromFileRef = useRef(arrivedFromFile || fromFileSession);
+  useEffect(() => {
+    if (arrivedFromFile) {
+      fromFileRef.current = true;
+    }
+  }, [arrivedFromFile]);
   const getCityLabel = useCallback((cityRu?: string | null, city?: string | null) => {
     const ru = typeof cityRu === 'string' ? cityRu.trim() : '';
     const base = typeof city === 'string' ? city.trim() : '';
@@ -466,6 +515,7 @@ const UserProfilePage: React.FC = () => {
     updateCompatibilityMap(() => ({}));
   }, [chart, updateCompatibilityMap]);
   useEffect(() => {
+    const viewingOwnProfile = Boolean(currentUserId && userId && currentUserId === userId);
     async function loadData() {
       if (!userId) return;
       
@@ -473,40 +523,43 @@ const UserProfilePage: React.FC = () => {
         setLoadingError(null);
         // Мгновенная загрузка из localStorage (если есть) — отображаем сразу
         let localInitialProfile: UserProfile | null = null;
-        try {
-          const localRaw = localStorage.getItem(STORAGE_KEY);
-          if (localRaw) {
-            const parsed = JSON.parse(localRaw) as unknown;
-            const snapshot = (parsed && typeof parsed === 'object' && (parsed as any).profile)
-              ? (parsed as any).profile
-              : parsed;
-            localInitialProfile = mergeProfileSnapshots(snapshot as Record<string, unknown>, null);
-            if (localInitialProfile) {
-              setProfile(localInitialProfile);
+        if (viewingOwnProfile) {
+          try {
+            const stored = readProfileFromStorage<Partial<UserProfile> | Record<string, unknown>>(STORAGE_KEY);
+            if (stored && isOwnerMatch(stored.ownerId, currentUserId)) {
+              const snapshotSource = stored.profile ?? stored.raw;
+              if (snapshotSource && typeof snapshotSource === 'object') {
+                const normalized = mergeProfileSnapshots(snapshotSource as Record<string, unknown>, null);
+                if (normalized) {
+                  localInitialProfile = normalized;
+                }
+              }
             }
+          } catch (error) {
+            console.warn('Failed to read local profile snapshot', error);
           }
-        } catch (e) {
-          // ignore local parse errors
         }
         const localInitialFp = personFingerprint(localInitialProfile);
         let localSavedChartProfile: UserProfile | null = null;
-        try {
-          const savedChart = localStorage.getItem('synastry_saved_chart_data');
-          if (savedChart) {
-            const parsedChart = JSON.parse(savedChart) as unknown;
-            if (parsedChart && typeof parsedChart === 'object') {
-              const chartObj = (parsedChart as any).chart ?? parsedChart;
-              const savedProfile = (parsedChart as any).profile;
-              if (savedProfile && typeof savedProfile === 'object') {
-                localSavedChartProfile = mergeProfileSnapshots(savedProfile as Record<string, unknown>, null);
+        if (viewingOwnProfile) {
+          try {
+            const savedChartPayload = readSavedChartSource(currentUserId ?? undefined);
+            if (savedChartPayload) {
+              const chartCandidate = savedChartPayload['chart'] as unknown;
+              if (chartCandidate && typeof chartCandidate === 'object') {
+                const normalizedChart = isRecord(chartCandidate) ? chartCandidate : null;
+                if (normalizedChart) {
+                  setChart(toChartRow({ chart: normalizedChart }));
+                }
               }
-              if (chartObj && typeof chartObj === 'object') {
-                setChart(toChartRow({ chart: chartObj }));
+              const savedProfileRaw = savedChartPayload['profile'] as unknown;
+              if (isRecord(savedProfileRaw)) {
+                localSavedChartProfile = mergeProfileSnapshots(savedProfileRaw, null);
               }
             }
+          } catch (e) {
+            console.warn('Failed to read saved chart cache', e);
           }
-        } catch (e) {
-          // ignore local chart errors
         }
         const localSavedChartFp = personFingerprint(localSavedChartProfile);
         if (localSavedChartProfile) {
@@ -565,18 +618,17 @@ const UserProfilePage: React.FC = () => {
         if (chartData) {
           finalChart = toChartRow(chartData);
           try {
-            if (!extractChartScreenshot(finalChart)) {
-              const raw = localStorage.getItem('synastry_saved_chart_data');
-              if (raw) {
-                try {
-                  const parsed = JSON.parse(raw) as unknown;
-                  const localScreenshot = extractChartScreenshot(toChartRow(parsed));
+            if (!extractChartScreenshot(finalChart) && viewingOwnProfile) {
+              try {
+                const savedPayload = readSavedChartSource(currentUserId ?? undefined);
+                if (savedPayload) {
+                  const localScreenshot = extractChartScreenshot(toChartRow(savedPayload));
                   if (typeof localScreenshot === 'string') {
                     finalChart = applyScreenshotToChart(finalChart, localScreenshot);
                   }
-                } catch (storageError) {
-                  console.warn('Failed to parse saved chart screenshot from localStorage', storageError);
                 }
+              } catch (storageError) {
+                console.warn('Failed to parse saved chart screenshot from local cache', storageError);
               }
               if (!extractChartScreenshot(finalChart)) {
                 try {
@@ -614,21 +666,23 @@ const UserProfilePage: React.FC = () => {
         if (finalChart) {
           const savedFp = personFingerprint(localSavedChartProfile);
           const cloudPersonFp = personFingerprint(normalizedCloudProfile);
-          const shouldSkipOverride = Boolean(savedFp && cloudPersonFp && savedFp !== cloudPersonFp);
+          const shouldSkipOverride = Boolean(viewingOwnProfile && savedFp && cloudPersonFp && savedFp !== cloudPersonFp);
           const profileForCache =
             chartOverridesCloud && localSavedChartProfile
               ? localSavedChartProfile
               : (effectiveProfile ?? normalizedCloudProfile ?? localSavedChartProfile);
           if (!shouldSkipOverride) {
-            try {
-              const chartCachePayload = {
-                ...finalChart,
-                profile: profileForCache,
-                cachedAt: Date.now(),
-              };
-              localStorage.setItem('synastry_saved_chart_data', JSON.stringify(chartCachePayload));
-            } catch (chartCacheError) {
-              console.warn('Не удалось сохранить карту в локальный кеш', chartCacheError);
+            if (viewingOwnProfile) {
+              try {
+                const chartCachePayload = {
+                  ...finalChart,
+                  profile: profileForCache,
+                  cachedAt: Date.now(),
+                };
+                writeSavedChart(chartCachePayload, currentUserId ?? null);
+              } catch (chartCacheError) {
+                console.warn('Не удалось сохранить карту в локальный кеш', chartCacheError);
+              }
             }
             setChart(finalChart);
           }
@@ -639,7 +693,7 @@ const UserProfilePage: React.FC = () => {
       }
     }
     void loadData();
-  }, [userId, isOnline, profile?.gender]);
+  }, [userId, currentUserId, isOnline, profile?.gender]);
   useEffect(() => {
     async function loadOtherProfiles() {
       setOtherLoading(true);
@@ -720,6 +774,7 @@ const UserProfilePage: React.FC = () => {
               typeazh,
               chartScreenshot: null,
               chart: null,
+              chartSignature: null,
             } as OtherProfilePreview;
           })
           .filter((item): item is OtherProfilePreview => Boolean(item));
@@ -757,7 +812,8 @@ const UserProfilePage: React.FC = () => {
             } catch (chartError) {
               console.warn('Unexpected chart preview error:', chartError);
             }
-            return { ...entry, chartScreenshot, chart: chartPayload, ascSign: finalAscSign };
+            const chartSignature = computeChartSignature(chartPayload);
+            return { ...entry, chartScreenshot, chart: chartPayload, ascSign: finalAscSign, chartSignature };
           })
         );
         // Safety: повторно отфильтровать по противоположному полу после загрузки чартов
@@ -786,8 +842,10 @@ const UserProfilePage: React.FC = () => {
     updateCompatibilityMap((prev) => {
       const next: Record<string, CompatibilityPreview> = {};
       for (const entry of otherProfiles) {
-        if (prev[entry.id]) {
-          next[entry.id] = prev[entry.id];
+        const signature = entry.chartSignature ?? computeChartSignature(entry.chart);
+        const existing = prev[entry.id];
+        if (existing && existing.chartSignature === signature) {
+          next[entry.id] = existing;
         }
       }
       return next;
@@ -804,8 +862,9 @@ const UserProfilePage: React.FC = () => {
     const process = async () => {
       for (const entry of otherProfiles) {
         if (cancelled) return;
+        const entrySignature = entry.chartSignature ?? computeChartSignature(entry.chart);
         const existing = compatibilityRef.current[entry.id];
-        if (existing && existing.status === 'ready') {
+        if (existing && existing.status === 'ready' && existing.chartSignature === entrySignature) {
           continue;
         }
         if (!entry.chart) {
@@ -819,13 +878,14 @@ const UserProfilePage: React.FC = () => {
               hasCurrentKuja: baseHasKuja,
               hasOtherKuja: false,
               error: 'Натальная карта не найдена.',
+              chartSignature: entrySignature,
             },
           }));
           continue;
         }
         updateCompatibilityMap((prev) => {
           const current = prev[entry.id];
-          if (current && current.status === 'ready') return prev;
+          if (current && current.status === 'ready' && current.chartSignature === entrySignature) return prev;
           return {
             ...prev,
             [entry.id]: {
@@ -835,6 +895,7 @@ const UserProfilePage: React.FC = () => {
               kujaPenalty: null,
               hasCurrentKuja: baseHasKuja,
               hasOtherKuja: false,
+              chartSignature: entrySignature,
             },
           };
         });
@@ -867,6 +928,7 @@ const UserProfilePage: React.FC = () => {
                 sunMoonBonus,
                 hasCurrentKuja: baseHasKuja,
                 hasOtherKuja: otherKujaList.length > 0,
+                chartSignature: entrySignature,
               },
             }));
           }
@@ -883,6 +945,7 @@ const UserProfilePage: React.FC = () => {
                 hasCurrentKuja: baseHasKuja,
                 hasOtherKuja: false,
                 error: message,
+                chartSignature: entrySignature,
               },
             }));
           }
@@ -909,6 +972,7 @@ const UserProfilePage: React.FC = () => {
   }
   const screenshotUrl = chart ? extractChartScreenshot(chart) : null;
   const ownChartPayload = extractChartPayload(chart);
+  const isOwnProfile = Boolean(currentUserId && userId && currentUserId === userId);
   
   // Resolve ascendant sign with fallback logic (like in Questionnaire)
   const ascSign = (() => {
@@ -920,34 +984,32 @@ const UserProfilePage: React.FC = () => {
     const chartAsc = extractAscSignFromChart(chart);
     if (chartAsc) return chartAsc;
     
-    // 3. Try localStorage fallback
-    try {
-      const raw = localStorage.getItem('synastry_saved_chart_data');
-      if (raw) {
-        const parsed = JSON.parse(raw) as unknown;
-        if (isRecord(parsed)) {
-          const localChart = isRecord(parsed.chart) ? parsed.chart : null;
+    // 3. Try local saved chart fallback (only for own profile)
+    if (isOwnProfile) {
+      try {
+        const savedPayload = readSavedChartSource(currentUserId ?? undefined);
+        if (savedPayload) {
+          const localChart = isRecord(savedPayload['chart']) ? savedPayload['chart'] : null;
           if (localChart) {
             const localAsc = extractAscSignFromChart(toChartRow({ chart: localChart }));
             if (localAsc) return localAsc;
           }
-          const localProfile = isRecord(parsed.profile) ? parsed.profile : null;
+          const localProfile = isRecord(savedPayload['profile']) ? savedPayload['profile'] : null;
           if (localProfile && typeof localProfile.ascSign === 'string') {
             return localProfile.ascSign;
           }
         }
+      } catch (err) {
+        console.warn('Failed to read ascSign from saved chart cache', err);
       }
-    } catch (err) {
-      console.warn('Failed to read ascSign from localStorage', err);
     }
     
     return null;
   })();
-  
+
   const age = calculateAge(profile.birth);
   const ageText = age !== null ? ` (${age} лет)` : '';
   const genderText = profile.gender === 'male' ? 'мужской' : profile.gender === 'female' ? 'женский' : '—';
-  const isOwnProfile = Boolean(currentUserId && userId && currentUserId === userId);
   const profileCityLabel = getCityLabel(profile.cityNameRu, profile.selectedCity);
   const profileResidenceLabel = formatResidenceLabel(profile.residenceCityName, profile.residenceCountry);
   return (
@@ -968,13 +1030,13 @@ const UserProfilePage: React.FC = () => {
               Новая карта
             </button>
             <button
-              onClick={() => navigate('/chart')}
+              onClick={() => navigate(fromFileRef.current ? '/chart?fromFile=1' : '/chart')}
               className="px-3 py-1.5 bg-white/10 hover:bg-white/15 border border-white/20 rounded text-sm"
             >
               Натальная карта
             </button>
             <button
-              onClick={() => navigate('/questionnaire')}
+              onClick={() => navigate(fromFileRef.current ? '/questionnaire?fromFile=1' : '/questionnaire')}
               className="px-3 py-1.5 bg-white/10 hover:bg-white/15 border border-white/20 rounded text-sm"
             >
               Изменить анкету
@@ -986,7 +1048,7 @@ const UserProfilePage: React.FC = () => {
               Профиль
             </button>
             <button
-              onClick={() => navigate('/sinastry')}
+              onClick={() => navigate(fromFileRef.current ? '/sinastry?fromFile=1' : '/sinastry')}
               className="px-3 py-1.5 bg-white/10 hover:bg-white/15 border border-white/20 rounded text-sm"
             >
               Синастрия

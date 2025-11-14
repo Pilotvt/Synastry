@@ -1,6 +1,6 @@
 # How to run the backend server
 
-To start the FastAPI backend, always run from the project root directory (`synastry-ui`) using the following command:
+To start the FastAPI backend, always run from the project root directory (`Synastry`) using the following command:
 
 ```pwsh
 python -m app.main
@@ -11,7 +11,7 @@ This ensures all imports work correctly and modules like `iau_constellations` ar
 If you run `python app/main.py` directly, you may get import errors.
 
 # Development (recommended)
-Run this command from the project root (`synastry-ui`):
+Run this command from the project root (`Synastry`):
 
 ```pwsh
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

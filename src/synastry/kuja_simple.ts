@@ -9,11 +9,11 @@ export function applyKujaPenaltySimple(
     mitigA?: Mitig;
     mitigB?: Mitig;
     baseSingle?: number; // по умолчанию −16
-    baseBoth?: number;   // по умолчанию −12
+    baseBoth?: number;   // по умолчанию −9
   }
 ){
   const baseSingle = opts.baseSingle ?? -16;
-  const baseBoth   = opts.baseBoth   ?? -12;
+  const baseBoth   = opts.baseBoth   ?? -9;
 
   // нет Куджи — нет штрафа
   if (!opts.hasA && !opts.hasB) {

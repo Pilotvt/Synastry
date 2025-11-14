@@ -29,10 +29,10 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ChangesAssociations=yes
 DisableProgramGroupPage=yes
-LicenseFile=C:\Users\user\synastry-ui\LICENCE.txt
+LicenseFile=C:\Users\user\Git\Synastry\LICENCE.txt
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
-OutputDir=C:\Users\user\synastry-ui\release
+OutputDir=C:\Users\user\Git\Synastry\release
 OutputBaseFilename=Synastry 1.0.0 beta
 SolidCompression=yes
 WizardStyle=modern
@@ -44,10 +44,10 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "C:\Users\user\synastry-ui\release\win-unpacked\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\user\synastry-ui\release\win-unpacked\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "C:\Users\user\synastry-ui\python-env\*"; DestDir: "{app}\python-env"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "C:\Users\user\synastry-ui\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\user\Git\Synastry\release\win-unpacked\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\user\Git\Synastry\release\win-unpacked\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "C:\Users\user\Git\Synastry\python-env\*"; DestDir: "{app}\python-env"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "C:\Users\user\Git\Synastry\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 ; Добавьте другие нужные файлы и папки по аналогии
 
 [Registry]

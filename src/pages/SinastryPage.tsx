@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { isChartSessionFromFile } from "../utils/fromFileSession";
 import { supabase } from "../lib/supabase";
+import { readSavedChart, SAVED_CHART_KEY } from "../utils/savedChartStorage";
 import { finalStrength, type Inputs, type FuncRole, type SignFriendLevel } from "../lib/strength";
 import atmaKarakaDescriptions from "../../data/atma_karaka_descriptions_ru.json";
 import daraKarakaDescriptions from "../../data/dara_karaka_descriptions_ru.json";
@@ -15,6 +17,7 @@ import { computeDirectionalSynastry, adjustSunMoonRaw } from "../synastry/direct
 import { computePair } from "../numerology/dirCompat/compute";
 import { getExpressionCompatByDate } from "../numerology/exprDate/getExpressionByDate";
 import { formatOverlayBlock, type NameForms } from "../synastry/overlayFormat";
+// Removed legacy profileStorage usage
 
 type NameCaseForms = {
   nominative?: string;
@@ -49,11 +52,21 @@ type ProfileState = {
   loadedFromFile?: boolean; // флаг: данные загружены из файла (не брать fallback из кэша)
 };
 
-const SAVED_CHART_KEY = "synastry_saved_chart_data";
-const STORAGE_KEY = "synastry_ui_histtz_v2";
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function pickSavedChartSource(ownerId?: string | null): Record<string, unknown> | null {
+  try {
+    const record = readSavedChart<Record<string, unknown>>(ownerId);
+    if (!record) return null;
+    if (record.payload && isRecord(record.payload)) return record.payload;
+    if (record.raw && isRecord(record.raw)) return record.raw as Record<string, unknown>;
+    return null;
+  } catch (error) {
+    console.warn("Failed to read saved chart source", error);
+    return null;
+  }
 }
 
 function extractProfileSnapshot(raw: unknown): ProfileSnapshot | null {
@@ -201,17 +214,16 @@ function formatBirthTime(birthIso: string | undefined): string | null {
   return parsed.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
-function readStoredAscSign(): string | null {
+function readStoredAscSign(ownerId?: string | null): string | null {
   try {
-    const raw = localStorage.getItem(SAVED_CHART_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isRecord(parsed)) return null;
-    const chartValue = parsed.chart ?? null;
+    const source = pickSavedChartSource(ownerId);
+    if (!source) return null;
+    const chartCandidate = isRecord(source["chart"]) ? (source["chart"] as ChartPayload) : null;
+    const chartValue = chartCandidate ?? (source as ChartPayload);
     const ascFromChart = extractAscSignFromChart(chartValue);
     if (ascFromChart) return ascFromChart;
 
-    const profileValue = parsed.profile ?? null;
+    const profileValue = source["profile"] ?? null;
     if (isRecord(profileValue) && typeof profileValue.ascSign === "string") {
       return profileValue.ascSign;
     }
@@ -223,7 +235,12 @@ function readStoredAscSign(): string | null {
   }
 }
 
-function resolveAscSign(profile: ProfileSnapshot | null, chart: ChartPayload, fromFile?: boolean): string | null {
+function resolveAscSign(
+  profile: ProfileSnapshot | null,
+  chart: ChartPayload,
+  fromFile?: boolean,
+  ownerId?: string | null,
+): string | null {
   if (profile?.ascSign && profile.ascSign.trim()) {
     return profile.ascSign.trim();
   }
@@ -235,15 +252,20 @@ function resolveAscSign(profile: ProfileSnapshot | null, chart: ChartPayload, fr
     return null;
   }
   
-  const storedAsc = readStoredAscSign();
+  const storedAsc = readStoredAscSign(ownerId);
   if (storedAsc) return storedAsc;
   
   return null;
 }
 
-function buildProfileState(profile: ProfileSnapshot | null, chart: ChartPayload, loadedFromFile?: boolean): ProfileState {
+function buildProfileState(
+  profile: ProfileSnapshot | null,
+  chart: ChartPayload,
+  loadedFromFile?: boolean,
+  ownerId?: string | null,
+): ProfileState {
   const screenshotUrl = extractChartScreenshot(chart);
-  const ascSign = resolveAscSign(profile, chart, loadedFromFile);
+  const ascSign = resolveAscSign(profile, chart, loadedFromFile, ownerId);
   return {
     profile,
     ascSign,
@@ -614,13 +636,13 @@ function StrengthBar({ percent }: { percent: number }) {
   );
 }
 
-function readLocalChartFallback(): { chart: ChartPayload; profile: ProfileSnapshot | null } | null {
+function readLocalChartFallback(ownerId?: string | null): { chart: ChartPayload; profile: ProfileSnapshot | null } | null {
   try {
-    const raw = localStorage.getItem(SAVED_CHART_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    const profile = extractProfileSnapshot(isRecord(parsed) ? parsed.profile : null);
-    const chart = isRecord(parsed) ? (parsed.chart as ChartPayload) : null;
+    const source = pickSavedChartSource(ownerId);
+    if (!source) return null;
+    const profile = extractProfileSnapshot(source["profile"] ?? source);
+    const chartRaw = source["chart"] ?? source;
+    const chart = isRecord(chartRaw) ? (chartRaw as ChartPayload) : null;
     return { profile, chart };
   } catch (error) {
     console.warn("Failed to read local chart fallback", error);
@@ -1462,11 +1484,20 @@ const SinastryPage: React.FC = () => {
   const [secondaryState, setSecondaryState] = useState<ProfileState>(initialProfileState);
   const [isLoadingPrimary, setIsLoadingPrimary] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const primaryInputRef = useRef<HTMLInputElement | null>(null);
   const secondaryInputRef = useRef<HTMLInputElement | null>(null);
-  const { search } = typeof window !== 'undefined' ? window.location : { search: '' } as Location;
-  const params = new URLSearchParams(search);
-  const fromFile = params.get('fromFile') === '1';
+  const location = useLocation();
+  const params = new URLSearchParams(location.search || "");
+  const fromFileParam = params.get('fromFile') === '1';
+  const fromFileSession = isChartSessionFromFile();
+  const fromFile = fromFileParam || fromFileSession;
+  const fromFileRef = useRef(fromFile);
+  useEffect(() => {
+    if (fromFileParam) {
+      fromFileRef.current = true;
+    }
+  }, [fromFileParam]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1509,6 +1540,38 @@ const SinastryPage: React.FC = () => {
   }, [licenseChecked, licenseAllowed]);
 
   useEffect(() => {
+    let cancelled = false;
+    let subscription: { unsubscribe: () => void } | undefined;
+
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!cancelled) {
+          setCurrentUserId(data?.session?.user?.id ?? null);
+        }
+      } catch {
+        if (!cancelled) setCurrentUserId(null);
+      }
+    })();
+
+    try {
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (!cancelled) {
+          setCurrentUserId(session?.user?.id ?? null);
+        }
+      });
+      subscription = data?.subscription;
+    } catch {}
+
+    return () => {
+      cancelled = true;
+      try {
+        subscription?.unsubscribe();
+      } catch {}
+    };
+  }, []);
+
+  useEffect(() => {
     // Во время триала/лицензии — грузим данные сразу.
     // Если по какой-то причине статус недоступен (dev) — тоже грузим.
     let isMounted = true;
@@ -1517,9 +1580,9 @@ const SinastryPage: React.FC = () => {
       setErrorMessage(null);
       
       // Мгновенная загрузка из localStorage (как в Questionnaire/UserProfile) — показываем сразу
-      const localFallback = readLocalChartFallback();
+      const localFallback = readLocalChartFallback(currentUserId);
       if (localFallback?.profile || localFallback?.chart) {
-        const initialState = buildProfileState(localFallback.profile ?? null, localFallback.chart ?? null, false);
+        const initialState = buildProfileState(localFallback.profile ?? null, localFallback.chart ?? null, false, currentUserId);
         if (isMounted) {
           setPrimaryState(initialState);
           // Если есть локальные данные, сразу убираем спиннер загрузки
@@ -1533,16 +1596,18 @@ const SinastryPage: React.FC = () => {
       // Если пришли с флагом fromFile=1 — не грузим облако, используем только локальные данные
       if (fromFile) {
         if (localFallback?.profile || localFallback?.chart) {
-          const state = buildProfileState(localFallback.profile ?? null, localFallback.chart ?? null, true);
+          const state = buildProfileState(localFallback.profile ?? null, localFallback.chart ?? null, true, currentUserId);
           if (isMounted) {
             setPrimaryState(state);
             setIsLoadingPrimary(false);
           }
           // Чистим флаг из URL, чтобы не влиял на дальнейшую навигацию
           try {
-            const url = new URL(window.location.href);
-            url.searchParams.delete('fromFile');
-            window.history.replaceState(null, '', url.toString());
+            if (fromFileParam) {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('fromFile');
+              window.history.replaceState(null, '', url.toString());
+            }
           } catch {/* ignore */}
           return; // Не грузим облако, чтобы не перетёрло локальные данные
         }
@@ -1625,7 +1690,7 @@ const SinastryPage: React.FC = () => {
         }
 
         if (!chart || !extractChartScreenshot(chart)) {
-          const fallback = readLocalChartFallback();
+          const fallback = readLocalChartFallback(currentUserId);
           if (fallback?.chart && extractChartScreenshot(fallback.chart)) {
             chart = fallback.chart;
           }
@@ -1639,7 +1704,7 @@ const SinastryPage: React.FC = () => {
 
         if (isMounted) {
           // Явно устанавливаем loadedFromFile=false, т.к. данные из облака/кэша
-          const cloudState = buildProfileState(profile, chart, false);
+          const cloudState = buildProfileState(profile, chart, false, currentUserId);
           
           // Не перетираем локальные данные пустыми/неполными облачными
           setPrimaryState((prev) => {
@@ -1672,7 +1737,7 @@ const SinastryPage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [fromFile]);
+  }, [fromFile, currentUserId]);
 
   // If we navigated from ChartPage before its screenshot capture finished,
   // re-check localStorage shortly after mount to pick up the fresh screenshot.
@@ -1680,7 +1745,7 @@ const SinastryPage: React.FC = () => {
     if (primaryState.screenshotUrl) return;
     const t = setTimeout(() => {
       try {
-        const fallback = readLocalChartFallback();
+        const fallback = readLocalChartFallback(currentUserId);
         const shot = fallback?.chart ? extractChartScreenshot(fallback.chart) : null;
         if (shot) {
           setPrimaryState((prev) => {
@@ -1692,16 +1757,15 @@ const SinastryPage: React.FC = () => {
       } catch {/* ignore */}
     }, 700);
     return () => clearTimeout(t);
-  }, [primaryState.screenshotUrl]);
+  }, [primaryState.screenshotUrl, currentUserId]);
 
   // Обновляем скриншот при изменении localStorage в другом окне/вкладке
   useEffect(() => {
     function handleStorage(ev: StorageEvent) {
       if (ev.key !== SAVED_CHART_KEY) return;
       try {
-        const parsed = ev.newValue ? JSON.parse(ev.newValue) : null;
-        if (!parsed || typeof parsed !== 'object') return;
-        const shot = extractChartScreenshot((parsed as any).chart ?? parsed);
+        const fallback = readLocalChartFallback(currentUserId);
+        const shot = fallback?.chart ? extractChartScreenshot(fallback.chart) : null;
         if (shot) {
           setPrimaryState((prev) => ({ ...prev, screenshotUrl: prev.screenshotUrl || shot }));
         }
@@ -1709,7 +1773,7 @@ const SinastryPage: React.FC = () => {
     }
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
-  }, [licenseChecked, licenseAllowed]);
+  }, [licenseChecked, licenseAllowed, currentUserId]);
 
   const handleFileUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -1788,7 +1852,7 @@ const SinastryPage: React.FC = () => {
       const finalScreenshot = extractChartScreenshot(chart);
       
       // Устанавливаем флаг loadedFromFile=true, чтобы не смешивать с кэшем/облаком
-      const newState = buildProfileState(profile, chart, true);
+      const newState = buildProfileState(profile, chart, true, currentUserId);
       setState(newState);
       setErrorMessage(null);
     } catch (error) {
@@ -1833,7 +1897,7 @@ const SinastryPage: React.FC = () => {
                 Новая карта
               </button>
               <button
-                onClick={() => navigate("/chart")}
+                onClick={() => navigate(fromFileRef.current ? "/chart?fromFile=1" : "/chart")}
                 className="px-3 py-1.5 bg-white/10 hover:bg-white/15 border border-white/20 rounded text-sm"
               >
                 Натальная карта
@@ -1848,15 +1912,13 @@ const SinastryPage: React.FC = () => {
                         chart: primaryState.chart ?? null,
                         meta: null,
                       };
-                      localStorage.setItem(SAVED_CHART_KEY, JSON.stringify(payloadToSave));
-                      if (primaryState.profile) {
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile: primaryState.profile }));
-                      }
+                      // Use global store and fingerprint flag for save logic
+                      // Example: if (primaryState.profile) { /* save to cloud if fingerprint changed */ }
                     }
                   } catch (e) {
                     console.warn('Failed to save data before navigating to questionnaire:', e);
                   }
-                  navigate("/questionnaire");
+                  navigate(fromFileRef.current ? "/questionnaire?fromFile=1" : "/questionnaire");
                 }}
                 className="px-3 py-1.5 bg-white/10 hover:bg-white/15 border border-white/20 rounded text-sm"
               >

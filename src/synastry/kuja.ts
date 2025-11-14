@@ -47,21 +47,48 @@ function signLabel(signCode: string): string {
 function collectPlanets(chartValue: ChartPayload | unknown): RawPlanet[] {
   if (!isRecord(chartValue)) return [];
 
-  const candidates: unknown[] = [];
-  const directPlanets = (chartValue as Record<string, unknown>)['planets'];
-  if (Array.isArray(directPlanets)) {
-    candidates.push(...directPlanets);
-  }
+  const seen = new Set<object>();
+  const result: RawPlanet[] = [];
+  type StackEntry = { value: Record<string, unknown>; depth: number };
+  const stack: StackEntry[] = [{ value: chartValue, depth: 0 }];
 
-  const nestedChart = (chartValue as Record<string, unknown>)['chart'];
-  if (isRecord(nestedChart)) {
-    const nestedPlanets = nestedChart['planets'];
-    if (Array.isArray(nestedPlanets)) {
-      candidates.push(...nestedPlanets);
+  const shouldDiveIntoKey = (key: string) => {
+    const lower = key.toLowerCase();
+    return lower.includes('chart') || lower.includes('payload') || lower.includes('data');
+  };
+
+  while (stack.length) {
+    const { value, depth } = stack.pop()!;
+    if (seen.has(value) || depth > 4) continue;
+    seen.add(value);
+
+    const directPlanets = value['planets'];
+    if (Array.isArray(directPlanets)) {
+      for (const candidate of directPlanets) {
+        if (isRecord(candidate)) {
+          result.push(candidate);
+        }
+      }
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      if (key === 'planets') continue;
+      if (Array.isArray(child)) {
+        if (!shouldDiveIntoKey(key)) continue;
+        for (const item of child) {
+          if (isRecord(item)) {
+            stack.push({ value: item, depth: depth + 1 });
+          }
+        }
+        continue;
+      }
+      if (isRecord(child) && shouldDiveIntoKey(key)) {
+        stack.push({ value: child, depth: depth + 1 });
+      }
     }
   }
 
-  return candidates.filter((p): p is RawPlanet => isRecord(p));
+  return result;
 }
 
 export type KujaDosha = {

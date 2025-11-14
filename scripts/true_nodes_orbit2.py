@@ -6,7 +6,7 @@ import astropy.units as u
 from astropy.time import Time
 from pathlib import Path
 
-root = Path('c:/Users/user/synastry-ui')
+root = Path('c:/Users/user/Git/Synastry')
 loader = Loader(str(root))
 eph = loader('de421.bsp')
 from skyfield.api import load

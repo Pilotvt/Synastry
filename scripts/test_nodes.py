@@ -32,7 +32,7 @@ def compute_nodes_via_positions(dt_iso: str, search_days: float = 30.0):
     Returns (rahu_lon, ketu_lon, info)
     """
     try:
-        eph = load_ephemeris('c:/Users/user/synastry-ui')
+        eph = load_ephemeris('c:/Users/user/Git/Synastry')
     except Exception as e:
         return None, None, {'error': f'eph load failed: {e}'}
 

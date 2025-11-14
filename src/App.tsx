@@ -6,11 +6,11 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
 import { useProfile } from "./store/profile";
 import { readProfileFromStorage, writeProfileToStorage } from "./utils/profileStorage";
+import { clearSavedChart, writeSavedChart } from "./utils/savedChartStorage";
 import { latinToRuApprox, latinToRuName, norm, ruToLat } from "./utils/transliterate";
 import { getRussianCities, findNearestRussianCity, type RussianCity } from "./utils/russianCitiesClient";
 
 const STORAGE_KEY = "synastry_ui_histtz_v2";
-const SAVED_CHART_KEY = "synastry_saved_chart_data";
 const LAST_SAVED_FINGERPRINT_KEY = "synastry_profile_last_saved_fp";
 const LAST_SAVED_CHART_FINGERPRINT_KEY = "synastry_chart_last_saved_fp";
 const SUPPORT_EMAIL = "pilot.vt@mail.ru";
@@ -98,18 +98,27 @@ function normalizeSmallPhotosArray(value: unknown): (string | null)[] {
 
 function readStoredProfileSnapshot(expectedOwnerId?: string | null): Partial<ProfileSnapshot> | null {
   try {
-    const parsed = readProfileFromStorage<Partial<ProfileSnapshot> | Record<string, unknown>>(STORAGE_KEY, expectedOwnerId);
-    if (!parsed) return null;
-    if (isProfileLike(parsed)) {
-      if (!parsed.cityNameRu && typeof parsed.selectedCity === 'string') {
-        parsed.cityNameRu = latinToRuName(parsed.selectedCity);
+    const stored = readProfileFromStorage<Partial<ProfileSnapshot> | Record<string, unknown>>(STORAGE_KEY);
+    if (!stored) return null;
+    const { profile, ownerId } = stored;
+    if (expectedOwnerId !== undefined) {
+      const expected = expectedOwnerId ?? null;
+      if (ownerId !== undefined) {
+        if (ownerId !== expected) return null;
+      } else if (expected) {
+        return null;
       }
-      return parsed;
+    }
+    if (profile && isProfileLike(profile)) {
+      if (!profile.cityNameRu && typeof profile.selectedCity === 'string') {
+        profile.cityNameRu = latinToRuName(profile.selectedCity);
+      }
+      return profile;
     }
 
     // Legacy formats: support flat payloads with firstName/lastName etc
-    if (isRecord(parsed)) {
-      const legacy = parsed as Record<string, unknown>;
+    if (isRecord(profile)) {
+      const legacy = profile as Record<string, unknown>;
       const personName = typeof legacy.personName === 'string'
         ? legacy.personName
         : typeof legacy.firstName === 'string'
@@ -168,7 +177,7 @@ function readStoredProfileSnapshot(expectedOwnerId?: string | null): Partial<Pro
 
 function clearStoredChartCache() {
   try {
-    localStorage.removeItem(SAVED_CHART_KEY);
+    clearSavedChart();
     localStorage.removeItem(LAST_SAVED_FINGERPRINT_KEY);
     localStorage.removeItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
   } catch (error) {
@@ -400,6 +409,7 @@ export default function App() {
   const remoteLicenseAppliedRef = useRef(false);
   const lastLicenseUserRef = useRef<string | null>(null);
   const { profile, setProfile, loadFromLocal, logout } = useProfile();
+  const sessionUserId = session?.user?.id ?? null;
   const navigate = useNavigate();
   // User explicitly changed country in UI; suppress auto-reset to RU/Moscow
   const userChangedCountryRef = useRef(false);
@@ -442,10 +452,16 @@ export default function App() {
     if (prev === userId) return;
     previousAccountRef.current = userId;
 
+    // Если сменился пользователь, очищаем кэш профиля и savedChart
     if (prev && prev !== userId) {
       clearStoredChartCache();
       logout();
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        clearSavedChart();
+        localStorage.removeItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
+        localStorage.removeItem(LAST_SAVED_FINGERPRINT_KEY);
+      } catch {}
     }
 
     if (!userId) {
@@ -1098,7 +1114,7 @@ useEffect(() => {
         }
 
         if (remoteSnapshot) {
-          const localSnapshot = readStoredProfileSnapshot();
+          const localSnapshot = readStoredProfileSnapshot(sessionUserId);
           const mergedSnapshot = localSnapshot ? { ...remoteSnapshot, ...localSnapshot } : remoteSnapshot;
           // Temporarily disable auto-hydration from cloud to avoid overriding user selection
           // applyProfileObject(mergedSnapshot);
@@ -1285,7 +1301,7 @@ useEffect(() => {
       updated_at: Date.now(),
     };
     
-    const existing = readStoredProfileSnapshot();
+    const existing = readStoredProfileSnapshot(sessionUserId ?? undefined);
     
     // Check if person identity changed — if yes, do NOT copy photos/bio from existing
     const currentId = personFingerprint(base);
@@ -1348,6 +1364,7 @@ useEffect(() => {
     tzCorrectionHours,
     dstManual,
     dstManualOverride,
+    sessionUserId,
   ]);
 
   // Build chart handler (restored header and locals)
@@ -1411,7 +1428,7 @@ useEffect(() => {
       setBuildingChart(true);
       // Ensure current form data is persisted in STORAGE_KEY before building
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(finalProfile));
+        writeProfileToStorage(STORAGE_KEY, finalProfile, sessionUserId ?? null);
       } catch (storageError) {
         console.warn('Failed to update profile snapshot before build', storageError);
       }
@@ -1425,7 +1442,7 @@ useEffect(() => {
       await saveProfileToCloud(finalProfile);
       // Remove any cached saved chart so ChartPage will recalculate from profile
       try { 
-        localStorage.removeItem('synastry_saved_chart_data');
+        clearSavedChart();
         localStorage.removeItem(LAST_SAVED_FINGERPRINT_KEY);
         localStorage.removeItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
       } catch { /* ignore */ }
@@ -1498,11 +1515,24 @@ if (!sessionReady) {
                   const file = input.files?.[0];
                   if (!file) return;
                   const reader = new FileReader();
-                  reader.onload = (ev) => {
+                  reader.onload = async (ev) => {
                     try {
                       const raw = ev.target?.result ?? null;
                       if (typeof raw !== 'string') throw new Error('Invalid file content');
                       const data = JSON.parse(raw);
+                      const activeUserId = sessionUserId ?? (await (async () => {
+                        try {
+                          const { data: sessionData } = await supabase.auth.getSession();
+                          return sessionData?.session?.user?.id ?? null;
+                        } catch (authErr) {
+                          console.warn('Не удалось получить сессию перед открытием файла', authErr);
+                          return null;
+                        }
+                      })());
+                      if (!activeUserId) {
+                        alert('Не удалось определить текущего пользователя. Перезайдите и повторите попытку.');
+                        return;
+                      }
 
                       // If file contains a complete saved chart (chart + meta), open ChartPage from file
                       const looksLikeChart = !!(data && data.chart && data.meta && Array.isArray(data.chart.planets) && data.chart.ascendant);
@@ -1510,7 +1540,7 @@ if (!sessionReady) {
                       if (looksLikeChart) {
                         clearStoredChartCache();
                         try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-                        localStorage.setItem(SAVED_CHART_KEY, JSON.stringify(data));
+                        writeSavedChart(data, activeUserId);
                         navigate('/chart?fromFile=1');
                         return;
                       }
@@ -1519,7 +1549,7 @@ if (!sessionReady) {
                       try {
                         const profilePayload = data.profile ?? data;
                         clearStoredChartCache();
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile: profilePayload }));
+                        writeProfileToStorage(STORAGE_KEY, profilePayload, activeUserId);
                         applyProfileObject(profilePayload);
                         navigate('/app', { replace: true });
                         return;
@@ -1531,7 +1561,7 @@ if (!sessionReady) {
                       // Fallback: still save raw into saved chart key and open ChartPage
                       clearStoredChartCache();
                       try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-                      localStorage.setItem(SAVED_CHART_KEY, JSON.stringify(data));
+                        writeSavedChart(data, activeUserId);
                       navigate('/chart?fromFile=1');
                     } catch (error) {
                       console.warn('Failed to load chart file', error);

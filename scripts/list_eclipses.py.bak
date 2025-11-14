@@ -11,7 +11,7 @@ from astropy.coordinates import (
 )
 import astropy.units as u
 
-ROOT = Path('c:/Users/user/synastry-ui')
+ROOT = Path('c:/Users/user/Git/Synastry')
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
