@@ -1,0 +1,74 @@
+[
+  {
+    "iau_code": "Ari",
+    "iau_name_ru": "Овен",
+    "lon_start_deg": 28.700000000000003,
+    "lon_end_deg": 53.5
+  },
+  {
+    "iau_code": "Tau",
+    "iau_name_ru": "Телец",
+    "lon_start_deg": 53.5,
+    "lon_end_deg": 90.2
+  },
+  {
+    "iau_code": "Gem",
+    "iau_name_ru": "Близнецы",
+    "lon_start_deg": 90.2,
+    "lon_end_deg": 118.0
+  },
+  {
+    "iau_code": "Cnc",
+    "iau_name_ru": "Рак",
+    "lon_start_deg": 118.0,
+    "lon_end_deg": 138.1
+  },
+  {
+    "iau_code": "Leo",
+    "iau_name_ru": "Лев",
+    "lon_start_deg": 138.1,
+    "lon_end_deg": 173.9
+  },
+  {
+    "iau_code": "Vir",
+    "iau_name_ru": "Дева",
+    "lon_start_deg": 173.9,
+    "lon_end_deg": 217.9
+  },
+  {
+    "iau_code": "Lib",
+    "iau_name_ru": "Весы",
+    "lon_start_deg": 217.9,
+    "lon_end_deg": 241.10000000000002
+  },
+  {
+    "iau_code": "Sco",
+    "iau_name_ru": "Скорпион",
+    "lon_start_deg": 241.10000000000002,
+    "lon_end_deg": 266.3
+  },
+  {
+    "iau_code": "Sgr",
+    "iau_name_ru": "Стрелец",
+    "lon_start_deg": 266.3,
+    "lon_end_deg": 299.7
+  },
+  {
+    "iau_code": "Cap",
+    "iau_name_ru": "Козерог",
+    "lon_start_deg": 299.7,
+    "lon_end_deg": 327.5
+  },
+  {
+    "iau_code": "Aqr",
+    "iau_name_ru": "Водолей",
+    "lon_start_deg": 327.5,
+    "lon_end_deg": 351.70000000000005
+  },
+  {
+    "iau_code": "Psc",
+    "iau_name_ru": "Рыбы",
+    "lon_start_deg": 351.70000000000005,
+    "lon_end_deg": 28.700000000000003
+  }
+]
