@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+*, *::before, *::after {
+	box-sizing: border-box;
+}
+/* FIX: Tailwind preflight ломает размеры тайлов Leaflet */
+.leaflet-container img,
+.leaflet-container .leaflet-tile,
+.leaflet-container .leaflet-marker-icon,
+.leaflet-container .leaflet-marker-shadow {max-width: none !important;}
+
+:root {
+	--paper-texture-base: #f9e0bbf2;
+	--paper-texture-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' seed='8'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.25 0'/%3E%3C/filter%3E%3Crect width='256' height='256' fill='%23f1d2a6'/%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='0.18'/%3E%3C/svg%3E");
+	--paper-texture-size: 512px 512px;
+}
+
+html,
+body,
+#root {
+	height: 100%;
+	background-color: var(--paper-texture-base);
+	background-image: var(--paper-texture-image);
+	background-size: var(--paper-texture-size);
+	background-attachment: fixed;
+	background-repeat: repeat;
+}
+
+.paper-texture,
+.app-paper-shell {
+	background-color: var(--paper-texture-base);
+	background-image: var(--paper-texture-image);
+	background-size: var(--paper-texture-size);
+	background-repeat: repeat;
+}
+
+.bg-white,
+.bg-white\/5,
+.bg-white\/10,
+.bg-white\/15,
+.bg-white\/50,
+.bg-slate-950,
+.bg-slate-900,
+.bg-slate-800 {
+	background-image: var(--paper-texture-image) !important;
+	background-size: var(--paper-texture-size) !important;
+	background-repeat: repeat !important;
+	background-blend-mode: soft-light;
+}
+
+.bg-white { background-color: rgba(255, 255, 255, 0.95) !important; }
+.bg-white\/50 { background-color: rgba(255, 255, 255, 0.5) !important; }
+.bg-white\/15 { background-color: rgba(255, 255, 255, 0.15) !important; }
+.bg-white\/10 { background-color: rgba(255, 255, 255, 0.1) !important; }
+.bg-white\/5 { background-color: rgba(255, 255, 255, 0.08) !important; }
+.bg-slate-950 { background-color: rgba(249, 224, 187, 0.95) !important; }
+.bg-slate-900 { background-color: rgba(246, 218, 176, 0.9) !important; }
+.bg-slate-800 { background-color: rgba(244, 212, 168, 0.85) !important; }
+
+input,
+textarea,
+select,
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="tel"],
+input[type="search"],
+input[type="password"],
+input[type="date"],
+input[type="time"] {
+	background-color: rgba(255, 255, 255, 0.92);
+	background-image: var(--paper-texture-image);
+	background-size: var(--paper-texture-size);
+	background-repeat: repeat;
+	border: 1px solid rgba(120, 80, 40, 0.35);
+	box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
+.auth-page .auth-box {
+	max-width: 320px !important;
+	width: 100% !important;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+.auth-page form {
+	max-width: 320px !important;
+	width: 100% !important;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+	outline: none;
+	border-color: rgba(176, 112, 48, 0.65);
+	box-shadow: 0 0 0 2px rgba(176, 112, 48, 0.25);
+}
+
+.synastry-preview,
+.paper-panel {
+	background-color: #f9e0bbf2 !important;
+	background-image: none !important;
+}

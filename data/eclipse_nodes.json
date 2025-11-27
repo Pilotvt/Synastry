@@ -1,0 +1,1744 @@
+{
+  "nodes": [
+    {
+      "datetime_iso": "1987-03-29T12:45:32",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Sun const      Pisces",
+      "node_longitude": 8.477,
+      "body_longitude": 8.477,
+      "moon_latitude": -0.295
+    },
+    {
+      "datetime_iso": "1987-04-14T02:30:58",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 203.805,
+      "body_longitude": 203.805,
+      "moon_latitude": -1.105
+    },
+    {
+      "datetime_iso": "1987-09-23T03:08:13",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 179.739,
+      "body_longitude": 179.739,
+      "moon_latitude": 0.258
+    },
+    {
+      "datetime_iso": "1987-10-07T04:12:15",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Moon const      Pisces",
+      "node_longitude": 13.536,
+      "body_longitude": 13.536,
+      "moon_latitude": 1.007
+    },
+    {
+      "datetime_iso": "1988-03-03T16:01:04",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Moon const         Leo",
+      "node_longitude": 163.464,
+      "body_longitude": 163.464,
+      "moon_latitude": 0.897
+    },
+    {
+      "datetime_iso": "1988-03-18T02:02:19",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Sun const      Pisces",
+      "node_longitude": 357.86,
+      "body_longitude": 357.86,
+      "moon_latitude": 0.425
+    },
+    {
+      "datetime_iso": "1988-08-27T10:55:50",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Moon const    Aquarius",
+      "node_longitude": 334.538,
+      "body_longitude": 334.538,
+      "moon_latitude": -0.893
+    },
+    {
+      "datetime_iso": "1988-09-11T04:49:08",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Sun const         Leo",
+      "node_longitude": 168.827,
+      "body_longitude": 168.827,
+      "moon_latitude": -0.422
+    },
+    {
+      "datetime_iso": "1989-02-20T15:31:51",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Moon const         Leo",
+      "node_longitude": 152.131,
+      "body_longitude": 152.131,
+      "moon_latitude": 0.268
+    },
+    {
+      "datetime_iso": "1989-03-07T18:18:40",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Sun const    Aquarius",
+      "node_longitude": 347.307,
+      "body_longitude": 347.307,
+      "moon_latitude": 1.124
+    },
+    {
+      "datetime_iso": "1989-08-01T16:05:35",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Cancer",
+      "body_constellation": "Sun const      Cancer",
+      "node_longitude": 129.516,
+      "body_longitude": 129.516,
+      "moon_latitude": 1.49
+    },
+    {
+      "datetime_iso": "1989-08-17T03:06:36",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Moon const Capricornus",
+      "node_longitude": 324.341,
+      "body_longitude": 324.341,
+      "moon_latitude": -0.15
+    },
+    {
+      "datetime_iso": "1989-08-31T05:44:31",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Sun const         Leo",
+      "node_longitude": 157.947,
+      "body_longitude": 157.947,
+      "moon_latitude": -1.094
+    },
+    {
+      "datetime_iso": "1990-01-26T19:20:01",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Sun const Capricornus",
+      "node_longitude": 306.719,
+      "body_longitude": 306.719,
+      "moon_latitude": -0.907
+    },
+    {
+      "datetime_iso": "1990-02-09T19:15:44",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Moon const         Leo",
+      "node_longitude": 140.918,
+      "body_longitude": 140.918,
+      "moon_latitude": -0.395
+    },
+    {
+      "datetime_iso": "1990-07-22T02:54:17",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Cancer",
+      "body_constellation": "Sun const      Cancer",
+      "node_longitude": 119.194,
+      "body_longitude": 119.194,
+      "moon_latitude": 0.755
+    },
+    {
+      "datetime_iso": "1990-08-06T14:19:25",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Moon const Capricornus",
+      "node_longitude": 313.992,
+      "body_longitude": 313.992,
+      "moon_latitude": 0.603
+    },
+    {
+      "datetime_iso": "1991-01-15T23:49:38",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Sun const Sagittarius",
+      "node_longitude": 295.455,
+      "body_longitude": 295.455,
+      "moon_latitude": -0.25
+    },
+    {
+      "datetime_iso": "1991-01-30T06:09:42",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Cancer",
+      "body_constellation": "Moon const      Cancer",
+      "node_longitude": 129.964,
+      "body_longitude": 129.964,
+      "moon_latitude": -1.081
+    },
+    {
+      "datetime_iso": "1991-06-27T02:58:25",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Moon const Sagittarius",
+      "node_longitude": 275.108,
+      "body_longitude": 275.108,
+      "moon_latitude": -1.272
+    },
+    {
+      "datetime_iso": "1991-07-11T19:06:05",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Sun const      Gemini",
+      "node_longitude": 109.097,
+      "body_longitude": 109.097,
+      "moon_latitude": -0.003
+    },
+    {
+      "datetime_iso": "1991-07-26T18:24:20",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Moon const Capricornus",
+      "node_longitude": 303.384,
+      "body_longitude": 303.384,
+      "moon_latitude": 1.305
+    },
+    {
+      "datetime_iso": "1991-12-21T10:23:10",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Moon const      Taurus",
+      "node_longitude": 89.153,
+      "body_longitude": 89.153,
+      "moon_latitude": 0.993
+    },
+    {
+      "datetime_iso": "1992-01-04T23:09:34",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Sun const Sagittarius",
+      "node_longitude": 283.96,
+      "body_longitude": 283.96,
+      "moon_latitude": 0.368
+    },
+    {
+      "datetime_iso": "1992-06-15T04:49:44",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Ophiucus",
+      "body_constellation": "Moon const    Ophiucus",
+      "node_longitude": 264.438,
+      "body_longitude": 264.438,
+      "moon_latitude": -0.584
+    },
+    {
+      "datetime_iso": "1992-06-30T12:18:01",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Sun const      Gemini",
+      "node_longitude": 99.045,
+      "body_longitude": 99.045,
+      "moon_latitude": -0.758
+    },
+    {
+      "datetime_iso": "1992-12-09T23:40:40",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Moon const      Taurus",
+      "node_longitude": 78.265,
+      "body_longitude": 78.265,
+      "moon_latitude": 0.308
+    },
+    {
+      "datetime_iso": "1992-12-24T00:42:50",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Sun const Sagittarius",
+      "node_longitude": 272.556,
+      "body_longitude": 272.556,
+      "moon_latitude": 1.001
+    },
+    {
+      "datetime_iso": "1993-05-21T14:06:31",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Sun const      Taurus",
+      "node_longitude": 60.613,
+      "body_longitude": 60.613,
+      "moon_latitude": 1.065
+    },
+    {
+      "datetime_iso": "1993-06-04T13:02:13",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Ophiucus",
+      "body_constellation": "Moon const    Ophiucus",
+      "node_longitude": 254.002,
+      "body_longitude": 254.002,
+      "moon_latitude": 0.159
+    },
+    {
+      "datetime_iso": "1993-11-13T21:34:20",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Libra",
+      "body_constellation": "Sun const       Libra",
+      "node_longitude": 231.61,
+      "body_longitude": 231.61,
+      "moon_latitude": -1.054
+    },
+    {
+      "datetime_iso": "1993-11-29T06:30:45",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Moon const      Taurus",
+      "node_longitude": 67.136,
+      "body_longitude": 67.136,
+      "moon_latitude": -0.369
+    },
+    {
+      "datetime_iso": "1994-05-10T17:06:34",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Sun const       Aries",
+      "node_longitude": 49.882,
+      "body_longitude": 49.882,
+      "moon_latitude": 0.369
+    },
+    {
+      "datetime_iso": "1994-05-25T03:39:21",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Scorpius",
+      "body_constellation": "Moon const    Scorpius",
+      "node_longitude": 243.793,
+      "body_longitude": 243.793,
+      "moon_latitude": 0.911
+    },
+    {
+      "datetime_iso": "1994-11-03T13:35:28",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Libra",
+      "body_constellation": "Sun const       Libra",
+      "node_longitude": 220.973,
+      "body_longitude": 220.973,
+      "moon_latitude": -0.361
+    },
+    {
+      "datetime_iso": "1994-11-18T06:57:00",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Moon const      Taurus",
+      "node_longitude": 55.773,
+      "body_longitude": 55.773,
+      "moon_latitude": -0.998
+    },
+    {
+      "datetime_iso": "1995-04-15T12:08:12",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 205.126,
+      "body_longitude": 205.126,
+      "moon_latitude": -0.967
+    },
+    {
+      "datetime_iso": "1995-04-29T17:36:19",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Sun const       Aries",
+      "node_longitude": 39.002,
+      "body_longitude": 39.002,
+      "moon_latitude": -0.308
+    },
+    {
+      "datetime_iso": "1995-10-08T15:51:50",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Moon const      Pisces",
+      "node_longitude": 14.951,
+      "body_longitude": 14.951,
+      "moon_latitude": 1.061
+    },
+    {
+      "datetime_iso": "1995-10-24T04:36:12",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 210.351,
+      "body_longitude": 210.351,
+      "moon_latitude": 0.348
+    },
+    {
+      "datetime_iso": "1996-04-04T00:06:55",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 194.562,
+      "body_longitude": 194.562,
+      "moon_latitude": -0.243
+    },
+    {
+      "datetime_iso": "1996-04-17T22:48:45",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Sun const      Pisces",
+      "node_longitude": 28.245,
+      "body_longitude": 28.245,
+      "moon_latitude": -1.011
+    },
+    {
+      "datetime_iso": "1996-09-27T02:50:46",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Moon const      Pisces",
+      "node_longitude": 4.324,
+      "body_longitude": 4.324,
+      "moon_latitude": 0.343
+    },
+    {
+      "datetime_iso": "1996-10-12T14:14:25",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 199.574,
+      "body_longitude": 199.574,
+      "moon_latitude": 1.053
+    },
+    {
+      "datetime_iso": "1997-03-09T01:14:34",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Sun const    Aquarius",
+      "node_longitude": 348.55,
+      "body_longitude": 348.55,
+      "moon_latitude": 0.939
+    },
+    {
+      "datetime_iso": "1997-03-24T04:45:14",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 183.628,
+      "body_longitude": 183.628,
+      "moon_latitude": 0.447
+    },
+    {
+      "datetime_iso": "1997-09-01T23:51:33",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Sun const         Leo",
+      "node_longitude": 159.594,
+      "body_longitude": 159.594,
+      "moon_latitude": -0.933
+    },
+    {
+      "datetime_iso": "1997-09-16T18:50:28",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Moon const      Pisces",
+      "node_longitude": 353.965,
+      "body_longitude": 353.965,
+      "moon_latitude": -0.388
+    },
+    {
+      "datetime_iso": "1998-02-26T17:25:55",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Sun const    Aquarius",
+      "node_longitude": 337.938,
+      "body_longitude": 337.938,
+      "moon_latitude": 0.243
+    },
+    {
+      "datetime_iso": "1998-03-13T04:34:09",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Moon const         Leo",
+      "node_longitude": 172.423,
+      "body_longitude": 172.423,
+      "moon_latitude": 1.085
+    },
+    {
+      "datetime_iso": "1998-08-08T02:09:37",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Moon const Capricornus",
+      "node_longitude": 315.374,
+      "body_longitude": 315.374,
+      "moon_latitude": 1.464
+    },
+    {
+      "datetime_iso": "1998-08-22T02:03:05",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Sun const         Leo",
+      "node_longitude": 148.819,
+      "body_longitude": 148.819,
+      "moon_latitude": -0.246
+    },
+    {
+      "datetime_iso": "1998-09-06T11:21:21",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Moon const    Aquarius",
+      "node_longitude": 343.691,
+      "body_longitude": 343.691,
+      "moon_latitude": -1.116
+    },
+    {
+      "datetime_iso": "1999-01-31T16:06:30",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Cancer",
+      "body_constellation": "Moon const      Cancer",
+      "node_longitude": 131.345,
+      "body_longitude": 131.345,
+      "moon_latitude": -0.988
+    },
+    {
+      "datetime_iso": "1999-02-16T06:38:41",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Sun const Capricornus",
+      "node_longitude": 327.149,
+      "body_longitude": 327.149,
+      "moon_latitude": -0.459
+    },
+    {
+      "datetime_iso": "1999-07-28T11:24:46",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Moon const Capricornus",
+      "node_longitude": 304.97,
+      "body_longitude": 304.97,
+      "moon_latitude": 0.733
+    },
+    {
+      "datetime_iso": "1999-08-11T11:08:29",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Sun const         Leo",
+      "node_longitude": 138.362,
+      "body_longitude": 138.362,
+      "moon_latitude": 0.497
+    },
+    {
+      "datetime_iso": "2000-01-21T04:40:26",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Cancer",
+      "body_constellation": "Moon const      Cancer",
+      "node_longitude": 120.439,
+      "body_longitude": 120.439,
+      "moon_latitude": -0.301
+    },
+    {
+      "datetime_iso": "2000-02-05T13:03:15",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Sun const Capricornus",
+      "node_longitude": 316.033,
+      "body_longitude": 316.033,
+      "moon_latitude": -1.127
+    },
+    {
+      "datetime_iso": "2000-07-01T19:19:54",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Sun const      Gemini",
+      "node_longitude": 100.233,
+      "body_longitude": 100.233,
+      "moon_latitude": -1.314
+    },
+    {
+      "datetime_iso": "2000-07-16T13:55:12",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Moon const Sagittarius",
+      "node_longitude": 294.32,
+      "body_longitude": 294.32,
+      "moon_latitude": 0.027
+    },
+    {
+      "datetime_iso": "2000-07-31T02:25:08",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Cancer",
+      "body_constellation": "Sun const      Cancer",
+      "node_longitude": 128.188,
+      "body_longitude": 128.188,
+      "moon_latitude": 1.242
+    },
+    {
+      "datetime_iso": "2000-12-25T17:21:36",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Sun const Sagittarius",
+      "node_longitude": 274.226,
+      "body_longitude": 274.226,
+      "moon_latitude": 1.033
+    },
+    {
+      "datetime_iso": "2001-01-09T20:24:24",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Moon const      Gemini",
+      "node_longitude": 109.642,
+      "body_longitude": 109.642,
+      "moon_latitude": 0.382
+    },
+    {
+      "datetime_iso": "2001-06-21T11:57:45",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Sun const      Gemini",
+      "node_longitude": 90.157,
+      "body_longitude": 90.157,
+      "moon_latitude": -0.57
+    },
+    {
+      "datetime_iso": "2001-07-05T15:03:46",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Moon const Sagittarius",
+      "node_longitude": 283.631,
+      "body_longitude": 283.631,
+      "moon_latitude": -0.669
+    },
+    {
+      "datetime_iso": "2001-12-14T20:47:23",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Ophiucus",
+      "body_constellation": "Sun const    Ophiucus",
+      "node_longitude": 262.911,
+      "body_longitude": 262.911,
+      "moon_latitude": 0.389
+    },
+    {
+      "datetime_iso": "2001-12-30T10:40:32",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Moon const      Gemini",
+      "node_longitude": 98.776,
+      "body_longitude": 98.776,
+      "moon_latitude": 1.063
+    },
+    {
+      "datetime_iso": "2002-05-26T11:51:15",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Scorpius",
+      "body_constellation": "Moon const    Scorpius",
+      "node_longitude": 245.031,
+      "body_longitude": 245.031,
+      "moon_latitude": 1.167
+    },
+    {
+      "datetime_iso": "2002-06-10T23:46:31",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Sun const      Taurus",
+      "node_longitude": 79.876,
+      "body_longitude": 79.876,
+      "moon_latitude": 0.189
+    },
+    {
+      "datetime_iso": "2002-06-24T21:42:21",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Moon const Sagittarius",
+      "node_longitude": 273.161,
+      "body_longitude": 273.161,
+      "moon_latitude": -1.393
+    },
+    {
+      "datetime_iso": "2002-11-20T01:33:39",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Moon const      Taurus",
+      "node_longitude": 57.511,
+      "body_longitude": 57.511,
+      "moon_latitude": -1.019
+    },
+    {
+      "datetime_iso": "2002-12-04T07:34:21",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Ophiucus",
+      "body_constellation": "Sun const    Ophiucus",
+      "node_longitude": 251.932,
+      "body_longitude": 251.932,
+      "moon_latitude": -0.303
+    },
+    {
+      "datetime_iso": "2003-05-16T03:35:57",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Libra",
+      "body_constellation": "Moon const       Libra",
+      "node_longitude": 234.838,
+      "body_longitude": 234.838,
+      "moon_latitude": 0.424
+    },
+    {
+      "datetime_iso": "2003-05-31T04:19:52",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Sun const      Taurus",
+      "node_longitude": 69.287,
+      "body_longitude": 69.287,
+      "moon_latitude": 0.903
+    },
+    {
+      "datetime_iso": "2003-11-09T01:13:21",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Moon const       Aries",
+      "node_longitude": 46.163,
+      "body_longitude": 46.163,
+      "moon_latitude": -0.391
+    },
+    {
+      "datetime_iso": "2003-11-23T22:58:56",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Scorpius",
+      "body_constellation": "Sun const    Scorpius",
+      "node_longitude": 241.182,
+      "body_longitude": 241.182,
+      "moon_latitude": -0.989
+    },
+    {
+      "datetime_iso": "2004-04-19T13:21:11",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Sun const       Aries",
+      "node_longitude": 29.761,
+      "body_longitude": 29.761,
+      "moon_latitude": -1.045
+    },
+    {
+      "datetime_iso": "2004-05-04T20:33:26",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Libra",
+      "body_constellation": "Moon const       Libra",
+      "node_longitude": 224.641,
+      "body_longitude": 224.641,
+      "moon_latitude": -0.318
+    },
+    {
+      "datetime_iso": "2004-10-14T02:48:15",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 201.036,
+      "body_longitude": 201.036,
+      "moon_latitude": 1.01
+    },
+    {
+      "datetime_iso": "2004-10-28T03:07:22",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Moon const       Aries",
+      "node_longitude": 34.974,
+      "body_longitude": 34.974,
+      "moon_latitude": 0.266
+    },
+    {
+      "datetime_iso": "2005-04-08T20:32:01",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Sun const      Pisces",
+      "node_longitude": 19.027,
+      "body_longitude": 19.027,
+      "moon_latitude": -0.338
+    },
+    {
+      "datetime_iso": "2005-04-24T10:06:28",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 214.254,
+      "body_longitude": 214.254,
+      "moon_latitude": -1.054
+    },
+    {
+      "datetime_iso": "2005-10-03T10:27:53",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 190.233,
+      "body_longitude": 190.233,
+      "moon_latitude": 0.306
+    },
+    {
+      "datetime_iso": "2005-10-17T12:13:38",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Moon const      Pisces",
+      "node_longitude": 24.145,
+      "body_longitude": 24.145,
+      "moon_latitude": 0.97
+    },
+    {
+      "datetime_iso": "2006-03-14T23:35:25",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 174.159,
+      "body_longitude": 174.159,
+      "moon_latitude": 0.926
+    },
+    {
+      "datetime_iso": "2006-03-29T10:15:14",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Sun const      Pisces",
+      "node_longitude": 8.497,
+      "body_longitude": 8.497,
+      "moon_latitude": 0.391
+    },
+    {
+      "datetime_iso": "2006-09-07T18:42:03",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Moon const    Aquarius",
+      "node_longitude": 344.908,
+      "body_longitude": 344.908,
+      "moon_latitude": -0.952
+    },
+    {
+      "datetime_iso": "2006-09-22T11:45:03",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 179.241,
+      "body_longitude": 179.241,
+      "moon_latitude": -0.366
+    },
+    {
+      "datetime_iso": "2007-03-03T23:17:06",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Moon const         Leo",
+      "node_longitude": 162.894,
+      "body_longitude": 162.894,
+      "moon_latitude": 0.29
+    },
+    {
+      "datetime_iso": "2007-03-19T02:42:33",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Sun const      Pisces",
+      "node_longitude": 358.016,
+      "body_longitude": 358.016,
+      "moon_latitude": 1.097
+    },
+    {
+      "datetime_iso": "2007-08-28T10:35:05",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Moon const    Aquarius",
+      "node_longitude": 334.65,
+      "body_longitude": 334.65,
+      "moon_latitude": -0.213
+    },
+    {
+      "datetime_iso": "2007-09-11T12:44:14",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Sun const         Leo",
+      "node_longitude": 168.302,
+      "body_longitude": 168.302,
+      "moon_latitude": -1.036
+    },
+    {
+      "datetime_iso": "2008-02-07T03:44:30",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Sun const Capricornus",
+      "node_longitude": 317.62,
+      "body_longitude": 317.62,
+      "moon_latitude": -0.914
+    },
+    {
+      "datetime_iso": "2008-02-21T03:30:30",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Moon const         Leo",
+      "node_longitude": 151.76,
+      "body_longitude": 151.76,
+      "moon_latitude": -0.382
+    },
+    {
+      "datetime_iso": "2008-08-01T10:12:33",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Cancer",
+      "body_constellation": "Sun const      Cancer",
+      "node_longitude": 129.407,
+      "body_longitude": 129.407,
+      "moon_latitude": 0.826
+    },
+    {
+      "datetime_iso": "2008-08-16T21:16:27",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Moon const Capricornus",
+      "node_longitude": 324.233,
+      "body_longitude": 324.233,
+      "moon_latitude": 0.533
+    },
+    {
+      "datetime_iso": "2009-01-26T07:55:16",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Sun const Capricornus",
+      "node_longitude": 306.367,
+      "body_longitude": 306.367,
+      "moon_latitude": -0.256
+    },
+    {
+      "datetime_iso": "2009-02-09T14:49:09",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Moon const         Leo",
+      "node_longitude": 140.862,
+      "body_longitude": 140.862,
+      "moon_latitude": -1.074
+    },
+    {
+      "datetime_iso": "2009-07-07T09:21:24",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Moon const Sagittarius",
+      "node_longitude": 285.265,
+      "body_longitude": 285.265,
+      "moon_latitude": -1.347
+    },
+    {
+      "datetime_iso": "2009-07-22T02:34:35",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Cancer",
+      "body_constellation": "Sun const      Cancer",
+      "node_longitude": 119.304,
+      "body_longitude": 119.304,
+      "moon_latitude": 0.07
+    },
+    {
+      "datetime_iso": "2009-08-06T00:54:51",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Moon const Capricornus",
+      "node_longitude": 313.58,
+      "body_longitude": 313.58,
+      "moon_latitude": 1.232
+    },
+    {
+      "datetime_iso": "2009-12-31T19:12:44",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Moon const      Gemini",
+      "node_longitude": 100.104,
+      "body_longitude": 100.104,
+      "moon_latitude": 0.996
+    },
+    {
+      "datetime_iso": "2010-01-15T07:11:22",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Sun const Sagittarius",
+      "node_longitude": 294.878,
+      "body_longitude": 294.878,
+      "moon_latitude": 0.363
+    },
+    {
+      "datetime_iso": "2010-06-26T11:30:21",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Moon const Sagittarius",
+      "node_longitude": 274.619,
+      "body_longitude": 274.619,
+      "moon_latitude": -0.658
+    },
+    {
+      "datetime_iso": "2010-07-11T19:40:27",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Sun const      Gemini",
+      "node_longitude": 109.245,
+      "body_longitude": 109.245,
+      "moon_latitude": -0.686
+    },
+    {
+      "datetime_iso": "2010-12-21T08:13:27",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Moon const      Taurus",
+      "node_longitude": 89.188,
+      "body_longitude": 89.188,
+      "moon_latitude": 0.312
+    },
+    {
+      "datetime_iso": "2011-01-04T09:02:36",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Sun const Sagittarius",
+      "node_longitude": 283.487,
+      "body_longitude": 283.487,
+      "moon_latitude": 0.998
+    },
+    {
+      "datetime_iso": "2011-06-01T21:02:36",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Sun const      Taurus",
+      "node_longitude": 70.867,
+      "body_longitude": 70.867,
+      "moon_latitude": 1.13
+    },
+    {
+      "datetime_iso": "2011-06-15T20:13:35",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Ophiucus",
+      "body_constellation": "Moon const    Ophiucus",
+      "node_longitude": 264.227,
+      "body_longitude": 264.227,
+      "moon_latitude": 0.09
+    },
+    {
+      "datetime_iso": "2011-07-01T08:53:55",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Sun const      Gemini",
+      "node_longitude": 99.041,
+      "body_longitude": 99.041,
+      "moon_latitude": -1.432
+    },
+    {
+      "datetime_iso": "2011-11-25T06:09:41",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Scorpius",
+      "body_constellation": "Sun const    Scorpius",
+      "node_longitude": 242.443,
+      "body_longitude": 242.443,
+      "moon_latitude": -1.067
+    },
+    {
+      "datetime_iso": "2011-12-10T14:36:23",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Moon const      Taurus",
+      "node_longitude": 78.007,
+      "body_longitude": 78.007,
+      "moon_latitude": -0.361
+    },
+    {
+      "datetime_iso": "2012-05-20T23:47:01",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Sun const      Taurus",
+      "node_longitude": 60.165,
+      "body_longitude": 60.165,
+      "moon_latitude": 0.434
+    },
+    {
+      "datetime_iso": "2012-06-04T11:11:34",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Ophiucus",
+      "body_constellation": "Moon const    Ophiucus",
+      "node_longitude": 254.055,
+      "body_longitude": 254.055,
+      "moon_latitude": 0.845
+    },
+    {
+      "datetime_iso": "2012-11-13T22:07:59",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Libra",
+      "body_constellation": "Sun const       Libra",
+      "node_longitude": 231.759,
+      "body_longitude": 231.759,
+      "moon_latitude": -0.38
+    },
+    {
+      "datetime_iso": "2012-11-28T14:45:55",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Moon const      Taurus",
+      "node_longitude": 66.597,
+      "body_longitude": 66.597,
+      "moon_latitude": -0.984
+    },
+    {
+      "datetime_iso": "2013-04-25T19:57:06",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 215.573,
+      "body_longitude": 215.573,
+      "moon_latitude": -1.016
+    },
+    {
+      "datetime_iso": "2013-05-10T00:28:23",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Sun const       Aries",
+      "node_longitude": 49.334,
+      "body_longitude": 49.334,
+      "moon_latitude": -0.247
+    },
+    {
+      "datetime_iso": "2013-10-18T23:37:39",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Moon const      Pisces",
+      "node_longitude": 25.557,
+      "body_longitude": 25.557,
+      "moon_latitude": 1.095
+    },
+    {
+      "datetime_iso": "2013-11-03T12:49:57",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Libra",
+      "body_constellation": "Sun const       Libra",
+      "node_longitude": 221.068,
+      "body_longitude": 221.068,
+      "moon_latitude": 0.325
+    },
+    {
+      "datetime_iso": "2014-04-15T07:42:18",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 205.065,
+      "body_longitude": 205.065,
+      "moon_latitude": -0.287
+    },
+    {
+      "datetime_iso": "2014-04-29T06:14:20",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Sun const       Aries",
+      "node_longitude": 38.661,
+      "body_longitude": 38.661,
+      "moon_latitude": -0.96
+    },
+    {
+      "datetime_iso": "2014-10-08T10:50:36",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Moon const      Pisces",
+      "node_longitude": 14.877,
+      "body_longitude": 14.877,
+      "moon_latitude": 0.384
+    },
+    {
+      "datetime_iso": "2014-10-23T21:56:39",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 210.207,
+      "body_longitude": 210.207,
+      "moon_latitude": 1.021
+    },
+    {
+      "datetime_iso": "2015-03-20T09:36:11",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Sun const      Pisces",
+      "node_longitude": 359.242,
+      "body_longitude": 359.242,
+      "moon_latitude": 0.967
+    },
+    {
+      "datetime_iso": "2015-04-04T12:05:34",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 194.189,
+      "body_longitude": 194.189,
+      "moon_latitude": 0.407
+    },
+    {
+      "datetime_iso": "2015-09-13T06:41:15",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Sun const         Leo",
+      "node_longitude": 169.953,
+      "body_longitude": 169.953,
+      "moon_latitude": -0.993
+    },
+    {
+      "datetime_iso": "2015-09-28T02:50:30",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Moon const      Pisces",
+      "node_longitude": 4.453,
+      "body_longitude": 4.453,
+      "moon_latitude": -0.34
+    },
+    {
+      "datetime_iso": "2016-03-09T01:54:29",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Sun const    Aquarius",
+      "node_longitude": 348.703,
+      "body_longitude": 348.703,
+      "moon_latitude": 0.265
+    },
+    {
+      "datetime_iso": "2016-03-23T12:00:50",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 183.061,
+      "body_longitude": 183.061,
+      "moon_latitude": 1.052
+    },
+    {
+      "datetime_iso": "2016-09-01T09:03:06",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Sun const         Leo",
+      "node_longitude": 159.121,
+      "body_longitude": 159.121,
+      "moon_latitude": -0.311
+    },
+    {
+      "datetime_iso": "2016-09-16T19:05:05",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Moon const    Aquarius",
+      "node_longitude": 354.1,
+      "body_longitude": 354.1,
+      "moon_latitude": -1.062
+    },
+    {
+      "datetime_iso": "2017-02-11T00:32:52",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Moon const         Leo",
+      "node_longitude": 142.231,
+      "body_longitude": 142.231,
+      "moon_latitude": -0.999
+    },
+    {
+      "datetime_iso": "2017-02-26T14:58:22",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Sun const    Aquarius",
+      "node_longitude": 337.964,
+      "body_longitude": 337.964,
+      "moon_latitude": -0.443
+    },
+    {
+      "datetime_iso": "2017-08-07T18:10:36",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Moon const Capricornus",
+      "node_longitude": 315.176,
+      "body_longitude": 315.176,
+      "moon_latitude": 0.808
+    },
+    {
+      "datetime_iso": "2017-08-21T18:30:10",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Sun const         Leo",
+      "node_longitude": 148.638,
+      "body_longitude": 148.638,
+      "moon_latitude": 0.429
+    },
+    {
+      "datetime_iso": "2018-01-31T13:26:43",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Cancer",
+      "body_constellation": "Moon const      Cancer",
+      "node_longitude": 131.368,
+      "body_longitude": 131.368,
+      "moon_latitude": -0.309
+    },
+    {
+      "datetime_iso": "2018-02-15T21:05:12",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Sun const Capricornus",
+      "node_longitude": 326.88,
+      "body_longitude": 326.88,
+      "moon_latitude": -1.112
+    },
+    {
+      "datetime_iso": "2018-07-13T02:47:52",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Sun const      Gemini",
+      "node_longitude": 110.432,
+      "body_longitude": 110.432,
+      "moon_latitude": -1.39
+    },
+    {
+      "datetime_iso": "2018-07-27T20:20:21",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const Capricornus",
+      "body_constellation": "Moon const Capricornus",
+      "node_longitude": 304.492,
+      "body_longitude": 304.492,
+      "moon_latitude": 0.108
+    },
+    {
+      "datetime_iso": "2018-08-11T09:57:44",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Sun const         Leo",
+      "node_longitude": 138.439,
+      "body_longitude": 138.439,
+      "moon_latitude": 1.171
+    },
+    {
+      "datetime_iso": "2019-01-06T01:28:11",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Sun const Sagittarius",
+      "node_longitude": 285.156,
+      "body_longitude": 285.156,
+      "moon_latitude": 1.041
+    },
+    {
+      "datetime_iso": "2019-01-21T05:16:04",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Cancer",
+      "body_constellation": "Moon const      Cancer",
+      "node_longitude": 120.597,
+      "body_longitude": 120.597,
+      "moon_latitude": 0.376
+    },
+    {
+      "datetime_iso": "2019-07-02T19:16:12",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Sun const      Gemini",
+      "node_longitude": 100.358,
+      "body_longitude": 100.358,
+      "moon_latitude": -0.647
+    },
+    {
+      "datetime_iso": "2019-07-16T21:38:13",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Moon const Sagittarius",
+      "node_longitude": 293.801,
+      "body_longitude": 293.801,
+      "moon_latitude": -0.59
+    },
+    {
+      "datetime_iso": "2019-12-26T05:13:07",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Sun const Sagittarius",
+      "node_longitude": 273.84,
+      "body_longitude": 273.84,
+      "moon_latitude": 0.397
+    },
+    {
+      "datetime_iso": "2020-01-10T19:21:18",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Gemini",
+      "body_constellation": "Moon const      Gemini",
+      "node_longitude": 109.728,
+      "body_longitude": 109.728,
+      "moon_latitude": 1.058
+    },
+    {
+      "datetime_iso": "2020-06-05T19:12:23",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Ophiucus",
+      "body_constellation": "Moon const    Ophiucus",
+      "node_longitude": 255.287,
+      "body_longitude": 255.287,
+      "moon_latitude": 1.237
+    },
+    {
+      "datetime_iso": "2020-06-21T06:41:27",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Sun const      Taurus",
+      "node_longitude": 90.075,
+      "body_longitude": 90.075,
+      "moon_latitude": 0.111
+    },
+    {
+      "datetime_iso": "2020-07-05T04:44:24",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const Sagittarius",
+      "body_constellation": "Moon const Sagittarius",
+      "node_longitude": 283.348,
+      "body_longitude": 283.348,
+      "moon_latitude": -1.318
+    },
+    {
+      "datetime_iso": "2020-11-30T09:29:41",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Moon const      Taurus",
+      "node_longitude": 68.347,
+      "body_longitude": 68.347,
+      "moon_latitude": -1.036
+    },
+    {
+      "datetime_iso": "2020-12-14T16:16:35",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Ophiucus",
+      "body_constellation": "Sun const    Ophiucus",
+      "node_longitude": 262.849,
+      "body_longitude": 262.849,
+      "moon_latitude": -0.293
+    },
+    {
+      "datetime_iso": "2021-05-26T11:13:53",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Scorpius",
+      "body_constellation": "Moon const    Scorpius",
+      "node_longitude": 245.135,
+      "body_longitude": 245.135,
+      "moon_latitude": 0.493
+    },
+    {
+      "datetime_iso": "2021-06-10T10:52:38",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Sun const      Taurus",
+      "node_longitude": 79.49,
+      "body_longitude": 79.49,
+      "moon_latitude": 0.826
+    },
+    {
+      "datetime_iso": "2021-11-19T08:57:27",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Moon const      Taurus",
+      "node_longitude": 56.94,
+      "body_longitude": 56.94,
+      "moon_latitude": -0.415
+    },
+    {
+      "datetime_iso": "2021-12-04T07:43:01",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const    Ophiucus",
+      "body_constellation": "Sun const    Ophiucus",
+      "node_longitude": 252.065,
+      "body_longitude": 252.065,
+      "moon_latitude": -0.975
+    },
+    {
+      "datetime_iso": "2022-04-30T20:28:05",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Sun const       Aries",
+      "node_longitude": 40.165,
+      "body_longitude": 40.165,
+      "moon_latitude": -1.101
+    },
+    {
+      "datetime_iso": "2022-05-16T04:14:09",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Libra",
+      "body_constellation": "Moon const       Libra",
+      "node_longitude": 234.992,
+      "body_longitude": 234.992,
+      "moon_latitude": -0.254
+    },
+    {
+      "datetime_iso": "2022-05-30T11:30:17",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Taurus",
+      "body_constellation": "Sun const      Taurus",
+      "node_longitude": 68.743,
+      "body_longitude": 68.743,
+      "moon_latitude": 1.496
+    },
+    {
+      "datetime_iso": "2022-10-25T10:48:42",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 211.687,
+      "body_longitude": 211.687,
+      "moon_latitude": 1.043
+    },
+    {
+      "datetime_iso": "2022-11-08T11:02:09",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Moon const       Aries",
+      "node_longitude": 45.699,
+      "body_longitude": 45.699,
+      "moon_latitude": 0.239
+    },
+    {
+      "datetime_iso": "2023-04-20T04:12:32",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Sun const       Aries",
+      "node_longitude": 29.514,
+      "body_longitude": 29.514,
+      "moon_latitude": -0.387
+    },
+    {
+      "datetime_iso": "2023-05-05T17:34:03",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Libra",
+      "body_constellation": "Moon const       Libra",
+      "node_longitude": 224.647,
+      "body_longitude": 224.647,
+      "moon_latitude": -0.997
+    },
+    {
+      "datetime_iso": "2023-10-14T17:55:09",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 200.796,
+      "body_longitude": 200.796,
+      "moon_latitude": 0.348
+    },
+    {
+      "datetime_iso": "2023-10-28T20:24:02",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const       Aries",
+      "body_constellation": "Moon const       Aries",
+      "node_longitude": 34.821,
+      "body_longitude": 34.821,
+      "moon_latitude": 0.939
+    },
+    {
+      "datetime_iso": "2024-03-25T07:00:19",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Moon const       Virgo",
+      "node_longitude": 184.783,
+      "body_longitude": 184.783,
+      "moon_latitude": 0.962
+    },
+    {
+      "datetime_iso": "2024-04-08T18:20:51",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Sun const      Pisces",
+      "node_longitude": 19.063,
+      "body_longitude": 19.063,
+      "moon_latitude": 0.348
+    },
+    {
+      "datetime_iso": "2024-09-18T02:34:28",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Moon const      Pisces",
+      "node_longitude": 355.334,
+      "body_longitude": 355.334,
+      "moon_latitude": -1.006
+    },
+    {
+      "datetime_iso": "2024-10-02T18:49:16",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 189.718,
+      "body_longitude": 189.718,
+      "moon_latitude": -0.315
+    },
+    {
+      "datetime_iso": "2025-03-14T06:54:39",
+      "eclipse_type": "Lunar",
+      "node": "Ketu",
+      "node_constellation": "node_const         Leo",
+      "body_constellation": "Moon const         Leo",
+      "node_longitude": 173.59,
+      "body_longitude": 173.59,
+      "moon_latitude": 0.319
+    },
+    {
+      "datetime_iso": "2025-03-29T10:57:49",
+      "eclipse_type": "Solar",
+      "node": "Rahu",
+      "node_constellation": "node_const      Pisces",
+      "body_constellation": "Sun const      Pisces",
+      "node_longitude": 8.649,
+      "body_longitude": 8.649,
+      "moon_latitude": 1.062
+    },
+    {
+      "datetime_iso": "2025-09-07T18:08:53",
+      "eclipse_type": "Lunar",
+      "node": "Rahu",
+      "node_constellation": "node_const    Aquarius",
+      "body_constellation": "Moon const    Aquarius",
+      "node_longitude": 345.015,
+      "body_longitude": 345.015,
+      "moon_latitude": -0.273
+    },
+    {
+      "datetime_iso": "2025-09-21T19:54:07",
+      "eclipse_type": "Solar",
+      "node": "Ketu",
+      "node_constellation": "node_const       Virgo",
+      "body_constellation": "Sun const       Virgo",
+      "node_longitude": 178.726,
+      "body_longitude": 178.726,
+      "moon_latitude": -0.982
+    }
+  ]
+}

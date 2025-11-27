@@ -1,0 +1,118 @@
+/* Лэйаут: две колонки, важно align-items: start и min-height:0 на детях */
+.user-profile-layout {
+  display: grid;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (min-width: 768px) {
+  .user-profile-layout {
+    grid-template-columns: 360px minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+/* Чтобы внутренние скроллы работали корректно */
+.user-profile-left,
+.user-profile-main,
+.user-profile-sidebar {
+  min-height: 0;
+}
+
+/* Левая колонка (сайдбар) — липкая */
+.user-profile-sidebar {
+  width: 100%;
+  min-width: 0;
+  position: sticky;
+  top: 6rem;                         /* поправь под высоту шапки */
+  align-self: start;
+  height: calc(100vh - 7rem);        /* вся видимая высота минус отступ/header */
+  overflow: hidden;                   /* внешняя обёртка НЕ скроллится */
+  display: block;                     /* на всякий */
+}
+
+/* Внутренний скролл внутри липкого сайдбара */
+.user-profile-scroll {
+  max-height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 0.25rem; /* тонкий респект полосе прокрутки, чтобы не дрыгалось */
+}
+
+/* Карточки/внутренние элементы не должны выпирать за ширину */
+.user-profile-card {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.profile-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.profile-page-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 1rem;
+  color: #e2e8f0;
+}
+
+.action-button {
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  border: none;
+  background: #1e40af;
+  color: white;
+  transition: background 0.2s ease;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.action-button:hover {
+  background: #1e3a8a;
+}
+
+.action-button.action-primary {
+  background: #2563eb;
+}
+
+.action-button.action-primary:hover {
+  background: #1d4ed8;
+}
+
+.profile-left-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.profile-right-column {
+  flex: 1 1 auto;
+  min-height: 320px;
+}
+
+@media (min-width: 1024px) {
+  .profile-layout {
+    flex-direction: row;
+    gap: 2rem;
+  }
+  .profile-left-column {
+    flex: 0 0 300px;
+  }
+}
+
+/* Убираем стандартные браузерные отступы у параграфов в профиле */
+.user-profile-card p {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.user-profile-card h3 {
+  margin-top: 0.375rem;
+  margin-bottom: 0;
+}
+

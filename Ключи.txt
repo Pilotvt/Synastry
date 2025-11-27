@@ -1,0 +1,3 @@
+npm run generate:license -- vitalya.vt@mail.ru 365 
+
+eyJvIjoidml0YWx5YS52dEBtYWlsLnJ1IiwiZSI6IjIwMjYtMTEtMTdUMTc6NDQ6NDcuMzYwWiJ9.S0_UWSAgjSdIY8VpnHkWC8BsUzaiW9hAUnM6MZufpBQ
