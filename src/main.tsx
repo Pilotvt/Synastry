@@ -4,6 +4,7 @@ import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router
 import App from "./App";
 import AuthPage from "./pages/AuthPage";
 import ChartPage from "./pages/ChartPage";
+import AdditionalChartPage from "./pages/AdditionalChartPage";
 import NetStatusBanner from "./components/NetStatusBanner";
 import { NetStatusProvider } from "./context/NetStatusProvider";
 import LicenseIdentityBridge from "./components/LicenseIdentityBridge";
@@ -74,6 +75,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<AuthPage />} />
           <Route path="/app" element={<App />} />
           <Route path="/chart" element={<ChartPage />} />
+          <Route path="/chart/additional" element={<AdditionalChartPage />} />
           <Route
             path="/auth/callback"
             element={

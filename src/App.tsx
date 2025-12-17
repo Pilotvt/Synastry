@@ -280,6 +280,8 @@ export default function App() {
   const [personName, setPersonName] = useState("");
   const [lastName, setLastName] = useState("");
   const [birth, setBirth] = useState("");
+  const [dateDraft, setDateDraft] = useState("");
+  const [timeDraft, setTimeDraft] = useState("");
   const [gender, setGender] = useState<"male" | "female">("male");
 
 
@@ -704,7 +706,7 @@ useEffect(() => {
   const filteredCities = useMemo(() => {
     const query = cityQuery.trim();
     if (!query) {
-  return citiesOfCountry.slice().sort((a: CityWorld, b: CityWorld) => a.nameRu.localeCompare(b.nameRu, "ru"));
+      return citiesOfCountry.slice().sort((a: CityWorld, b: CityWorld) => a.nameRu.localeCompare(b.nameRu, "ru"));
     }
 
     const normalized = norm(query);
@@ -713,27 +715,22 @@ useEffect(() => {
     const referenceLength = normalized ? normalized.length : query.length;
 
     const scored = citiesOfCountry
-  .map((city: CityWorld) => {
-        let bestScore = Number.POSITIVE_INFINITY;
+      .map((city: CityWorld) => {
         const scores: number[] = [];
 
         if (normalized) {
           if (city.nameNorm === normalized) scores.push(0);
           if (city.nameNorm.startsWith(normalized)) scores.push(1);
-          if (city.nameNorm.includes(normalized)) scores.push(3);
           if (city.nameRuNorm === normalized) scores.push(0.2);
           if (city.nameRuNorm.startsWith(normalized)) scores.push(1.2);
-          if (city.nameRuNorm.includes(normalized)) scores.push(3.2);
         }
         if (translit) {
           if (city.nameTranslit === translit) scores.push(0.5);
           if (city.nameTranslit.startsWith(translit)) scores.push(2);
-          if (city.nameTranslit.includes(translit)) scores.push(4);
         }
         if (approx) {
           if (city.nameApprox === approx) scores.push(1.5);
           if (city.nameApprox.startsWith(approx)) scores.push(2.5);
-          if (city.nameApprox.includes(approx)) scores.push(4.5);
         }
 
         if (!normalized && !translit && !approx) {
@@ -744,23 +741,13 @@ useEffect(() => {
           return null;
         }
 
-        bestScore = Math.min(...scores);
+        const bestScore =
+          Math.min(...scores) +
+          Math.abs((city.nameNorm?.length ?? referenceLength) - referenceLength) * 0.05;
 
-        if (normalized && city.nameNorm.startsWith(normalized)) {
-          const tailLength = Math.max(0, city.nameNorm.length - normalized.length);
-          bestScore -= Math.min(0.1, tailLength * 0.01);
-        }
-
-        const lengthPenalty = Math.abs(city.name.length - referenceLength) * 0.002;
-        let finalScore = bestScore + lengthPenalty;
-        finalScore -= city.name.length * 0.0005;
-        if (/[ '\u2019-]/.test(city.name)) {
-          finalScore += 0.05;
-        }
-
-        return { city, score: finalScore };
+        return { city, score: bestScore };
       })
-  .filter((entry: { city: CityWorld; score: number } | null): entry is { city: CityWorld; score: number } => entry !== null)
+      .filter((entry: { city: CityWorld; score: number } | null): entry is { city: CityWorld; score: number } => entry !== null)
       .sort((a: { city: CityWorld; score: number }, b: { city: CityWorld; score: number }) => {
         if (a.score !== b.score) return a.score - b.score;
         if (a.city.name.length !== b.city.name.length) return a.city.name.length - b.city.name.length;
@@ -897,7 +884,12 @@ useEffect(() => {
 
   const offsetMinAtBirth = birthMoment ? getDisplayOffsetMinutes(birthMoment, ianaTz) : 0;
   const dstAtBirth = birthMoment ? (birthMoment.year() >= MIN_SUPPORTED_TZ_YEAR ? birthMoment.isDST() : false) : false;
-  const offsetStrAtBirth = minutesToUTCsign(offsetMinAtBirth);
+  const effectiveDst = enableTzCorrection ? dstManual : dstAtBirth;
+  const autoDstMinutes = dstAtBirth ? 60 : 0;
+  const manualDstMinutes = effectiveDst ? 60 : 0;
+  const corrMinutes = enableTzCorrection ? (Number.isFinite(tzCorrectionHours) ? tzCorrectionHours * 60 : 0) : 0;
+  const finalOffsetMinutes = offsetMinAtBirth + corrMinutes + (enableTzCorrection ? (manualDstMinutes - autoDstMinutes) : 0);
+  const offsetStrAtBirth = minutesToUTCsign(finalOffsetMinutes);
   const autoDstKey = `${birthMoment ? birthMoment.format("YYYY-MM-DDTHH:mm") : "none"}|${ianaTz}`;
   const prevAutoDstKeyRef = useRef<string | null>(null);
 
@@ -930,6 +922,15 @@ useEffect(() => {
 
   const licenseBlocked = false;
   const licenseOwner = licenseStatus?.licenseOwner ?? null;
+
+  // Синхронизация draft-полей даты/времени с актуальным birth (для стабильного ввода с клавиатуры)
+  useEffect(() => {
+    const datePart = birth ? birth.split("T")[0] : "";
+    const timePart = birth ? birth.split("T")[1]?.slice(0, 5) ?? "" : "";
+    // Обновляем драфты только когда значение в birth уже валидное (не перетираем набираемое пользователем)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) setDateDraft(datePart);
+    if (/^\d{2}:\d{2}$/.test(timePart)) setTimeDraft(timePart);
+  }, [birth]);
 
   useEffect(() => {
     let unsub: { unsubscribe?: () => void } | null = null;
@@ -1484,20 +1485,26 @@ if (!sessionReady) {
                   <input
                     type="date"
                     className="rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none"
-                    value={birth ? birth.split("T")[0] : ""}
+                    value={dateDraft}
                     onChange={(e) => {
-                      const timePart = birth ? birth.split("T")[1]?.slice(0, 5) ?? "" : "";
-                      setBirth(combineDateTime(e.target.value, timePart));
+                      const nextDate = e.target.value;
+                      setDateDraft(nextDate);
+                      const timePart = /^\d{2}:\d{2}$/.test(timeDraft) ? timeDraft : (birth ? birth.split("T")[1]?.slice(0, 5) ?? "" : "");
+                      setBirth(combineDateTime(nextDate, timePart));
                     }}
                     inputMode="numeric"
                   />
                   <input
                     type="time"
                     className="rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none"
-                    value={birth ? birth.split("T")[1]?.slice(0, 5) ?? "" : ""}
+                    value={timeDraft}
                     onChange={(e) => {
-                      const datePart = birth ? birth.split("T")[0] : "";
-                      setBirth(combineDateTime(datePart, e.target.value));
+                      const val = e.target.value;
+                      setTimeDraft(val);
+                      if (/^\\d{2}:\\d{2}$/.test(val)) {
+                        const datePart = dateDraft || (birth ? birth.split("T")[0] : "");
+                        setBirth(combineDateTime(datePart, val));
+                      }
                     }}
                     inputMode="numeric"
                   />
@@ -1542,7 +1549,7 @@ if (!sessionReady) {
           <div className="mt-4 rounded-xl border border-white/10 bg-transparent p-4">
             <label className="block text-sm mb-2 text-white/70">Страна</label>
             <select
-              className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none"
+              style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", color: "#2b1c0f", padding: "2px 4px", borderRadius: "4px" }}
               value={country}
               onChange={(e) => {
                 userChangedCountryRef.current = true;
@@ -1568,7 +1575,8 @@ if (!sessionReady) {
               <input
                 type="text"
                 placeholder="Например, Омск / Omsk"
-                className="mb-2 w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none"
+                className="mb-2 w-full rounded-lg outline-none"
+                style={{ background: "#f2e3c2", border: "1px solid #b38b52", color: "#2b1c0f", padding: "2px 4px", borderRadius: "4px" }}
                 value={cityQuery}
                 onChange={(e) => {
                   userEditedCityRef.current = true;
@@ -1588,20 +1596,24 @@ if (!sessionReady) {
                     right: 0,
                     top: "100%",
                     zIndex: 100,
-                    background: "#f8fafc", // светло-серый фон
-                    color: "#222", // тёмный шрифт
-                    border: "1px solid rgba(0,0,0,0.08)",
+                    background: "#f2e3c2",
+                    color: "#2b1c0f",
+                    border: "1px solid #b38b52",
                     borderRadius: "0.75rem",
                     marginTop: "0.25rem",
                     maxHeight: "12rem",
                     overflowY: "auto",
+                    listStyleType: "none",
+                    padding: 0,
+                    margin: 0,
                   }}
                   className="autocomplete-list text-sm shadow-lg"
                 >
                   {citySuggestions.map((c: CityWorld) => (
                     <li
                       key={`${c.id}`}
-                      className="px-3 py-2 cursor-pointer hover:bg-blue-700"
+                      className="px-3 py-2 cursor-pointer"
+                      style={{ background: "#f2e3c2", color: "#2b1c0f", borderBottom: "1px solid #d8bf94" }}
                       onMouseDown={() => {
                         cityAutoPrefillDoneRef.current = true;
                         userEditedCityRef.current = false;
@@ -1653,7 +1665,7 @@ if (!sessionReady) {
                   <span className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs">IANA: {ianaTz}</span>
                   {birth && (
                     <span className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs">
-                      На момент рождения: {offsetStrAtBirth} {dstAtBirth ? "(DST)" : "(без DST)"}
+                      На момент рождения: {offsetStrAtBirth} {effectiveDst ? "(DST)" : "(без DST)"}
                     </span>
                   )}
                   {birthMoment && birthMoment.year() < MIN_SUPPORTED_TZ_YEAR && (

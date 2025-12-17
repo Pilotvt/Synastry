@@ -1635,6 +1635,12 @@ const UserProfilePage: React.FC = () => {
             >
               Синастрия
             </button>
+            <button
+              onClick={() => navigate(fromFileRef.current ? '/chart/additional?fromFile=1' : '/chart/additional')}
+              className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
+            >
+              Дополнительно
+            </button>
           </div>
         </div>
         {identityEmail && isOwnProfile ? (

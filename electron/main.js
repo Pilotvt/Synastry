@@ -39,6 +39,7 @@ const BACKEND_PORT = process.env.SYN_BACKEND_PORT || '8000';
 const BACKEND_STDIO = process.env.ELECTRON_BACKEND_STDIO || 'pipe';
 
 const APP_DISPLAY_NAME = 'Synastry';
+const APP_ICON = path.join(__dirname, '../build/icons/icon.ico');
 const APP_VERSION = `${app.getVersion()}`;
 // Автообновление включено по умолчанию; можно отключить через SYN_AUTOUPDATE=0 при необходимости.
 const ALLOW_AUTO_UPDATE = process.env.SYN_AUTOUPDATE !== '0';
@@ -97,7 +98,8 @@ function openChatWindow(encodedPayload, opener) {
     height: 680,
     minWidth: 480,
     minHeight: 560,
-    title: `${APP_DISPLAY_NAME} — Чат`,
+    title: `${APP_DISPLAY_NAME} - Чат`,
+    icon: APP_ICON,
     autoHideMenuBar: true,
     parent: opener && !opener.isDestroyed() ? opener : undefined,
     webPreferences: {
@@ -129,6 +131,7 @@ function openBlocklistWindow(opener) {
     minWidth: 420,
     minHeight: 560,
     title: `${APP_DISPLAY_NAME} - Чёрный список`,
+    icon: APP_ICON,
     autoHideMenuBar: true,
     parent: opener && !opener.isDestroyed() ? opener : undefined,
     webPreferences: {
@@ -1053,7 +1056,8 @@ function createLicensePromptWindow(parentWindow) {
     resizable: false,
     minimizable: false,
     maximizable: false,
-    title: `${APP_DISPLAY_NAME} — активация лицензии`,
+    title: `${APP_DISPLAY_NAME} - активация лицензии`,
+    icon: APP_ICON,
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
@@ -1669,6 +1673,7 @@ function createWindow() {
     width: 1200,
     height: 800,
     title: APP_DISPLAY_NAME,
+    icon: APP_ICON,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

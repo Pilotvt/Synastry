@@ -20,6 +20,7 @@ import { getExpressionCompatByDate } from "../numerology/exprDate/getExpressionB
 import { formatOverlayBlock, type NameForms } from "../synastry/overlayFormat";
 import { requestNewChartReset } from "../utils/newChartRequest";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
+import { needsSupabaseResolution, resolveSupabaseScreenshotUrl } from "../utils/screenshotUrl";
 // Removed legacy profileStorage usage
 
 const ENABLE_LICENSE_GATE = false; // Отключаем обязательный показ окна лицензии
@@ -1958,6 +1959,37 @@ const SinastryPage: React.FC = () => {
           }
         }
       }
+
+      // Resolve Supabase storage pointers or signed URLs for screenshots from file
+      const pointerFromChart = (isRecord(chart) && typeof (chart as Record<string, unknown>).screenshotStoragePointer === 'string')
+        ? (chart as Record<string, unknown>).screenshotStoragePointer
+        : null;
+      const pointerFromTop = parsedRecord && typeof (parsedRecord as Record<string, unknown>).screenshotStoragePointer === "string"
+        ? (parsedRecord as Record<string, unknown>).screenshotStoragePointer
+        : null;
+
+      const shotCandidateRaw = extractChartScreenshot(chart) || pointerFromChart || pointerFromTop;
+      let shotCandidate = typeof shotCandidateRaw === 'string' && shotCandidateRaw.trim().length > 0
+        ? shotCandidateRaw
+        : null;
+      if (shotCandidate) {
+        try {
+          if (needsSupabaseResolution(shotCandidate)) {
+            const resolved = await resolveSupabaseScreenshotUrl(shotCandidate);
+            if (resolved) {
+              shotCandidate = resolved;
+            }
+          }
+          if (!extractChartScreenshot(chart)) {
+            chart = attachScreenshot(chart, shotCandidate);
+          }
+        } catch (err) {
+          console.warn("Не удалось резолвить скриншот из файла", err);
+          if (!extractChartScreenshot(chart)) {
+            chart = attachScreenshot(chart, shotCandidate);
+          }
+        }
+      }
       
       // Устанавливаем флаг loadedFromFile=true, чтобы не смешивать с кэшем/облаком
       const newState = buildProfileState(profile, chart, true, currentUserId);
@@ -2058,6 +2090,12 @@ const SinastryPage: React.FC = () => {
                 className={`${BUTTON_PRIMARY} px-3 py-1.5 text-sm cursor-default`}
               >
                 Синастрия
+              </button>
+              <button
+                onClick={() => navigate(fromFileRef.current ? "/chart/additional?fromFile=1" : "/chart/additional")}
+                className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
+              >
+                Дополнительно
               </button>
             </div>
           </div>
