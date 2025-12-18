@@ -19,6 +19,20 @@ import { BUTTON_SECONDARY } from "./constants/buttonPalette";
 const SUPPORT_EMAIL = "pilot.vt@mail.ru";
 const SUPPORT_TELEGRAM = "@PilotVT";
 
+const PAPER_SURFACE_STYLE: Record<string, string> = {
+  backgroundColor: "rgba(255, 255, 255, 0.92)",
+  backgroundImage: "var(--paper-texture-image)",
+  backgroundSize: "var(--paper-texture-size)",
+  backgroundRepeat: "repeat",
+  border: "1px solid rgba(120, 80, 40, 0.35)",
+  color: "#2b1c0f",
+};
+
+const PAPER_INPUT_STYLE: Record<string, string> = {
+  ...PAPER_SURFACE_STYLE,
+  boxShadow: "inset 0 1px 1px rgba(0, 0, 0, 0.05)",
+};
+
 type CityWorld = {
   id: string;
   name: string;
@@ -257,7 +271,13 @@ function combineDateTime(datePart: string, timePart: string) {
   const cleanDate = datePart.trim();
   const cleanTime = timePart.trim();
   if (!cleanDate) return "";
-  const normalizedTime = cleanTime ? cleanTime.padStart(5, "0") : "00:00";
+  const normalizedTime = (() => {
+    if (!cleanTime) return "00:00";
+    const match = cleanTime.match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return "00:00";
+    const hours = match[1].padStart(2, "0");
+    return `${hours}:${match[2]}`;
+  })();
   return `${cleanDate}T${normalizedTime}`;
 }
 
@@ -308,6 +328,9 @@ export default function App() {
   }, []);
 
   const [country, setCountry] = useState("RU");
+  const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
+  const [countryFilter, setCountryFilter] = useState("");
+  const countryDropdownRef = useRef<HTMLDivElement | null>(null);
   const [cityQuery, setCityQuery] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
   const [selectedCityId, setSelectedCityId] = useState<string | null>(null);
@@ -318,6 +341,31 @@ export default function App() {
   const [countries, setCountries] = useState<string[]>(["RU"]);
   const cityCacheRef = useRef<Map<string, CityWorld[]>>(new Map());
   const citiesIndexLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (!countryDropdownOpen) return;
+    const handler = (event: MouseEvent) => {
+      const root = countryDropdownRef.current;
+      if (!root) return;
+      const target = event.target;
+      if (target instanceof Node && !root.contains(target)) {
+        setCountryDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+    };
+  }, [countryDropdownOpen]);
+
+  const filteredCountries = useMemo(() => {
+    const q = norm(countryFilter || "");
+    if (!q) return countries;
+    return countries.filter((code) => {
+      const label = `${countryNameRU(code)} ${code}`;
+      return norm(label).includes(q);
+    });
+  }, [countries, countryFilter]);
   const selectedCityData = useMemo(() => {
     if (selectedCityId) {
   const direct = allCities.find((c: CityWorld) => c.id === selectedCityId);
@@ -754,8 +802,8 @@ useEffect(() => {
         return a.city.name.localeCompare(b.city.name, "ru");
       });
 
-  return scored.slice(0, 200).map((entry: { city: CityWorld; score: number }) => entry.city);
-  }, [citiesOfCountry, cityQuery]);
+	  return scored.slice(0, 60).map((entry: { city: CityWorld; score: number }) => entry.city);
+	  }, [citiesOfCountry, cityQuery]);
 
   // Fallback: if nothing matched and the user typed in Cyrillic, try a fuzzy
   // transliteration match (helps when dataset uses Latin names like "Moscow"
@@ -1344,7 +1392,7 @@ if (!sessionReady) {
 // end App component
 
 
-  const FORM_MAX_WIDTH = 860;
+  const FORM_MAX_WIDTH = 500;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -1489,7 +1537,9 @@ if (!sessionReady) {
                     onChange={(e) => {
                       const nextDate = e.target.value;
                       setDateDraft(nextDate);
-                      const timePart = /^\d{2}:\d{2}$/.test(timeDraft) ? timeDraft : (birth ? birth.split("T")[1]?.slice(0, 5) ?? "" : "");
+                      const timePart =
+                        timeDraft.match(/^(\d{2}:\d{2})/)?.[1] ??
+                        (birth ? birth.split("T")[1]?.slice(0, 5) ?? "" : "");
                       setBirth(combineDateTime(nextDate, timePart));
                     }}
                     inputMode="numeric"
@@ -1500,15 +1550,15 @@ if (!sessionReady) {
                     value={timeDraft}
                     onChange={(e) => {
                       const val = e.target.value;
-                      setTimeDraft(val);
-                      if (/^\\d{2}:\\d{2}$/.test(val)) {
+                      const hhmm = val.match(/^(\d{2}:\d{2})/)?.[1] ?? "";
+                      setTimeDraft(hhmm || val);
+                      if (hhmm) {
                         const datePart = dateDraft || (birth ? birth.split("T")[0] : "");
-                        setBirth(combineDateTime(datePart, val));
+                        setBirth(combineDateTime(datePart, hhmm));
                       }
                     }}
                     inputMode="numeric"
                   />
-                  <span className="text-xs text-white/60">Можно печатать цифрами или выбрать в календаре.</span>
                 </div>
               </div>
             </div>
@@ -1546,41 +1596,82 @@ if (!sessionReady) {
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-white/10 bg-transparent p-4">
-            <label className="block text-sm mb-2 text-white/70">Страна</label>
-            <select
-              style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", color: "#2b1c0f", padding: "2px 4px", borderRadius: "4px" }}
-              value={country}
-              onChange={(e) => {
-                userChangedCountryRef.current = true;
-                userEditedCityRef.current = true;
-                cityAutoPrefillDoneRef.current = true;
-                setCountry(e.target.value);
-                setCityQuery("");
-                setSelectedCity("");
-                setSelectedCityId(null);
-              }}
-            >
-              {countries.map((code: string) => (
-                <option key={code} value={code}>
-                  {countryNameRU(code)} ({code})
-                </option>
-              ))}
-            </select>
-          </div>
+	          <div className="mt-4 rounded-xl border border-white/10 bg-transparent p-4">
+	            <label className="block text-sm mb-1 font-semibold text-white">Страна</label>
+	            <div ref={countryDropdownRef} style={{ position: "relative" }}>
+	              <button
+	                type="button"
+	                className="w-full rounded-lg px-3 py-2 outline-none text-left"
+	                style={PAPER_INPUT_STYLE}
+	                onClick={() => {
+	                  setCountryDropdownOpen((v) => !v);
+	                  setCountryFilter("");
+	                }}
+	              >
+	                {countryNameRU(country)} ({country})
+	              </button>
+		              {countryDropdownOpen && (
+		                <div
+		                  className="absolute left-0 right-0 top-full z-[120] mt-1 rounded-xl shadow-lg"
+		                  style={{ ...PAPER_SURFACE_STYLE, maxHeight: "320px", overflow: "hidden" }}
+		                >
+		                  <div className="p-2">
+		                    <input
+		                      type="text"
+		                      value={countryFilter}
+	                      onChange={(e) => setCountryFilter(e.target.value)}
+	                      placeholder="Поиск страны..."
+	                      className="w-full rounded-lg px-3 py-2 outline-none placeholder:text-black/40"
+	                      style={PAPER_INPUT_STYLE}
+		                      autoComplete="off"
+		                    />
+		                  </div>
+		                  <ul
+		                    className="text-sm"
+		                    style={{
+		                      listStyle: "none",
+		                      margin: 0,
+		                      padding: 0,
+		                      maxHeight: "260px",
+		                      overflowY: "auto",
+		                    }}
+		                  >
+		                    {filteredCountries.map((code) => (
+		                      <li
+		                        key={code}
+		                        className="px-3 py-2 cursor-pointer hover:bg-black/5"
+		                        onMouseDown={() => {
+		                          userChangedCountryRef.current = true;
+		                          userEditedCityRef.current = true;
+		                          cityAutoPrefillDoneRef.current = true;
+	                          setCountry(code);
+	                          setCityQuery("");
+	                          setSelectedCity("");
+	                          setSelectedCityId(null);
+	                          setCountryDropdownOpen(false);
+	                        }}
+	                      >
+	                        {countryNameRU(code)} ({code})
+	                      </li>
+	                    ))}
+	                  </ul>
+	                </div>
+	              )}
+	            </div>
+	          </div>
 
-          <div className="mt-4 rounded-xl border border-white/10 bg-transparent p-4">
-            <label className="block text-sm mb-2 text-white/70">Поиск города</label>
-            <div style={{ position: "relative" }}>
-              <input
-                type="text"
-                placeholder="Например, Омск / Omsk"
-                className="mb-2 w-full rounded-lg outline-none"
-                style={{ background: "#f2e3c2", border: "1px solid #b38b52", color: "#2b1c0f", padding: "2px 4px", borderRadius: "4px" }}
-                value={cityQuery}
-                onChange={(e) => {
-                  userEditedCityRef.current = true;
-                  setCityQuery(e.target.value);
+	          <div className="mt-4 rounded-xl border border-white/10 bg-transparent p-4">
+	            <label className="block text-sm mb-1 font-semibold text-white">Город</label>
+	            <div style={{ position: "relative" }}>
+	              <input
+	                type="text"
+	                placeholder="Например, Омск / Omsk"
+	                className="mb-2 w-full rounded-lg px-3 py-2 outline-none placeholder:text-black/40"
+	                style={PAPER_INPUT_STYLE}
+	                value={cityQuery}
+	                onChange={(e) => {
+	                  userEditedCityRef.current = true;
+	                  setCityQuery(e.target.value);
                   setSelectedCity("");
                   setSelectedCityId(null);
                 }}
@@ -1588,36 +1679,26 @@ if (!sessionReady) {
                 onFocus={() => setCityInputFocused(true)}
                 onBlur={() => setTimeout(() => setCityInputFocused(false), 150)}
               />
-              {!manual && cityInputFocused && cityQuery && citySuggestions.length > 0 && (
-                <ul
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    top: "100%",
-                    zIndex: 100,
-                    background: "#f2e3c2",
-                    color: "#2b1c0f",
-                    border: "1px solid #b38b52",
-                    borderRadius: "0.75rem",
-                    marginTop: "0.25rem",
-                    maxHeight: "12rem",
-                    overflowY: "auto",
-                    listStyleType: "none",
-                    padding: 0,
-                    margin: 0,
-                  }}
-                  className="autocomplete-list text-sm shadow-lg"
-                >
-                  {citySuggestions.map((c: CityWorld) => (
-                    <li
-                      key={`${c.id}`}
-                      className="px-3 py-2 cursor-pointer"
-                      style={{ background: "#f2e3c2", color: "#2b1c0f", borderBottom: "1px solid #d8bf94" }}
-                      onMouseDown={() => {
-                        cityAutoPrefillDoneRef.current = true;
-                        userEditedCityRef.current = false;
-                        setSelectedCity(c.name);
+		              {!manual && cityInputFocused && cityQuery && citySuggestions.length > 0 && (
+		                <ul
+		                  className="absolute left-0 right-0 top-full z-[100] mt-1 rounded-xl shadow-lg text-sm"
+		                  style={{
+		                    ...PAPER_SURFACE_STYLE,
+		                    listStyle: "none",
+		                    margin: 0,
+		                    padding: 0,
+		                    maxHeight: "260px",
+		                    overflowY: "auto",
+		                  }}
+		                >
+		                  {citySuggestions.map((c: CityWorld) => (
+		                    <li
+		                      key={`${c.id}`}
+	                      className="px-3 py-2 cursor-pointer hover:bg-black/5"
+	                      onMouseDown={() => {
+	                        cityAutoPrefillDoneRef.current = true;
+	                        userEditedCityRef.current = false;
+	                        setSelectedCity(c.name);
                         setSelectedCityId(c.id);
                         setCityQuery(c.nameRu);
                         setLat(c.lat);
@@ -1625,9 +1706,9 @@ if (!sessionReady) {
                         setCityInputFocused(false);
                       }}
                     >
-                      <span className="font-medium text-sm text-slate-900">{c.nameRu}</span>
+                      <span className="font-medium text-sm">{c.nameRu}</span>
                       {country !== "RU" && c.nameRu !== c.name && (
-                        <span className="ml-1 text-xs text-slate-500">({c.name})</span>
+                        <span className="ml-1 text-xs text-black/60">({c.name})</span>
                       )}
                     </li>
                   ))}
@@ -1676,28 +1757,30 @@ if (!sessionReady) {
                 </div>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <input
-                  id="enableCorr"
-                  type="checkbox"
-                  checked={enableTzCorrection}
-                  onChange={(e) => setEnableTzCorrection(e.target.checked)}
-                  className="h-4 w-4 accent-white/80"
-                />
-                <label htmlFor="enableCorr" className="text-sm text-white/80">
-                  Включить ручную коррекцию
-                </label>
-                <input
-                  type="number"
-                  step="1"
-                  min={-12}
-                  max={14}
-                  className="w-24 rounded-lg bg-black/30 border border-white/10 px-2 py-1 text-sm outline-none disabled:opacity-50"
-                  value={tzCorrectionHours}
-                  onChange={(e) => setTzCorrectionHours(parseInt(e.target.value || "0", 10))}
-                  disabled={!enableTzCorrection}
-                />
-                <label className="inline-flex items-center gap-2 text-sm">
+              <div className="mt-3 flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    id="enableCorr"
+                    type="checkbox"
+                    checked={enableTzCorrection}
+                    onChange={(e) => setEnableTzCorrection(e.target.checked)}
+                    className="h-4 w-4 accent-white/80"
+                  />
+                  <label htmlFor="enableCorr" className="text-sm text-white/80">
+                    Включить ручную коррекцию
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    min={-12}
+                    max={14}
+                    className="w-24 rounded-lg bg-black/30 border border-white/10 px-2 py-1 text-sm outline-none disabled:opacity-50"
+                    value={tzCorrectionHours}
+                    onChange={(e) => setTzCorrectionHours(parseInt(e.target.value || "0", 10))}
+                    disabled={!enableTzCorrection}
+                  />
+                </div>
+                <label className="inline-flex items-center gap-2 text-sm pl-6">
                   <input
                     type="checkbox"
                     className="h-4 w-4 accent-white/80"
@@ -1710,7 +1793,7 @@ if (!sessionReady) {
                   />
                   Принуд. DST +1ч
                 </label>
-                <span className="text-xs text-white/60 w-full">
+                <span className="text-xs text-white/60">
                   DST выставляется автоматически по истории тайм-зоны. Снимите галочку, если в этот период переход не применялся.
                 </span>
               </div>

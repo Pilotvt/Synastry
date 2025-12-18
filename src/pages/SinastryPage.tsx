@@ -1764,8 +1764,9 @@ const SinastryPage: React.FC = () => {
           console.warn("Не удалось загрузить карту пользователя", chartLoadError);
         }
 
-        // Если в облачной карте нет скриншота — попробуем найти в хранилище Supabase (как в UserProfilePage)
-        if (!chart || !extractChartScreenshot(chart)) {
+        // Если в облачной карте нет скриншота - попробуем найти в хранилище Supabase (как в UserProfilePage)
+        const hasStoragePointer = chart && isRecord(chart) && typeof (chart as Record<string, unknown>).screenshotStoragePointer === 'string';
+        if (!chart || (!extractChartScreenshot(chart) && !hasStoragePointer)) {
           try {
             const preferredBuckets = ['charts-screenshots', 'charts', 'public', 'screenshots'];
             for (const bucket of preferredBuckets) {
@@ -1814,6 +1815,27 @@ const SinastryPage: React.FC = () => {
           if (!chart && localFallbackChart) {
             chart = localFallbackChart;
           }
+        }
+
+        // Resolve screenshot URL for cloud/local charts (supabase pointer or signed URL refresh)
+        const rawShotCandidate = chart
+          ? (extractChartScreenshot(chart)
+              || (isRecord(chart) && typeof (chart as Record<string, unknown>).screenshotStoragePointer === 'string'
+                ? (chart as Record<string, unknown>).screenshotStoragePointer
+                : null))
+          : null;
+        const rawShot = typeof rawShotCandidate === 'string' ? rawShotCandidate : null;
+        if (rawShot && needsSupabaseResolution(rawShot)) {
+          try {
+            const resolved = await resolveSupabaseScreenshotUrl(rawShot);
+            if (resolved) {
+              chart = attachScreenshot(chart, resolved);
+            }
+          } catch (err) {
+            console.warn("Не удалось резолвить скриншот из облака", err);
+          }
+        } else if (rawShot && chart && !extractChartScreenshot(chart)) {
+          chart = attachScreenshot(chart, rawShot);
         }
 
         if (isMounted) {

@@ -96,13 +96,13 @@ const NorthIndianChart: FC<NorthIndianChartProps> = ({ title, className, houses,
     .filter((part) => part.length > 0)
     .join(" ");
 
-  return (
-    <div className={containerClass}>
-      {title ? (
-        <div className="mb-3 text-center text-base font-black uppercase tracking-wide text-white">{title}</div>
-      ) : null}
-      <div className="relative">
-        <svg
+	  return (
+	    <div className={containerClass}>
+	      {title ? (
+	        <div className="north-indian-chart-title mb-3 text-center text-base font-black uppercase tracking-wide text-white">{title}</div>
+	      ) : null}
+	      <div className="relative">
+	        <svg
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           className="h-auto w-full rounded-xl border border-white/20 bg-slate-950/80 shadow-lg"
           preserveAspectRatio="xMidYMid meet"

@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from "react"
 import { useNavigate, useLocation } from "react-router-dom";
 import moment from "moment-timezone";
 import tzLookup from "tz-lookup";
-import { supabase } from "../lib/supabase";
-import { saveChart } from "../lib/charts";
+import { supabase } from "../lib/supabase"; // нужен только для проверки лицензии/сессии
 import { useProfile } from "../store/profile";
 import { latinToRuName } from "../utils/transliterate";
 import { loadChartTextResources, type ChartTextResources } from "../lib/textResources";
@@ -24,7 +23,8 @@ import {
 
 // Keys and constants
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://127.0.0.1:8000";
-const ENABLE_LICENSE_GATE = false; // Отключаем навязчивое окно лицензии — пользователь откроет его вручную
+const ENABLE_LICENSE_GATE = false; // Отключаем навязчивое окно лицензии - пользователь откроет его вручную
+const CLOUD_DISABLED = true; // Полностью локальная работа на странице "Дополнительно"
 
 // Types (kept minimal and local to avoid cross-file collisions)
 type ProfileSnapshot = {
@@ -216,13 +216,6 @@ type CloudSaveResult = {
   screenshotUploaded?: boolean;
 };
 
-type ScreenshotUploadResult = {
-  ok: boolean;
-  finalScreenshotUrl: string;
-  storagePointer: string | null;
-  uploadedBucket: string | null;
-};
-
 const KARAKA_HOUSES: Record<string, readonly number[]> = {
   Su: [1, 9],
   Ju: [2, 5, 9, 10, 11],
@@ -267,19 +260,6 @@ function normalizeSmallPhotos(value: unknown): (string | null)[] {
   return normalized;
 }
 
-function coerceFiniteNumber(value: unknown): number {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : Number.NaN;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().replace(",", ".");
-    if (!normalized) return Number.NaN;
-    const parsed = Number.parseFloat(normalized);
-    return Number.isFinite(parsed) ? parsed : Number.NaN;
-  }
-  return Number.NaN;
-}
-
 function personFingerprint(p: ProfileSnapshot | null | undefined): string {
   if (!p) return "";
   const name = (p.personName ?? "").trim().toLowerCase();
@@ -287,38 +267,19 @@ function personFingerprint(p: ProfileSnapshot | null | undefined): string {
   const birth = (p.birth ?? "").trim();
   const city = (p.selectedCity ?? p.cityQuery ?? "").trim().toLowerCase();
   const cityId = typeof p?.cityId === 'string' ? p.cityId.trim() : '';
-  const lat = coerceFiniteNumber((p as { lat?: unknown }).lat);
-  const lon = coerceFiniteNumber((p as { lon?: unknown }).lon);
-  const latValue = Number.isFinite(lat) ? lat.toFixed(4) : '';
-  const lonValue = Number.isFinite(lon) ? lon.toFixed(4) : '';
+  const latValue = typeof p.lat === 'number' && Number.isFinite(p.lat) ? p.lat.toFixed(4) : '';
+  const lonValue = typeof p.lon === 'number' && Number.isFinite(p.lon) ? p.lon.toFixed(4) : '';
   return [name, last, birth, cityId || city, latValue, lonValue].join('|');
 }
 
 function hasFingerprintableCore(profile: ProfileSnapshot | null | undefined): profile is ProfileSnapshot {
   if (!profile) return false;
   if (typeof profile.birth !== 'string' || !profile.birth.trim()) return false;
-  const lat = coerceFiniteNumber((profile as { lat?: unknown }).lat);
-  const lon = coerceFiniteNumber((profile as { lon?: unknown }).lon);
-  if (!Number.isFinite(lat)) return false;
-  if (!Number.isFinite(lon)) return false;
+  const lat = (profile as { lat?: number }).lat;
+  const lon = (profile as { lon?: number }).lon;
+  if (typeof lat !== 'number' || !Number.isFinite(lat)) return false;
+  if (typeof lon !== 'number' || !Number.isFinite(lon)) return false;
   return true;
-}
-
-function normalizeProfileNumbers(snapshot: ProfileSnapshot): ProfileSnapshot {
-  const lat = coerceFiniteNumber((snapshot as { lat?: unknown }).lat);
-  const lon = coerceFiniteNumber((snapshot as { lon?: unknown }).lon);
-  const tzCorrectionHoursRaw = (snapshot as { tzCorrectionHours?: unknown }).tzCorrectionHours;
-  const tzCorrectionHours = coerceFiniteNumber(tzCorrectionHoursRaw);
-  return {
-    ...snapshot,
-    lat,
-    lon,
-    tzCorrectionHours: Number.isFinite(tzCorrectionHours)
-      ? tzCorrectionHours
-      : typeof snapshot.tzCorrectionHours === "number"
-        ? snapshot.tzCorrectionHours
-        : undefined,
-  };
 }
 
 function extractAscSignFromChart(chartValue: unknown): string | null {
@@ -367,10 +328,6 @@ function sanitizeForFingerprint(value: unknown): unknown {
     const result: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value)) {
       if (key === "debug_info") continue;
-      if (key === "__cacheMeta") continue;
-      if (key === "screenshotUrl" || key === "screenshotHash" || key === "screenshotStoragePointer" || key === "screenshot") {
-        continue;
-      }
       result[key] = sanitizeForFingerprint(val);
     }
     return result;
@@ -389,10 +346,6 @@ function computeChartFingerprint(chart: ChartResponse | null, meta: BuildMeta | 
 function needsCloudScreenshot(chart: ChartResponse | null): boolean {
   if (!chart) return false;
   const url = typeof chart.screenshotUrl === 'string' ? chart.screenshotUrl : '';
-  if (url.startsWith('data:') || url.startsWith('blob:')) return true;
-  if (typeof chart.screenshotStoragePointer === 'string' && chart.screenshotStoragePointer.trim()) {
-    return false;
-  }
   if (!url) return true;
   return url.startsWith('data:') || url.startsWith('blob:');
 }
@@ -404,7 +357,6 @@ function computeScreenshotTaskKey(chart: ChartResponse | null, forceToken = 0): 
   const rest = { ...(chart as ChartResponse & JsonRecord) };
   delete rest.screenshotUrl;
   delete rest.screenshotHash;
-  delete rest.screenshotStoragePointer;
   const payload = stableStringify(sanitizeForFingerprint(rest));
   return shouldForce ? `${forceToken}:${payload}` : payload;
 }
@@ -595,10 +547,11 @@ const ARC_EPSILON = 1e-6;
 function formatOffset(minutes: number): string {
   const sign = minutes >= 0 ? "+" : "-";
   const abs = Math.abs(minutes);
-  const hours = Math.floor(abs / 60);
-  const mins = abs % 60;
-  if (mins === 0) return `UTC${sign}${hours}`;
-  return `UTC${sign}${hours}:${mins.toString().padStart(2, "0")}`;
+  const hours = Math.floor(abs / 60)
+    .toString()
+    .padStart(2, "0");
+  const mins = (abs % 60).toString().padStart(2, "0");
+  return `${sign}${hours}:${mins}`;
 }
 
 function formatDegrees(value: number): string {
@@ -652,13 +605,13 @@ function extractProfileSnapshot(data: unknown): ProfileSnapshot | null {
   const maybeObj = data as Record<string, unknown>;
   const profile = maybeObj.profile;
   if (profile && typeof profile === "object") {
-    const snapshot = normalizeProfileNumbers(profile as ProfileSnapshot);
+    const snapshot = profile as ProfileSnapshot;
     if ((!snapshot.cityNameRu || !snapshot.cityNameRu.trim()) && typeof snapshot.selectedCity === "string") {
       snapshot.cityNameRu = latinToRuName(snapshot.selectedCity);
     }
     return snapshot;
   }
-  const fallback = normalizeProfileNumbers(data as ProfileSnapshot);
+  const fallback = data as ProfileSnapshot;
   if ((!fallback.cityNameRu || !fallback.cityNameRu.trim()) && typeof fallback.selectedCity === "string") {
     fallback.cityNameRu = latinToRuName(fallback.selectedCity);
   }
@@ -737,23 +690,7 @@ function mergeWithLocalSnapshot(
     ];
     for (const key of simpleFields) {
       const providedVal = providedRecord[key];
-      if (key === "lat" || key === "lon") {
-        const numeric = coerceFiniteNumber(providedVal);
-        if (Number.isFinite(numeric)) {
-          (target as unknown as Record<string, unknown>)[key] = numeric;
-        }
-        continue;
-      }
-      if (key === "tzCorrectionHours") {
-        const numeric = coerceFiniteNumber(providedVal);
-        if (Number.isFinite(numeric)) {
-          (target as unknown as Record<string, unknown>)[key] = numeric;
-        } else if (providedVal === 0) {
-          (target as unknown as Record<string, unknown>)[key] = 0;
-        }
-        continue;
-      }
-      if (providedVal !== undefined && providedVal !== null && providedVal !== "") {
+      if (providedVal !== undefined && providedVal !== null && providedVal !== '') {
         target[key] = providedVal;
       }
     }
@@ -847,41 +784,12 @@ function isCompleteChart(data: unknown): data is ChartResponse {
 
 function buildFallbackMeta(profile: ProfileSnapshot | null): BuildMeta {
   // Best-effort fallback when opening a chart from file without meta
-  const raw = profile?.birth;
-  const norm = typeof raw === 'string' && raw.trim() ? normalizeBirthForParsing(raw) : null;
-  const lat = coerceFiniteNumber((profile as { lat?: unknown } | null)?.lat);
-  const lon = coerceFiniteNumber((profile as { lon?: unknown } | null)?.lon);
-  if (norm && Number.isFinite(lat) && Number.isFinite(lon)) {
-    try {
-      const ianaTz = tzLookup(lat, lon);
-      const hasExplicitOffset = /([Zz]|[+-]\d{2}:?\d{2})$/.test(norm);
-      const birthMoment = hasExplicitOffset
-        ? moment.parseZone(norm).tz(ianaTz)
-        : moment.tz(norm, ["YYYY-MM-DDTHH:mm", "YYYY-MM-DDTHH:mm:ss"], ianaTz);
-      if (birthMoment.isValid()) {
-        const baseOffsetMinutes = birthMoment.utcOffset();
-        const autoDstMinutes = birthMoment.isDST() ? 60 : 0;
-        const manualDstMinutes = profile?.dstManual ? 60 : 0;
-        const correctionMinutes = profile?.enableTzCorrection
-          ? (Number.isFinite(profile.tzCorrectionHours ?? 0) ? (profile.tzCorrectionHours ?? 0) * 60 : 0)
-          : 0;
-        const finalOffsetMinutes = baseOffsetMinutes + (profile?.enableTzCorrection ? correctionMinutes + (manualDstMinutes - autoDstMinutes) : 0);
-        const deltaMinutes = finalOffsetMinutes - baseOffsetMinutes;
-        const adjustedMoment = birthMoment.clone().add(deltaMinutes, "minutes");
-        return {
-          ianaTz,
-          datetimeIso: adjustedMoment.format("YYYY-MM-DDTHH:mm:ssZ"),
-          baseOffsetMinutes,
-          finalOffsetMinutes,
-          autoDstMinutes,
-          manualDstMinutes,
-        };
-      }
-    } catch (err) {
-      console.warn("Failed to build fallback meta from profile data", err);
+  const datetimeIso = (() => {
+    const raw = profile?.birth;
+    if (typeof raw === 'string' && raw.trim()) {
+      const norm = normalizeBirthForParsing(raw);
+      if (norm) return norm;
     }
-  }
-  const datetimeIso = norm || (() => {
     try { return new Date().toISOString(); } catch { return '1970-01-01T00:00:00Z'; }
   })();
   return {
@@ -892,16 +800,6 @@ function buildFallbackMeta(profile: ProfileSnapshot | null): BuildMeta {
     autoDstMinutes: 0,
     manualDstMinutes: 0,
   };
-}
-
-function resolveMetaForDisplay(metaSource: unknown, profile: ProfileSnapshot | null): BuildMeta {
-  const fallback = buildFallbackMeta(profile);
-  if (!isBuildMeta(metaSource)) return fallback;
-  if (metaSource.ianaTz === "local" && fallback.ianaTz !== "local") return fallback;
-  const looksPlaceholder = metaSource.baseOffsetMinutes === 0 && metaSource.finalOffsetMinutes === 0;
-  const fallbackLooksBetter = fallback.baseOffsetMinutes !== 0 || fallback.finalOffsetMinutes !== 0 || fallback.ianaTz !== "local";
-  if (looksPlaceholder && fallbackLooksBetter) return fallback;
-  return metaSource;
 }
 
 // Helper: pick freshest profile by updated_at (missing treated as 0)
@@ -928,15 +826,13 @@ function buildChartPayload(profile: ProfileSnapshot):
     return { ok: false, error: "Не заполнена дата и время рождения." };
   }
 
-  const lat = coerceFiniteNumber((profile as { lat?: unknown }).lat);
-  const lon = coerceFiniteNumber((profile as { lon?: unknown }).lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+  if (!Number.isFinite(profile.lat) || !Number.isFinite(profile.lon)) {
     return { ok: false, error: "Не заданы координаты места рождения." };
   }
 
   let ianaTz: string;
   try {
-    ianaTz = tzLookup(lat, lon);
+    ianaTz = tzLookup(profile.lat, profile.lon);
   } catch (err) {
     console.error("Не удалось определить IANA-часовой пояс", err);
     return { ok: false, error: "Не удалось определить часовой пояс для указанных координат." };
@@ -948,7 +844,7 @@ function buildChartPayload(profile: ProfileSnapshot):
   const hasExplicitOffset = /([Zz]|[+-]\d{2}:?\d{2})$/.test(normalizedBirth);
   const birthMoment = hasExplicitOffset
     ? moment.parseZone(normalizedBirth).tz(ianaTz)
-    : moment.tz(normalizedBirth, ["YYYY-MM-DDTHH:mm", "YYYY-MM-DDTHH:mm:ss"], ianaTz);
+    : moment.tz(normalizedBirth, "YYYY-MM-DDTHH:mm", ianaTz);
   if (!birthMoment.isValid()) {
     return { ok: false, error: "Некорректный формат даты или времени рождения." };
   }
@@ -970,8 +866,8 @@ function buildChartPayload(profile: ProfileSnapshot):
 
     const req: ChartRequestPayload & { constellational?: boolean } = {
       datetime_iso: datetimeIso,
-      latitude: lat,
-      longitude: lon,
+      latitude: profile.lat,
+      longitude: profile.lon,
       elevation_m: 0,
       house_system: "porphyry",
       constellational: true,
@@ -1044,7 +940,7 @@ function QuestionnaireButton({ profile, chart, meta, navigate, fromFile, ownerId
   );
 }
 
-const ChartPage = () => {
+const AdditionalChartPage = () => {
   const [licenseChecked, setLicenseChecked] = useState(false);
   const [licenseAllowed, setLicenseAllowed] = useState(true);
   const [licenseStatus, setLicenseStatus] = useState<ElectronLicenseStatus | null>(null);
@@ -1153,12 +1049,11 @@ const ChartPage = () => {
     })();
 
     try {
-      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      subscription = supabase.auth.onAuthStateChange((_event, session) => {
         if (!cancelled) {
           setCurrentUserId(session?.user?.id ?? null);
         }
-      });
-      subscription = data?.subscription;
+      }).data?.subscription;
     } catch (subscriptionError) {
       console.warn('Failed to subscribe to auth state changes', subscriptionError);
     }
@@ -1444,29 +1339,25 @@ const ChartPage = () => {
       ? personFingerprint(activeProfileSnapshot)
       : null;
 
-	    async function loadChart() {
-	      if (initialLoadCompleteRef.current && !skipLocalCache && !fromFile) {
-	        return;
-	      }
-	      // Reset transient cloud status when we start (re)loading chart data (e.g. opening another local file).
-	      setCloudSaveMsg(null);
-	      let fallbackProfile: ProfileSnapshot | null = null;
-	      try {
-	        setLoading(true);
-	        setError(null);
+  async function loadChart() {
+      if (initialLoadCompleteRef.current && !skipLocalCache && !fromFile) {
+        return;
+      }
+      let fallbackProfile: ProfileSnapshot | null = null;
+      try {
+        setLoading(true);
+        setError(null);
 
-        // Получаем сессию всегда (нужна для облачных запросов и профиля)
-        setProgress({ percent: 5, message: "Проверяем сессию..." });
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
-        const activeSession = sessionData?.session;
-        if (!activeSession?.user) {
-          navigate("/", { replace: true });
-          return;
-        }
-        const sessionUserId = activeSession.user.id;
-        if (currentUserId !== sessionUserId) {
-          setCurrentUserId(sessionUserId);
+        // Сессия нужна только для лицензии/идентификации, расчёт локальный
+        let sessionUserId: string | null = null;
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          sessionUserId = sessionData?.session?.user?.id ?? null;
+          if (sessionUserId && currentUserId !== sessionUserId) {
+            setCurrentUserId(sessionUserId);
+          }
+        } catch {
+          // игнорируем, работаем локально
         }
 
         // Если forceRefresh=1, игнорировать кэш/облако загрузки расчёта и перейти к сбору профиля
@@ -1497,30 +1388,25 @@ const ChartPage = () => {
                   if (!cancelled && isCompleteChart(chartCandidate)) {
                     const chartResponse = chartCandidate as ChartResponse;
                     const metaSource = (data as Record<string, unknown>).meta;
-                    const resolvedProfile = savedProfile ?? null;
-                    const metaValue: BuildMeta = resolveMetaForDisplay(metaSource, resolvedProfile);
-                    const resolvedFingerprint = hasFingerprintableCore(resolvedProfile)
-                      ? personFingerprint(resolvedProfile)
-                      : null;
-                    lastLoadedFingerprintRef.current = resolvedFingerprint;
-                    if (resolvedProfile) {
-                      setProfile(resolvedProfile);
-                      persistProfileSnapshotLocal(resolvedProfile, sessionUserId);
-                      if (!fallbackProfile) {
-                        fallbackProfile = resolvedProfile;
-                      }
-                    } else {
-                      setProfile(null);
-                    }
+      const resolvedProfile = savedProfile ?? null;
+      const metaValue: BuildMeta = isBuildMeta(metaSource)
+        ? metaSource
+        : buildFallbackMeta(resolvedProfile);
+      const resolvedFingerprint = hasFingerprintableCore(resolvedProfile)
+        ? personFingerprint(resolvedProfile)
+        : null;
+      lastLoadedFingerprintRef.current = resolvedFingerprint;
+      if (resolvedProfile) {
+        setProfile(resolvedProfile);
+        persistProfileSnapshotLocal(resolvedProfile, sessionUserId);
+        if (!fallbackProfile) {
+          fallbackProfile = resolvedProfile;
+        }
+      } else {
+        setProfile(null);
+      }
                   setChart(chartResponse);
                   setMeta(metaValue);
-                  if (typeof chartResponse.screenshotUrl === "string") {
-                    setChartScreenshot(chartResponse.screenshotUrl);
-                    setChartScreenshotHash(
-                      typeof chartResponse.screenshotHash === 'string' ? chartResponse.screenshotHash : null,
-                    );
-                    setScreenshotStatus(null);
-                  }
                   setChartSource(recordSource);
                   setProgress({ percent: 100, message: "Загружен сохранённый расчёт." });
                   const fromFileSession = Boolean(recordBehavesAsFile);
@@ -1552,95 +1438,13 @@ const ChartPage = () => {
           } catch (e) {
             console.warn("Не удалось прочитать сохранённый расчёт из localStorage", e);
           }
-
-          // Получаем профиль/расчёт из облака (сохранённый гороскоп)
-          setProgress({ percent: 18, message: "Ищем сохранённый гороскоп..." });
-            try {
-              const { data: savedChartRow, error: savedChartError } = await supabase
-                .from("charts")
-                .select("profile, chart, meta, updated_at")
-                .eq("user_id", activeSession.user.id)
-                .order("updated_at", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              if (savedChartError && savedChartError.code !== "PGRST116") {
-                console.warn("Ошибка загрузки сохранённого гороскопа:", savedChartError);
-              }
-              if (savedChartRow && !cancelled) {
-                const profilePayload = savedChartRow.profile ?? null;
-                let mergedProfile = profilePayload
-                  ? mergeWithLocalSnapshot(
-                      extractProfileSnapshot(profilePayload),
-                      { preferProvided: fromFile },
-                      sessionUserId,
-                    )
-                  : null;
-                if (mergedProfile && !fromFile) {
-                  const savedFp = hasFingerprintableCore(mergedProfile)
-                    ? personFingerprint(mergedProfile)
-                    : null;
-                  if (savedFp && activeProfileFingerprint && savedFp !== activeProfileFingerprint) {
-                    console.warn('Saved Supabase chart belongs to different person, skipping cached chart');
-                    mergedProfile = null;
-                  }
-                }
-
-                if (isCompleteChart(savedChartRow.chart) && isBuildMeta(savedChartRow.meta)) {
-                  const resolvedProfile = mergedProfile ?? fallbackProfile ?? null;
-                  const chartResponse = savedChartRow.chart;
-                  const fingerprint = hasFingerprintableCore(resolvedProfile)
-                    ? personFingerprint(resolvedProfile)
-                    : null;
-                  lastLoadedFingerprintRef.current = fingerprint;
-                  if (resolvedProfile) {
-                    setProfile(resolvedProfile);
-                    persistProfileSnapshotLocal(resolvedProfile, sessionUserId);
-                    if (!fallbackProfile) {
-                      fallbackProfile = resolvedProfile;
-                    }
-                  } else {
-                    setProfile(null);
-                  }
-                  setChart(chartResponse);
-                  setMeta(resolveMetaForDisplay(savedChartRow.meta, resolvedProfile));
-                  setChartSource('cloud');
-                  if (typeof chartResponse.screenshotUrl === "string") {
-                    setChartScreenshot(chartResponse.screenshotUrl);
-                    setChartScreenshotHash(
-                      typeof chartResponse.screenshotHash === 'string' ? chartResponse.screenshotHash : null,
-                    );
-                    setScreenshotStatus(null);
-                  }
-                  setProgress({ percent: 100, message: "Загружен сохранённый расчёт." });
-                  loadedFromFileRef.current = false;
-                  setLoadedFromFile(false);
-                  autoSavePendingRef.current = false;
-                  autoSaveFingerprintRef.current = computeChartFingerprint(chartResponse, savedChartRow.meta) ?? null;
-                    setLoading(false);
-                    initialLoadCompleteRef.current = true;
-                  return;
-                }
-              }
-            } catch (cloudErr) {
-              console.warn("Не удалось получить сохранённый гороскоп из облака:", cloudErr);
-            }
         }
 
         if (profile !== null || chart !== null || meta !== null) {
           return;
         }
 
-        setProgress({ percent: 20, message: "Загружаем профиль пользователя..." });
-        const { data: profileRow, error: profileError } = await supabase
-          .from("profiles")
-          .select("data")
-          .eq("id", activeSession.user.id)
-          .single();
-        if (profileError) {
-          throw profileError;
-        }
         // Читаем локальный снимок (без слияния, чтобы сравнить свежесть)
-        // Use only global store for local snapshot
         let localSnapshotOnly: ProfileSnapshot | null = null;
         if (useProfile.getState) {
           const profile = useProfile.getState().profile;
@@ -1656,21 +1460,21 @@ const ChartPage = () => {
                 residenceCountry: profile.residenceCountry,
                 residenceCityName: profile.residenceCityName,
                 cityId: profile.cityId,
-                lat: typeof profile.lat === 'number' ? profile.lat : Number.NaN,
-                lon: typeof profile.lon === 'number' ? profile.lon : Number.NaN,
+                lat: typeof profile.lat === 'number' ? profile.lat : 0,
+                lon: typeof profile.lon === 'number' ? profile.lon : 0,
                 updated_at: profile.updatedAt,
               }
             : null;
         }
 
-        const cloudSnapshot = extractProfileSnapshot(profileRow?.data ?? null);
-        const pickDirectSnapshot = (candidate: ProfileSnapshot | null | undefined) =>
-          hasFingerprintableCore(candidate) ? candidate : null;
-        let snapshot = skipLocalCache
-          ? (pickDirectSnapshot(localSnapshotOnly)
-              ?? pickDirectSnapshot(fallbackProfile)
-              ?? pickDirectSnapshot(cloudSnapshot))
-          : pickFreshProfile(localSnapshotOnly, fallbackProfile, cloudSnapshot);
+        const cloudSnapshot = null;
+      const pickDirectSnapshot = (candidate: ProfileSnapshot | null | undefined) =>
+        hasFingerprintableCore(candidate) ? candidate : null;
+      let snapshot = skipLocalCache
+    ? (pickDirectSnapshot(localSnapshotOnly)
+            ?? pickDirectSnapshot(fallbackProfile)
+            ?? pickDirectSnapshot(null))
+        : pickFreshProfile(localSnapshotOnly, fallbackProfile, null);
         if (snapshot) {
           const fp = hasFingerprintableCore(snapshot) ? personFingerprint(snapshot) : null;
           if (!skipLocalCache && lastLoadedFingerprintRef.current && fp && fp !== lastLoadedFingerprintRef.current && !fromFile) {
@@ -1721,18 +1525,8 @@ const ChartPage = () => {
           setGlobalProfile({ ascSign });
         }
 
-        // Save updated profile with ascSign to cloud
-        if (ascSign) {
-          try {
-            const { data: sessionData } = await supabase.auth.getSession();
-            const userId = sessionData?.session?.user?.id;
-            if (userId) {
-            await supabase.from('profiles').upsert({ id: userId, data: localizedSnapshot ?? updatedSnapshot }).select('id');
-            }
-          } catch (cloudErr) {
-            console.warn('Failed to save ascSign to cloud profile:', cloudErr);
-          }
-        }
+        // Save updated profile with ascSign to cloud (для Additional отключено)
+        // Cloud sync отключен в Additional
 
         setChart(json);
         setMeta(payloadResult.meta);
@@ -1746,15 +1540,6 @@ const ChartPage = () => {
           setLoading(false);
         }, 300);
         initialLoadCompleteRef.current = true;
-        if (forceRefresh) {
-          try {
-            const url = new URL(window.location.href);
-            url.searchParams.delete("forceRefresh");
-            window.history.replaceState(null, "", url.toString());
-          } catch (e) {
-            console.warn("Failed to clear forceRefresh param", e);
-          }
-        }
         // Это расчёт с сервера по профилю, не считаем как "из файла"
       } catch (err) {
         if (cancelled) return;
@@ -1774,7 +1559,7 @@ const ChartPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [navigate, skipLocalCache, fromFile, forceRefresh, profile, chart, meta, currentUserId, clearLocalChartCaches, storeProfile, setGlobalProfile, requestScreenshotRefresh]);
+  }, [navigate, skipLocalCache, fromFile, profile, chart, meta, currentUserId, clearLocalChartCaches, storeProfile, setGlobalProfile, requestScreenshotRefresh]);
 
   useEffect(() => {
     if (!chart || !profile || !meta || !currentUserId) return;
@@ -1900,7 +1685,7 @@ const ChartPage = () => {
         : localized.residenceCityName ?? undefined,
     };
   }, [profile, storeProfile]);
-// Capture SVG of NorthIndianChart as PNG data URL and save to localStorage / cloud
+// Capture SVG of NorthIndianChart as PNG data URL and save to localStorage (cloud отключен)
   useEffect(() => {
     if (!screenshotTaskKey) return;
     const chartSnapshot = chartLatestRef.current;
@@ -1973,9 +1758,154 @@ const ChartPage = () => {
         console.warn('Failed to write screenshot to localStorage', storageError);
       }
 
-      // Cloud upload happens only during a cloud-save (autosave or "Сохранить в облако"), not during capture.
-      if (!unmounted) {
-        screenshotPhaseRef.current = 'ready';
+      try {
+        if (!unmounted) {
+          screenshotPhaseRef.current = 'uploading';
+          setScreenshotStatus('Загружаем скриншот в облако...');
+        }
+        if (!blobPng) {
+          const res = await fetch(dataUrl);
+          blobPng = await res.blob();
+          screenshotHash = await computeBlobSha256(blobPng);
+        }
+        const effectiveHash = screenshotHash;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        if (!userId) return;
+        const filename = `chart-${userId}-${effectiveHash ?? Date.now()}.png`;
+        const preferredBuckets = ['charts-screenshots', 'charts', 'public', 'screenshots'];
+        let uploadedBucket: string | null = null;
+        let uploadErr: unknown = null;
+        for (const bucket of preferredBuckets) {
+          try {
+            const { error } = await supabase.storage.from(bucket).upload(filename, blobPng, { contentType: 'image/png', upsert: true });
+            if (!error) {
+              uploadedBucket = bucket;
+              uploadErr = null;
+              break;
+            }
+            uploadErr = error;
+            if (String(error).includes('Bucket not found')) {
+              console.warn(`Bucket ${bucket} not found, trying next...`);
+              continue;
+            } else {
+              console.warn('Supabase storage upload error:', error);
+              break;
+            }
+          } catch (e) {
+            uploadErr = e;
+            console.warn('Supabase storage upload exception:', e);
+          }
+        }
+        if (!uploadedBucket) {
+          if (uploadErr) {
+            console.warn('All storage upload attempts failed:', uploadErr);
+          }
+          if (!unmounted) {
+            screenshotPhaseRef.current = 'ready';
+            setScreenshotStatus('Не удалось загрузить скриншот в облако.');
+          }
+          return;
+        }
+        const storagePointer = encodeSupabasePointer({ bucket: uploadedBucket, path: filename });
+        const resolvedUrl = await resolveSupabaseScreenshotUrl(storagePointer);
+        const persistedUrl = resolvedUrl ?? storagePointer;
+        if (!unmounted) {
+          screenshotPhaseRef.current = 'ready';
+          setChartScreenshot(persistedUrl);
+          setChartScreenshotHash(effectiveHash ?? null);
+          setScreenshotStatus(
+            `Скриншот загружен в облако (${uploadedBucket})${effectiveHash ? ` (hash ${effectiveHash.slice(0, 8)})` : ''}`,
+          );
+          lastScreenshotUploadRef.current = { location: 'cloud', bucket: uploadedBucket };
+          setChart((prev) => (prev ? { ...prev, screenshotUrl: persistedUrl, screenshotHash: effectiveHash ?? prev.screenshotHash ?? null, screenshotStoragePointer: storagePointer } : prev));
+        }
+        try {
+          updateSavedChartLocalStorage(currentUserId ?? null, (payload) => {
+            const existingChart = 'chart' in payload ? payload.chart : undefined;
+            const chartSource = isRecord(existingChart) ? existingChart : toJsonRecord(chartSnapshot);
+            return { ...payload, chart: mergeChartWithScreenshot(chartSource, persistedUrl, effectiveHash, storagePointer) };
+          }, { source: metaSource, updatedAt: Date.now() });
+        } catch (storageError) {
+          console.warn('Failed to write public screenshot URL to localStorage', storageError);
+        }
+        try {
+          const { data: chartsData, error: chartsError } = await supabase
+            .from('charts')
+            .select('id, chart')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          const buildChartPayload = (): JsonRecord | null => {
+            if (!chartSnapshot) return null;
+            const baseChart = toJsonRecord(chartSnapshot);
+            return mergeChartWithScreenshot(baseChart, persistedUrl, effectiveHash ?? null, storagePointer);
+          };
+          if (!chartsError && Array.isArray(chartsData) && chartsData.length > 0) {
+            const latestEntry = chartsData[0];
+            const entryIdRaw = isRecord(latestEntry) ? latestEntry.id : null;
+            const entryId =
+              typeof entryIdRaw === 'string'
+                ? entryIdRaw
+                : typeof entryIdRaw === 'number'
+                  ? entryIdRaw
+                  : null;
+            if (entryId !== null && isRecord(latestEntry)) {
+              const existingChartDb = isRecord(latestEntry.chart) ? latestEntry.chart : null;
+              const hasCoreData = (obj: JsonRecord | null | undefined): obj is JsonRecord => {
+                if (!obj) return false;
+                const hasPlanets = Array.isArray(obj.planets);
+                const hasHouses = Array.isArray(obj.houses);
+                return hasPlanets || hasHouses || Boolean(obj.ascendant);
+              };
+              const candidateChart = hasCoreData(existingChartDb)
+                ? existingChartDb
+                : toJsonRecord(chartSnapshot);
+
+              if (candidateChart && persistedUrl) {
+                await supabase
+                  .from('charts')
+                  .update({
+                    chart: {
+                      ...candidateChart,
+                      screenshotUrl: persistedUrl,
+                      screenshotHash: effectiveHash ?? null,
+                      screenshotStoragePointer: storagePointer ?? candidateChart.screenshotStoragePointer ?? null,
+                    },
+                  })
+                  .eq('id', entryId);
+              } else {
+                console.warn('Skip DB screenshot update: no chart data to merge, avoiding overwrite.');
+              }
+            }
+          } else if (!chartsError) {
+            const chartPayload = buildChartPayload();
+            if (chartPayload) {
+              try {
+                const profileForCloud = buildProfileForCloud() ?? profile ?? null;
+                const autoName = personLabel ? `${personLabel} (импорт)` : 'Импортированный расчёт';
+                await saveChart(
+                  userId,
+                  autoName,
+                  'private',
+                  profileForCloud,
+                  chartPayload,
+                  meta ?? undefined,
+                );
+              } catch (insertErr) {
+                console.warn('Failed to insert chart before screenshot update', insertErr);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to update charts row with screenshotUrl', e);
+        }
+      } catch (e) {
+        console.warn('Failed to upload screenshot to Supabase Storage', e);
+        if (!unmounted) {
+          screenshotPhaseRef.current = 'ready';
+          setScreenshotStatus('Ошибка при загрузке скриншота.');
+        }
       }
     };
 
@@ -2218,6 +2148,7 @@ const ChartPage = () => {
     return markers;
   }, [chart, variantShift]);
 
+  const baseOffsetText = meta ? formatOffset(meta.baseOffsetMinutes) : "";
   const finalOffsetText = meta ? formatOffset(meta.finalOffsetMinutes) : "";
 
   const houses = useMemo(() => {
@@ -2403,31 +2334,6 @@ const daraKarakaDescription = daraKarakaCode ? (chartTextResources?.daraKarakaDe
 const daraKarakaDescriptionParts = useMemo(() => splitDescription(daraKarakaDescription), [daraKarakaDescription]);
 const daraKarakaHeading = daraKarakaDescriptionParts.heading || daraKarakaName || daraKarakaCode;
 const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptionParts.heading ? daraKarakaDescription : "");
-	  const [cloudSaving, setCloudSaving] = useState(false);
-	  const [cloudSaveMsg, setCloudSaveMsg] = useState<string | null>(null);
-	  const [screenshotUploading, setScreenshotUploading] = useState(false);
-	  const uiPersonFingerprint = useMemo(() => {
-	    if (!profile) return null;
-	    try {
-	      return hasFingerprintableCore(profile) ? personFingerprint(profile) : personFingerprint(profile);
-	    } catch {
-	      return null;
-	    }
-	  }, [profile]);
-	  const lastUiPersonFingerprintRef = useRef<string | null>(null);
-	  useEffect(() => {
-	    // Clear stale "no changes" message when a different chart/person is loaded (e.g. opening another local file)
-	    const next = uiPersonFingerprint;
-	    const prev = lastUiPersonFingerprintRef.current;
-	    if (!next) {
-	      lastUiPersonFingerprintRef.current = null;
-	      return;
-	    }
-	    if (prev && prev !== next) {
-	      setCloudSaveMsg(null);
-	    }
-	    lastUiPersonFingerprintRef.current = next;
-	  }, [uiPersonFingerprint]);
   const arcsForRender = Array.isArray(chart?.constellation_arcs) ? chart.constellation_arcs : [];
 
   const buildEnrichedChart = useCallback((): Record<string, unknown> | null => {
@@ -2492,291 +2398,34 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
     daraKarakaArcLabel,
   ]);
 
-  const uploadChartScreenshot = useCallback(
-    async ({
-      userId,
-      chartId,
-      screenshotDataUrl,
-      screenshotHash,
-      enrichedChart,
-    }: {
-      userId: string;
-      chartId: string | number;
-      screenshotDataUrl: string;
-      screenshotHash?: string | null;
-      enrichedChart: Record<string, unknown>;
-    }): Promise<ScreenshotUploadResult> => {
-      if (!screenshotDataUrl) {
-        return { ok: false, finalScreenshotUrl: "", storagePointer: null, uploadedBucket: null };
-      }
-      try {
-        let persistedUrl: string | null = null;
-        let storagePointer: string | null = null;
-        let uploadedBucket: string | null = null;
-        if (screenshotDataUrl.startsWith('data:')) {
-          const res = await fetch(screenshotDataUrl);
-          const blobPng = await res.blob();
-          const filename = `chart-${userId}-${chartId || Date.now()}.png`;
-          const preferredBuckets = ['charts-screenshots', 'charts', 'public', 'screenshots'];
-          for (const bucket of preferredBuckets) {
-            try {
-              const { error } = await supabase.storage.from(bucket).upload(filename, blobPng, {
-                contentType: 'image/png',
-                upsert: true,
-              });
-              if (!error) {
-                uploadedBucket = bucket;
-                break;
-              }
-              if (String(error).includes('Bucket not found')) {
-                continue;
-              }
-              break;
-            } catch (bucketError) {
-              console.warn('Screenshot upload bucket error', bucketError);
-            }
-          }
-          if (uploadedBucket) {
-            storagePointer = encodeSupabasePointer({ bucket: uploadedBucket, path: filename });
-            persistedUrl = (await resolveSupabaseScreenshotUrl(storagePointer)) ?? storagePointer;
-          }
-        } else if (screenshotDataUrl.startsWith('http')) {
-          persistedUrl = screenshotDataUrl;
-        }
-        if (!persistedUrl && needsSupabaseResolution(screenshotDataUrl)) {
-          const pointer = parseSupabaseStoragePointer(screenshotDataUrl);
-          if (pointer) {
-            storagePointer = encodeSupabasePointer(pointer);
-            persistedUrl = (await resolveSupabaseScreenshotUrl(storagePointer)) ?? screenshotDataUrl;
-          }
-        }
-        const finalScreenshotUrl = persistedUrl ?? screenshotDataUrl;
-        await supabase
-          .from('charts')
-          .update({
-            chart: {
-              ...enrichedChart,
-              screenshotUrl: finalScreenshotUrl,
-              screenshotHash: screenshotHash ?? null,
-              screenshotStoragePointer: storagePointer,
-            },
-          })
-          .eq('id', chartId);
-        return {
-          ok: Boolean(uploadedBucket),
-          finalScreenshotUrl,
-          storagePointer,
-          uploadedBucket,
-        };
-      } catch (error) {
-        console.warn('Failed to upload chart screenshot', error);
-        try {
-          await supabase
-            .from('charts')
-            .update({ chart: { ...enrichedChart, screenshotUrl: screenshotDataUrl, screenshotHash: screenshotHash ?? null } })
-            .eq('id', chartId);
-        } catch (fallbackError) {
-          console.warn('Fallback screenshot persistence failed', fallbackError);
-          return { ok: false, finalScreenshotUrl: screenshotDataUrl, storagePointer: null, uploadedBucket: null };
-        }
-        return { ok: false, finalScreenshotUrl: screenshotDataUrl, storagePointer: null, uploadedBucket: null };
-      }
+  // В дополнительной странице облако не используется
+  const uploadChartScreenshot = useCallback(async (): Promise<boolean> => false, []);
+
+  const saveChartToCloud = useCallback(
+    async (options: CloudSaveOptions = {}): Promise<CloudSaveResult> => {
+      return { success: false, skipped: true };
     },
     [],
   );
 
-  const saveChartToCloud = useCallback(
-    async (options: CloudSaveOptions = {}): Promise<CloudSaveResult> => {
-      const {
-        silent = true,
-        skipIfUnchanged = true,
-        updateStatus,
-        notifyScreenshotUploading,
-      } = options;
-      if (!chart || !profile) {
-        if (!silent) updateStatus?.('Нет данных для сохранения.');
-        return { success: false };
-      }
-      const profileForCloud = buildProfileForCloud();
-      if (!profileForCloud) {
-        if (!silent) updateStatus?.('Не удалось подготовить профиль для сохранения.');
-        return { success: false };
-      }
-	      const enrichedChart = buildEnrichedChart();
-	      if (!enrichedChart) {
-	        if (!silent) updateStatus?.('Нет данных карты для сохранения.');
-	        return { success: false };
-	      }
-	      const fingerprint = computeChartFingerprint(chart, meta);
-	      const shouldUpdateScreenshot = Boolean(chartScreenshot && needsCloudScreenshot(chart));
-	      if (skipIfUnchanged && fingerprint) {
-	        const lastFingerprint = readLastSavedChartFingerprint();
-	        if (!shouldUpdateScreenshot && lastFingerprint && lastFingerprint === fingerprint) {
-	          return { success: true, skipped: true };
-	        }
-	      }
-      updateStatus?.('Проверяем сессию...');
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-      const userId = sessionData?.session?.user?.id;
-      if (!userId) {
-        if (!silent) updateStatus?.('Пользователь не авторизован.');
-        return { success: false };
-      }
-      updateStatus?.('Обновляем профиль...');
-      try {
-        await supabase.from('profiles').upsert({ id: userId, data: profileForCloud }).select('id');
-      } catch (profileError) {
-        if (!silent) updateStatus?.('Не удалось обновить профиль в облаке.');
-        throw profileError;
-      }
-      const name = `${personLabel || 'chart'} ${new Date().toLocaleString()}`;
-      updateStatus?.('Сохраняем карту...');
-      const saved = await saveChart(userId, name, 'private', profileForCloud, enrichedChart, meta ?? undefined);
-      let screenshotUploaded = false;
-      if (chartScreenshot && needsCloudScreenshot(chart)) {
-        notifyScreenshotUploading?.(true);
-        const result = await uploadChartScreenshot({
-          userId,
-          chartId: saved.id,
-          screenshotDataUrl: chartScreenshot,
-          screenshotHash: chartScreenshotHash ?? undefined,
-          enrichedChart,
-        });
-        notifyScreenshotUploading?.(false);
-        screenshotUploaded = result.ok;
-        if (result.finalScreenshotUrl) {
-          if (result.ok && result.uploadedBucket) {
-            lastScreenshotUploadRef.current = { location: 'cloud', bucket: result.uploadedBucket };
-          }
-          const storagePointer = result.storagePointer ?? null;
-          const screenshotUrl = result.finalScreenshotUrl;
-          const hash = chartScreenshotHash ?? null;
-          setChart((prev) => (prev ? { ...prev, screenshotUrl, screenshotHash: hash ?? prev.screenshotHash ?? null, screenshotStoragePointer: storagePointer ?? prev.screenshotStoragePointer ?? null } : prev));
-          setChartScreenshot(screenshotUrl);
-          setChartScreenshotHash(hash);
-          try {
-            updateSavedChartLocalStorage(currentUserId ?? null, (payload) => {
-              const existingChart = 'chart' in payload ? payload.chart : undefined;
-              const chartSource = isRecord(existingChart) ? existingChart : toJsonRecord(chart);
-              return { ...payload, chart: mergeChartWithScreenshot(chartSource, screenshotUrl, hash, storagePointer) };
-            }, { source: 'cloud', updatedAt: Date.now() });
-          } catch (storageErr) {
-            console.warn('Failed to persist uploaded screenshot pointer locally', storageErr);
-          }
-        }
-      }
-      if (fingerprint) {
-        writeLastSavedChartFingerprint(fingerprint);
-      }
-      return { success: true, chartId: saved.id, screenshotUploaded };
-    },
-    [
-      chart,
-      currentUserId,
-      profile,
-      meta,
-      chartScreenshot,
-      chartScreenshotHash,
-      buildProfileForCloud,
-      buildEnrichedChart,
-      personLabel,
-      uploadChartScreenshot,
-    ],
-  );
-
-  const handleSaveCloud = useCallback(async (options?: { force?: boolean }): Promise<CloudSaveResult | null> => {
-    autoSavePendingRef.current = false;
-    setCloudSaveMsg(null);
-    setCloudSaving(true);
-    saveInFlightRef.current = true;
-    try {
-      const force = Boolean(options?.force);
-      const result = await saveChartToCloud({
-        silent: false,
-        skipIfUnchanged: !force,
-        updateStatus: (msg) => setCloudSaveMsg(msg),
-        notifyScreenshotUploading: (uploading) => setScreenshotUploading(uploading),
-      });
-      if (!result.success) {
-        if (!cloudSaveMsg) {
-          setCloudSaveMsg('Не удалось сохранить карту.');
-        }
-        return result;
-      }
-      if (result.skipped) {
-        setCloudSaveMsg('Изменений не обнаружено — облако уже актуально.');
-      } else {
-        let screenshotSuffix = '';
-        if (result.screenshotUploaded) {
-          const lastUpload = lastScreenshotUploadRef.current;
-          if (lastUpload?.location === 'cloud' && lastUpload.bucket) {
-            screenshotSuffix = ` • Скриншот загружен в облако (${lastUpload.bucket}).`;
-          } else if (lastUpload?.location === 'local') {
-            screenshotSuffix = ' • Скриншот сохранён только локально.';
-          } else {
-            screenshotSuffix = ' • Скриншот обновлён.';
-          }
-        }
-        setCloudSaveMsg(`Карта сохранена (id: ${result.chartId})${screenshotSuffix}`);
-      }
-      return result;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setCloudSaveMsg(`Ошибка сохранения: ${message}`);
-      return null;
-    } finally {
-      saveInFlightRef.current = false;
-      setCloudSaving(false);
-      setScreenshotUploading(false);
-    }
-  }, [cloudSaveMsg, saveChartToCloud]);
+  const handleSaveCloud = useCallback(async (): Promise<CloudSaveResult | null> => {
+    return { success: false, skipped: true };
+  }, []);
 
   useEffect(() => {
-    if (!autoSavePendingRef.current) return;
-    if (loading) return;
-    if (!chart || !profile || !meta) return;
-    if (saveInFlightRef.current) return;
-    if (screenshotTaskKey && screenshotPhaseRef.current !== 'ready') {
-      return; // ждём завершения захвата/загрузки скриншота
-    }
-    const fingerprint = computeChartFingerprint(chart, meta);
-    if (fingerprint && autoSaveFingerprintRef.current === fingerprint) {
-      autoSavePendingRef.current = false;
-      return;
-    }
     autoSavePendingRef.current = false;
-    void (async () => {
-      const result = await handleSaveCloud();
-      if (result?.success && fingerprint) {
-        autoSaveFingerprintRef.current = fingerprint;
-      }
-    })();
   }, [
     chart,
     profile,
     meta,
     loading,
-    handleSaveCloud,
     chartScreenshot,
     screenshotTaskKey,
   ]);
 
   useEffect(() => {
-    if (!fileAutoSaveRef.current) return;
-    if (loading) return;
-    if (!chart || !profile || !meta) return;
-    if (saveInFlightRef.current) return;
-    if (screenshotTaskKey && screenshotPhaseRef.current !== 'ready') return;
-
     fileAutoSaveRef.current = false;
     autoSavePendingRef.current = false;
-    void (async () => {
-      const result = await handleSaveCloud();
-      if (!result?.success) {
-        fileAutoSaveRef.current = true;
-      }
-    })();
   }, [
     chart,
     profile,
@@ -2784,7 +2433,6 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
     loading,
     chartScreenshot,
     screenshotTaskKey,
-    handleSaveCloud,
   ]);
 
   if (loading) {
@@ -2941,13 +2589,6 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
                 >
                   Синастрия
                 </button>
-                <button
-                  type="button"
-                  className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
-                  onClick={() => navigate("/chart/additional")}
-                >
-                  Дополнительно
-                </button>
               </div>
             </div>
             <div className="text-sm text-white/70">
@@ -2962,7 +2603,7 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
                 </div>
               )}
               <div className="text-xs text-white/50 mt-1">
-                Локальное время: {formatLocalTime(profile?.birth)} ({meta?.ianaTz ?? "-"}{finalOffsetText ? `, ${finalOffsetText}` : ""})
+                Локальное время: {formatLocalTime(profile?.birth)} ({meta?.ianaTz ?? '—'}, базовый оффсет {baseOffsetText}, итоговый {finalOffsetText})
               </div>
               {ascSignName ? (
                 <div className="mt-2">
@@ -3041,31 +2682,6 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
               >
                 Сохранить в файл
               </button>
-              <button
-                type="button"
-                className={`${BUTTON_SECONDARY} px-4 py-2 text-sm self-start`}
-                onClick={() => void handleSaveCloud({ force: true })}
-                disabled={cloudSaving || screenshotUploading}
-              >
-                <span className="relative block">
-                  <span className={cloudSaving || screenshotUploading ? "opacity-0" : ""}>
-                    Сохранить в облако
-                  </span>
-                  {(cloudSaving || screenshotUploading) && (
-                    <span className="absolute inset-0 flex items-center justify-center">
-                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    </span>
-                  )}
-                </span>
-              </button>
-              {cloudSaveMsg && (
-                <div className={`text-xs mt-2 ${cloudSaveMsg.includes('успешно') || cloudSaveMsg.includes('Карта сохранена') ? 'text-green-400' : 'text-white/70'}`}>
-                  {cloudSaveMsg}
-                </div>
-              )}
               {screenshotStatus && (
                 <div className="text-xs mt-2 text-white/70">
                   {screenshotStatus}
@@ -3352,7 +2968,7 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
   );
 };
 
-export default ChartPage;
+export default AdditionalChartPage;
 
 
 
