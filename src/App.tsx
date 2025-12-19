@@ -194,11 +194,13 @@ function readStoredProfileSnapshot(expectedOwnerId?: string | null): Partial<Pro
   return null;
 }
 
-function clearStoredChartCache() {
+function clearStoredChartCache(options?: { preserveCloudChartFingerprints?: boolean }) {
   try {
     clearSavedChart();
     localStorage.removeItem(LAST_SAVED_FINGERPRINT_KEY);
-    localStorage.removeItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
+    if (!options?.preserveCloudChartFingerprints) {
+      localStorage.removeItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
+    }
   } catch (error) {
     console.warn("Failed to clear chart cache", error);
   }
@@ -1361,7 +1363,6 @@ useEffect(() => {
       try { 
         clearSavedChart();
         localStorage.removeItem(LAST_SAVED_FINGERPRINT_KEY);
-        localStorage.removeItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
       } catch { /* ignore */ }
       navigate("/chart?forceRefresh=1");
     } catch (error) {
@@ -1457,7 +1458,7 @@ if (!sessionReady) {
                       const looksLikeChart = !!(data && data.chart && data.meta && Array.isArray(data.chart.planets) && data.chart.ascendant);
 
                       if (looksLikeChart) {
-                        clearStoredChartCache();
+                        clearStoredChartCache({ preserveCloudChartFingerprints: true });
                         try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
                         writeSavedChart(data, activeUserId, {
                           meta: { source: 'file', updatedAt: Date.now(), fingerprint: null },
@@ -1469,7 +1470,7 @@ if (!sessionReady) {
                       // If file looks like a profile snapshot, save into the input storage and go to /app
                       try {
                         const profilePayload = data.profile ?? data;
-                        clearStoredChartCache();
+                        clearStoredChartCache({ preserveCloudChartFingerprints: true });
                         writeProfileToStorage(STORAGE_KEY, profilePayload, activeUserId, false);
                         applyProfileObject(profilePayload);
                         navigate('/app', { replace: true });
@@ -1480,7 +1481,7 @@ if (!sessionReady) {
   // После входа сразу открывать профиль, если он есть в облаке
 
                       // Fallback: still save raw into saved chart key and open ChartPage
-                      clearStoredChartCache();
+                      clearStoredChartCache({ preserveCloudChartFingerprints: true });
                       try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
                         writeSavedChart(data, activeUserId, {
                           meta: { source: 'file', updatedAt: Date.now(), fingerprint: null },

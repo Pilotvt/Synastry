@@ -12,8 +12,12 @@ import { extractAscSignFromChart } from "../lib/extractAscSignFromChart";
 import { SIGN_NAMES_RU } from "../synastry/kuja";
 import { moderateImage } from "../services/moderation";
 import {
+  chartFingerprintKey,
+  markCloudSavedChartFingerprint,
+  readCloudSavedChartFingerprintKeys,
+} from "../utils/cloudChartFingerprints";
+import {
   PROFILE_SNAPSHOT_STORAGE_KEY as STORAGE_KEY,
-  LAST_SAVED_CHART_FINGERPRINT_KEY,
 } from "../constants/storageKeys";
 import { hardResetAllData } from "../utils/hardReset";
 import { requestNewChartReset } from "../utils/newChartRequest";
@@ -163,28 +167,7 @@ type CityJsonItem = {
   region_ru?: string;
 };
 
-// Removed localStorage fingerprint helpers, now handled by global store
-
-function readLastSavedChartFingerprint(): string | null {
-  try {
-    return localStorage.getItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
-  } catch (error) {
-    console.warn("Failed to read last saved chart fingerprint", error);
-    return null;
-  }
-}
-
-function writeLastSavedChartFingerprint(fingerprint: string | null): void {
-  try {
-    if (!fingerprint) {
-      localStorage.removeItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
-    } else {
-      localStorage.setItem(LAST_SAVED_CHART_FINGERPRINT_KEY, fingerprint);
-    }
-  } catch (error) {
-    console.warn("Failed to persist last saved chart fingerprint", error);
-  }
-}
+// Cloud chart fingerprint is tracked via `utils/cloudChartFingerprints`.
 
 function extractProfileSnapshotFromRaw(raw: unknown): ProfileSnapshot | null {
   if (!isRecord(raw)) return null;
@@ -390,12 +373,13 @@ function DoneButton({ navigate, getProfileSnapshot, currentUserId }: DoneButtonP
               const chart = (savedPayload.chart ?? null) as JsonValue | null;
               const meta = (savedPayload.meta ?? null) as JsonValue | null;
               const chartFp = computeChartFingerprint(chart, meta);
-              const lastChartFp = readLastSavedChartFingerprint();
-              const shouldSaveChart = Boolean(chart && chartFp && chartFp !== lastChartFp);
+              const fpKey = chartFp ? chartFingerprintKey(chartFp) : null;
+              const knownKeys = fpKey ? readCloudSavedChartFingerprintKeys() : null;
+              const shouldSaveChart = Boolean(chart && chartFp && fpKey && knownKeys && !knownKeys.has(fpKey));
               if (chart && shouldSaveChart) {
                 const name = `${snapshot?.personName ?? 'chart'} ${new Date().toLocaleString()}`;
                 await saveChart(sessionUserId, name, 'private', stamped, chart, meta ?? undefined);
-                if (chartFp) writeLastSavedChartFingerprint(chartFp);
+                if (chartFp) markCloudSavedChartFingerprint(chartFp);
               }
             }
           } catch (e) {

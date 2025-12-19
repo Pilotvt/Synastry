@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import moment from "moment-timezone";
 import tzLookup from "tz-lookup";
 import { supabase } from "../lib/supabase";
+import { loadChartTextResources, type ChartTextResources } from "../lib/textResources";
 import NorthIndianChart from "../components/NorthIndianChart";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 import { getRussianCities } from "../utils/russianCitiesClient";
@@ -11,7 +12,8 @@ import { requestNewChartReset } from "../utils/newChartRequest";
 import { norm, latinToRuName, ruToLat } from "../utils/transliterate";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://127.0.0.1:8000";
-const DEBOUNCE_MS = 300;
+const DEBOUNCE_MS = 800;
+const ADDITIONAL_DRAFT_STORAGE_KEY = "synastry_additional_draft_v1";
 
 const COUNTRY_RU_NAMES: Record<string, string> = {
   RU: "Россия",
@@ -169,29 +171,141 @@ const CHART_VARIANT_CONFIG: Record<
   ChartVariant,
   {
     chartTitle: string;
+    ascTitle: string;
     headerAscLabel: string;
     longitudeLabel: string | null;
     description: string;
+    skipPlanet: "sun" | "moon" | null;
   }
 > = {
   rashi: {
     chartTitle: "КАРТА ВОСХОДЯЩЕГО ЗНАКА (RASHI)",
+    ascTitle: "Восходящий знак",
     headerAscLabel: "Восходящий знак",
     longitudeLabel: null,
     description: "Базовая натальная карта. Асцендент определяет первый дом, все дома и описания рассчитываются относительно него.",
+    skipPlanet: null,
   },
   chandra: {
     chartTitle: "ЛУННАЯ КАРТА (CHANDRA)",
+    ascTitle: "Созвездие в 1 доме (Луна)",
     headerAscLabel: "Созвездие 1 дома (Луна)",
     longitudeLabel: "Луна",
-    description: "Лунная карта. Первый дом — знак Луны, дома и трактовки пересчитаны относительно Луны.",
+    description: "Лунная карта. Первый дом - знак Луны, дома и трактовки пересчитаны относительно Луны.",
+    skipPlanet: "moon",
   },
   surya: {
     chartTitle: "СОЛНЕЧНАЯ КАРТА (SURYA)",
+    ascTitle: "Созвездие в 1 доме (Солнце)",
     headerAscLabel: "Созвездие 1 дома (Солнце)",
     longitudeLabel: "Солнце",
-    description: "Солнечная карта. Первый дом — знак Солнца, дома и трактовки пересчитаны относительно Солнца.",
+    description: "Солнечная карта. Первый дом - знак Солнца, дома и трактовки пересчитаны относительно Солнца.",
+    skipPlanet: "sun",
   },
+};
+
+const EMPTY_STRING_MAP: Record<string, string> = Object.freeze({});
+const EMPTY_BHAVA_MAP: Record<string, { title: string; body: string }> = Object.freeze({});
+const EMPTY_CHART_TEXT_RESOURCES: ChartTextResources = Object.freeze({
+  ascSignDescriptions: EMPTY_STRING_MAP,
+  lagneshaDescriptions: EMPTY_STRING_MAP,
+  lagneshaHouseDescriptions: EMPTY_STRING_MAP,
+  atmaKarakaDescriptions: EMPTY_STRING_MAP,
+  daraKarakaDescriptions: EMPTY_STRING_MAP,
+  suryaBhavas: EMPTY_BHAVA_MAP,
+  chandraBhavas: EMPTY_BHAVA_MAP,
+  guruBhavas: EMPTY_BHAVA_MAP,
+  budhaBhavas: EMPTY_BHAVA_MAP,
+  shukraBhavas: EMPTY_BHAVA_MAP,
+  shaniBhavas: EMPTY_BHAVA_MAP,
+  mangalaBhavas: EMPTY_BHAVA_MAP,
+  ketuBhavas: EMPTY_BHAVA_MAP,
+  rahuBhavas: EMPTY_BHAVA_MAP,
+});
+
+const LAGNESHA_BY_ASC_SIGN: Record<string, string> = {
+  Ar: "Ma",
+  Ta: "Ve",
+  Ge: "Me",
+  Cn: "Mo",
+  Le: "Su",
+  Vi: "Me",
+  Li: "Ve",
+  Sc: "Ma",
+  Sg: "Ju",
+  Cp: "Sa",
+  Aq: "Sa",
+  Pi: "Ju",
+};
+
+const ARC_EPSILON = 1e-6;
+
+type PlanetArcStat = {
+  planet: string;
+  percent: number;
+  arcName: string;
+  lon: number;
+};
+
+function splitDescription(text: string): { heading: string; body: string } {
+  if (!text) return { heading: "", body: "" };
+  const parts = text.split("\n");
+  const heading = (parts.shift() ?? "").trim();
+  const body = parts.join("\n").trim();
+  if (!body) return { heading: "", body: heading };
+  return { heading, body };
+}
+
+const EXALTATION_SIGNS: Record<string, readonly string[]> = {
+  Su: ["Ar"],
+  Mo: ["Ta"],
+  Ra: ["Ta", "Ge"],
+  Ju: ["Cn"],
+  Me: ["Vi"],
+  Ke: ["Sc", "Sg"],
+  Ma: ["Cp"],
+  Ve: ["Pi"],
+};
+
+const DEBILITATION_SIGNS: Record<string, readonly string[]> = {
+  Sa: ["Ar"],
+  Ke: ["Ta"],
+  Ma: ["Cn"],
+  Ve: ["Vi"],
+  Su: ["Li"],
+  Mo: ["Sc"],
+  Ra: ["Sc"],
+  Ju: ["Cp"],
+  Me: ["Pi"],
+};
+
+const KARAKA_HOUSES: Record<string, readonly number[]> = {
+  Su: [1, 9],
+  Ju: [2, 5, 9, 10, 11],
+  Ma: [3, 6],
+  Mo: [4],
+  Me: [4, 10],
+  Sa: [6, 8, 10, 12],
+};
+
+const DIGBALA_HOUSES: Record<string, readonly number[]> = {
+  Ju: [1],
+  Me: [1],
+  Mo: [4],
+  Ve: [4],
+  Sa: [7],
+  Ma: [10],
+  Su: [10],
+};
+
+const OWN_SIGN_SIGNS: Record<string, readonly string[]> = {
+  Su: ["Le"],
+  Mo: ["Cn"],
+  Ma: ["Ar", "Sc"],
+  Me: ["Ge", "Vi"],
+  Ju: ["Sg", "Pi"],
+  Ve: ["Ta", "Li"],
+  Sa: ["Cp", "Aq"],
 };
 
 const SIGN_INFO: Record<string, { index: number; ru: string; en: string }> = {
@@ -245,6 +359,105 @@ function pad2(n: number): string {
   return n.toString().padStart(2, "0");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type AdditionalDraftCity = {
+  id: string;
+  name: string;
+  nameRu: string;
+  lat: number;
+  lon: number;
+  country: string;
+};
+
+type AdditionalDraftV1 = {
+  v: 1;
+  personName: string;
+  lastName: string;
+  gender: "male" | "female";
+  country: string;
+  cityQuery: string;
+  selectedCity: AdditionalDraftCity | null;
+  birthParts: BirthParts;
+  lat: number;
+  lon: number;
+  ianaTz: string;
+  enableTzCorrection: boolean;
+  tzCorrectionHours: number;
+  dstManual: boolean;
+  chartVariant: ChartVariant;
+  chart: ChartResponse | null;
+  meta: BuildMeta | null;
+  updatedAt: number;
+};
+
+function parseAdditionalDraftCity(city: unknown): AdditionalDraftCity | null {
+  if (!city || typeof city !== "object") return null;
+  const obj = city as Record<string, unknown>;
+  const id = typeof obj.id === "string" ? obj.id : "";
+  const name = typeof obj.name === "string" ? obj.name : "";
+  const nameRu = typeof obj.nameRu === "string" ? obj.nameRu : "";
+  const country = typeof obj.country === "string" ? obj.country : "";
+  const lat = typeof obj.lat === "number" ? obj.lat : Number(obj.lat);
+  const lon = typeof obj.lon === "number" ? obj.lon : Number(obj.lon);
+  if (!id || !name || !country || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return { id, name, nameRu: nameRu || name, lat, lon, country };
+}
+
+function parseBirthPartsFromIso(value: unknown): BirthParts | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = moment.parseZone(value, moment.ISO_8601, true);
+  if (!parsed.isValid()) return null;
+  return normalizeParts({
+    year: parsed.year(),
+    month: parsed.month() + 1,
+    day: parsed.date(),
+    hour: parsed.hour(),
+    minute: parsed.minute(),
+  });
+}
+
+function readAdditionalDraft(): AdditionalDraftV1 | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(ADDITIONAL_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<AdditionalDraftV1>;
+    if (!parsed || parsed.v !== 1) return null;
+    const birthParts = parsed.birthParts ? normalizeParts(parsed.birthParts as BirthParts) : null;
+    if (!birthParts) return null;
+    const chartVariant =
+      parsed.chartVariant === "rashi" || parsed.chartVariant === "chandra" || parsed.chartVariant === "surya"
+        ? parsed.chartVariant
+        : "rashi";
+    return {
+      v: 1,
+      personName: typeof parsed.personName === "string" ? parsed.personName : "",
+      lastName: typeof parsed.lastName === "string" ? parsed.lastName : "",
+      gender: parsed.gender === "female" ? "female" : "male",
+      country: typeof parsed.country === "string" ? parsed.country : "RU",
+      cityQuery: typeof parsed.cityQuery === "string" ? parsed.cityQuery : "",
+      selectedCity: parseAdditionalDraftCity(parsed.selectedCity) ?? null,
+      birthParts,
+      lat: typeof parsed.lat === "number" ? parsed.lat : Number(parsed.lat ?? 54.84152),
+      lon: typeof parsed.lon === "number" ? parsed.lon : Number(parsed.lon ?? 73.30174),
+      ianaTz: typeof parsed.ianaTz === "string" ? parsed.ianaTz : "Asia/Omsk",
+      enableTzCorrection: Boolean(parsed.enableTzCorrection),
+      tzCorrectionHours: typeof parsed.tzCorrectionHours === "number" ? parsed.tzCorrectionHours : Number(parsed.tzCorrectionHours ?? 0),
+      dstManual: Boolean(parsed.dstManual),
+      chartVariant,
+      chart: (parsed.chart as ChartResponse) ?? null,
+      meta: (parsed.meta as BuildMeta) ?? null,
+      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+    };
+  } catch (error) {
+    console.warn("Failed to read Additional draft state", error);
+    return null;
+  }
+}
+
 function formatOffset(minutes: number): string {
   const sign = minutes >= 0 ? "+" : "-";
   const abs = Math.abs(minutes);
@@ -271,6 +484,82 @@ function normalizeParts(parts: BirthParts): BirthParts {
     hour: date.hour(),
     minute: date.minute(),
   };
+}
+
+function daysInMonth(year: number, month: number): number {
+  const safeYear = Number.isFinite(year) ? year : 1990;
+  const safeMonth = Number.isFinite(month) ? month : 1;
+  return moment.utc().year(safeYear).month(Math.max(0, Math.min(11, safeMonth - 1))).daysInMonth();
+}
+
+function applyOverflowChange(prevParts: BirthParts, field: keyof BirthParts, nextValue: number): BirthParts {
+  const prev = normalizeParts(prevParts);
+  if (!Number.isFinite(nextValue)) return prev;
+
+  if (field === "year") {
+    const y = Math.trunc(nextValue) || prev.year;
+    const maxDay = daysInMonth(y, prev.month);
+    return { ...prev, year: y, day: Math.min(prev.day, maxDay) };
+  }
+
+  if (field === "month") {
+    const monthRaw = Math.trunc(nextValue);
+    const monthIndex = monthRaw - 1;
+    const yearDelta = monthRaw < 1 || monthRaw > 12 ? Math.floor(monthIndex / 12) : 0;
+    const normalizedMonthIndex = monthIndex - yearDelta * 12;
+    const m = normalizedMonthIndex + 1;
+    const y = prev.year + yearDelta;
+    const maxDay = daysInMonth(y, m);
+    const nextMonth = Math.max(1, Math.min(12, m));
+    return { ...prev, year: y, month: nextMonth, day: Math.min(prev.day, maxDay) };
+  }
+
+  if (field === "day" || field === "hour" || field === "minute") {
+    const base = moment
+      .utc()
+      .year(prev.year)
+      .month(prev.month - 1)
+      .date(prev.day)
+      .hour(prev.hour)
+      .minute(prev.minute)
+      .second(0)
+      .millisecond(0);
+
+    if (field === "day") {
+      const maxDay = daysInMonth(prev.year, prev.month);
+      const value = Math.trunc(nextValue);
+      if (value >= 1 && value <= maxDay) {
+        return { ...prev, day: value };
+      }
+      base.add(value - prev.day, "days");
+    }
+
+    if (field === "hour") {
+      const value = Math.trunc(nextValue);
+      if (value >= 0 && value <= 23) {
+        return { ...prev, hour: value };
+      }
+      base.add(value - prev.hour, "hours");
+    }
+
+    if (field === "minute") {
+      const value = Math.trunc(nextValue);
+      if (value >= 0 && value <= 59) {
+        return { ...prev, minute: value };
+      }
+      base.add(value - prev.minute, "minutes");
+    }
+
+    return {
+      year: base.year(),
+      month: base.month() + 1,
+      day: base.date(),
+      hour: base.hour(),
+      minute: base.minute(),
+    };
+  }
+
+  return prev;
 }
 
 function formatLocalTime(parts: BirthParts, tz: string): string {
@@ -301,6 +590,24 @@ function degStr(value: number): string {
   return `${d}\u00b0 ${m.toString().padStart(2, "0")}'`;
 }
 
+function formatDegreesWithoutSeconds(value: number): string {
+  const normalized = ((value % 360) + 360) % 360;
+  const deg = Math.floor(normalized);
+  const minutes = Math.floor((normalized - deg) * 60);
+  return `${deg}\u00B0 ${minutes.toString().padStart(2, "0")}'`;
+}
+
+function formatArcDegree(value: number): string {
+  const normalized = ((value % 360) + 360) % 360;
+  let deg = Math.floor(normalized);
+  let minutes = Math.round((normalized - deg) * 60);
+  if (minutes === 60) {
+    minutes = 0;
+    deg = (deg + 1) % 360;
+  }
+  return `${deg}\u00B0 ${minutes.toString().padStart(2, "0")}'`;
+}
+
 function normalizeCityQuery(value: string): string {
   return norm(value || "");
 }
@@ -317,33 +624,50 @@ function matchPrefix(query: string, city: CitySuggestion): boolean {
 
 const AdditionalChartPage: React.FC = () => {
   const navigate = useNavigate();
-  const [chart, setChart] = useState<ChartResponse | null>(null);
-  const [meta, setMeta] = useState<BuildMeta | null>(null);
+  const initialDraft = useMemo(() => readAdditionalDraft(), []);
+
+  const openFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [chart, setChart] = useState<ChartResponse | null>(() => initialDraft?.chart ?? null);
+  const [meta, setMeta] = useState<BuildMeta | null>(() => initialDraft?.meta ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [personName, setPersonName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [gender, setGender] = useState<"male" | "female">("male");
-  const [country, setCountry] = useState("RU");
+  const [personName, setPersonName] = useState(() => initialDraft?.personName ?? "");
+  const [lastName, setLastName] = useState(() => initialDraft?.lastName ?? "");
+  const [gender, setGender] = useState<"male" | "female">(() => initialDraft?.gender ?? "male");
+  const [country, setCountry] = useState(() => initialDraft?.country ?? "RU");
   const [countryOptions, setCountryOptions] = useState<string[]>(["RU"]);
-  const [cityQuery, setCityQuery] = useState("Омск");
-  const [selectedCity, setSelectedCity] = useState<CitySuggestion | null>(null);
+  const [cityQuery, setCityQuery] = useState(() => initialDraft?.cityQuery ?? "Омск");
+  const [selectedCity, setSelectedCity] = useState<CitySuggestion | null>(() => {
+    const draftCity = initialDraft?.selectedCity;
+    if (!draftCity) return null;
+    return makeCitySuggestion(draftCity);
+  });
   const [cities, setCities] = useState<CitySuggestion[]>([]);
   const cityCacheRef = useRef<Map<string, CitySuggestion[]>>(new Map());
-  const [birthParts, setBirthParts] = useState<BirthParts>(defaultBirthParts);
-  const [lat, setLat] = useState(54.84152);
-  const [lon, setLon] = useState(73.30174);
-  const [ianaTz, setIanaTz] = useState<string>("Asia/Omsk");
-  const [enableTzCorrection, setEnableTzCorrection] = useState(false);
-  const [tzCorrectionHours, setTzCorrectionHours] = useState(0);
-  const [dstManual, setDstManual] = useState(false);
-  const [autoDst, setAutoDst] = useState(false);
-  const [autoApplyCity, setAutoApplyCity] = useState(true);
-  const [chartVariant, setChartVariant] = useState<ChartVariant>("rashi");
+  const [birthParts, setBirthParts] = useState<BirthParts>(() => initialDraft?.birthParts ?? defaultBirthParts);
+  const [lat, setLat] = useState(() => initialDraft?.lat ?? 54.84152);
+  const [lon, setLon] = useState(() => initialDraft?.lon ?? 73.30174);
+  const [ianaTz, setIanaTz] = useState<string>(() => initialDraft?.ianaTz ?? "Asia/Omsk");
+  const [enableTzCorrection, setEnableTzCorrection] = useState(() => initialDraft?.enableTzCorrection ?? false);
+  const [tzCorrectionHours, setTzCorrectionHours] = useState(() => initialDraft?.tzCorrectionHours ?? 0);
+  const [dstManual, setDstManual] = useState(() => initialDraft?.dstManual ?? false);
+  const [autoDst, setAutoDst] = useState(() => Boolean(initialDraft?.meta?.autoDstMinutes && initialDraft.meta.autoDstMinutes > 0));
+  const [autoApplyCity, setAutoApplyCity] = useState(() => !(initialDraft?.selectedCity));
+  const [chartVariant, setChartVariant] = useState<ChartVariant>(() => initialDraft?.chartVariant ?? "rashi");
+  const [chartTextResources, setChartTextResources] = useState<ChartTextResources | null>(null);
+  const [licenseStatus, setLicenseStatus] = useState<ElectronLicenseStatus | null>(null);
+  const isLicensed = Boolean(licenseStatus?.licensed);
+  const [fullDetailsOpen, setFullDetailsOpen] = useState(false);
+  const fullDetailsRequestedRef = useRef(false);
   const [debounceTimer, setDebounceTimer] = useState<number | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const blurTimerRef = useRef<number | null>(null);
+  const autosaveTimerRef = useRef<number | null>(null);
+  const buildAbortRef = useRef<AbortController | null>(null);
+  const buildSeqRef = useRef(0);
+  const buildChartRef = useRef<((parts: BirthParts) => Promise<void> | void) | null>(null);
 
   const suggestions = useMemo(() => {
     if (!cityQuery) return cities.slice(0, 20);
@@ -372,6 +696,53 @@ const AdditionalChartPage: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let isActive = true;
+    loadChartTextResources()
+      .then((resources) => {
+        if (!isActive) return;
+        setChartTextResources((prev) => prev ?? resources);
+      })
+      .catch((err) => {
+        if (import.meta.env.DEV) {
+          console.error("Failed to load chart text resources (Additional)", err);
+        }
+      });
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const api = typeof window !== "undefined" ? window.electronAPI?.license : undefined;
+        const status = await api?.getStatus?.();
+        if (!cancelled) setLicenseStatus(status ?? null);
+      } catch (error) {
+        if (!cancelled) setLicenseStatus(null);
+      }
+    })();
+    const unsub =
+      typeof window !== "undefined"
+        ? window.electronAPI?.license?.onStatus?.((s) => {
+            setLicenseStatus(s ?? null);
+          })
+        : undefined;
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isLicensed) return;
+    if (!fullDetailsRequestedRef.current) return;
+    fullDetailsRequestedRef.current = false;
+    setFullDetailsOpen(true);
+  }, [isLicensed]);
 
   useEffect(() => {
     let cancelled = false;
@@ -504,6 +875,10 @@ const AdditionalChartPage: React.FC = () => {
 
   const buildChart = useCallback(
     async (parts: BirthParts) => {
+      const seq = ++buildSeqRef.current;
+      buildAbortRef.current?.abort();
+      const controller = new AbortController();
+      buildAbortRef.current = controller;
       const metaPayload = recomputeMeta(parts);
       if (!metaPayload) return;
       const payload: ChartRequestPayload = {
@@ -521,50 +896,242 @@ const AdditionalChartPage: React.FC = () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
         if (!res.ok) {
           const txt = await res.text();
           throw new Error(`Ошибка сервера: ${res.status} ${txt}`);
         }
         const json = (await res.json()) as ChartResponse;
+        if (controller.signal.aborted || seq !== buildSeqRef.current) return;
         setChart(json);
         setMeta(metaPayload);
       } catch (err) {
+        if (controller.signal.aborted) return;
         const msg = err instanceof Error ? err.message : String(err);
         setError(msg);
         setChart(null);
       } finally {
-        setLoading(false);
+        if (seq === buildSeqRef.current) {
+          setLoading(false);
+        }
       }
     },
     [lat, lon, recomputeMeta],
   );
 
+  useEffect(() => {
+    buildChartRef.current = buildChart;
+  }, [buildChart]);
+
   const scheduleRebuild = useCallback(
     (nextParts: BirthParts) => {
       setBirthParts(nextParts);
       if (debounceTimer) clearTimeout(debounceTimer);
-      const handle = window.setTimeout(() => void buildChart(nextParts), DEBOUNCE_MS);
+      const handle = window.setTimeout(() => void buildChartRef.current?.(nextParts), DEBOUNCE_MS);
       setDebounceTimer(handle);
     },
-    [buildChart, debounceTimer],
+    [debounceTimer],
   );
 
+  const buildNow = useCallback(
+    (nextParts: BirthParts) => {
+      setBirthParts(nextParts);
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        setDebounceTimer(null);
+      }
+      void buildChartRef.current?.(nextParts);
+    },
+    [debounceTimer],
+  );
+
+  const applyImportedPayload = useCallback(
+    (payload: unknown) => {
+      if (!isRecord(payload)) {
+        setError("Файл не распознан: неверный формат JSON.");
+        return;
+      }
+
+      const root = isRecord(payload.payload) ? (payload.payload as Record<string, unknown>) : payload;
+      const chartValue = root.chart;
+      const metaValue = root.meta;
+      const profileValue = root.profile;
+
+      setError(null);
+
+      let importedParts: BirthParts | null = null;
+
+      if (isRecord(profileValue)) {
+        const personNameRaw = typeof profileValue.personName === "string" ? profileValue.personName : "";
+        const lastNameRaw = typeof profileValue.lastName === "string" ? profileValue.lastName : "";
+        const genderRaw = profileValue.gender === "female" ? "female" : profileValue.gender === "male" ? "male" : null;
+        const countryRaw = typeof profileValue.country === "string" ? profileValue.country : "";
+        const cityQueryRaw = typeof profileValue.cityQuery === "string" ? profileValue.cityQuery : "";
+        const selectedCityRaw = typeof profileValue.selectedCity === "string" ? profileValue.selectedCity : "";
+        const cityNameRuRaw = typeof profileValue.cityNameRu === "string" ? profileValue.cityNameRu : "";
+        const latRaw = typeof profileValue.lat === "number" ? profileValue.lat : Number(profileValue.lat);
+        const lonRaw = typeof profileValue.lon === "number" ? profileValue.lon : Number(profileValue.lon);
+
+        setPersonName(personNameRaw);
+        setLastName(lastNameRaw);
+        if (genderRaw) setGender(genderRaw);
+        if (countryRaw) setCountry(countryRaw);
+        if (cityQueryRaw) setCityQuery(cityQueryRaw);
+        if (Number.isFinite(latRaw)) setLat(latRaw);
+        if (Number.isFinite(lonRaw)) setLon(lonRaw);
+
+        importedParts = parseBirthPartsFromIso(profileValue.birth);
+        if (importedParts) setBirthParts(importedParts);
+
+        const enableTzCorrectionRaw =
+          typeof profileValue.enableTzCorrection === "boolean" ? profileValue.enableTzCorrection : Boolean(profileValue.enableTzCorrection);
+        const tzCorrectionHoursRaw =
+          typeof profileValue.tzCorrectionHours === "number" ? profileValue.tzCorrectionHours : Number(profileValue.tzCorrectionHours ?? 0);
+        const dstManualRaw = typeof profileValue.dstManual === "boolean" ? profileValue.dstManual : Boolean(profileValue.dstManual);
+        setEnableTzCorrection(enableTzCorrectionRaw);
+        if (Number.isFinite(tzCorrectionHoursRaw)) setTzCorrectionHours(tzCorrectionHoursRaw);
+        setDstManual(dstManualRaw);
+
+        if (selectedCityRaw && Number.isFinite(latRaw) && Number.isFinite(lonRaw)) {
+          const countryForCity = (countryRaw || country || "RU").toUpperCase();
+          const suggestion = makeCitySuggestion({
+            id: `${countryForCity}:${selectedCityRaw}:${latRaw}:${lonRaw}`,
+            name: selectedCityRaw,
+            nameRu: cityNameRuRaw || latinToRuName(selectedCityRaw),
+            country: countryForCity,
+            lat: latRaw,
+            lon: lonRaw,
+          });
+          setSelectedCity(suggestion);
+          setAutoApplyCity(false);
+          setSuggestionsOpen(false);
+        } else {
+          setSelectedCity(null);
+          setAutoApplyCity(true);
+        }
+      }
+
+      if (isRecord(metaValue)) {
+        const iana = typeof metaValue.ianaTz === "string" ? metaValue.ianaTz : "";
+        if (iana) setIanaTz(iana);
+        const nextMeta = metaValue as BuildMeta;
+        setMeta(nextMeta);
+        setAutoDst(Boolean(nextMeta.autoDstMinutes && nextMeta.autoDstMinutes > 0));
+      }
+
+      if (chartValue && typeof chartValue === "object") {
+        setChart(chartValue as ChartResponse);
+      } else if (importedParts) {
+        setChart(null);
+        setMeta(null);
+        scheduleRebuild(importedParts);
+      }
+    },
+    [country, scheduleRebuild],
+  );
+
+  const handleOpenFileSelected = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null;
+      event.target.value = "";
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text) as unknown;
+        applyImportedPayload(json);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Не удалось открыть файл: ${msg}`);
+      }
+    },
+    [applyImportedPayload],
+  );
+
+  const handleOpenFromFileClick = useCallback(() => {
+    openFileInputRef.current?.click();
+  }, []);
+
   useEffect(() => {
+    if (initialDraft?.chart && initialDraft?.meta) return;
     void buildChart(birthParts);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    autosaveTimerRef.current = window.setTimeout(() => {
+      try {
+        const cityPayload = selectedCity
+          ? {
+              id: selectedCity.id,
+              name: selectedCity.name,
+              nameRu: selectedCity.nameRu,
+              lat: selectedCity.lat,
+              lon: selectedCity.lon,
+              country: selectedCity.country,
+            }
+          : null;
+        const payload: AdditionalDraftV1 = {
+          v: 1,
+          personName,
+          lastName,
+          gender,
+          country,
+          cityQuery,
+          selectedCity: cityPayload,
+          birthParts,
+          lat,
+          lon,
+          ianaTz,
+          enableTzCorrection,
+          tzCorrectionHours,
+          dstManual,
+          chartVariant,
+          chart: chart && meta ? chart : null,
+          meta: chart && meta ? meta : null,
+          updatedAt: Date.now(),
+        };
+        window.localStorage.setItem(ADDITIONAL_DRAFT_STORAGE_KEY, JSON.stringify(payload));
+      } catch (error) {
+        console.warn("Failed to autosave Additional draft state", error);
+      }
+    }, 250);
+  }, [
+    birthParts,
+    chart,
+    chartVariant,
+    cityQuery,
+    country,
+    dstManual,
+    enableTzCorrection,
+    gender,
+    ianaTz,
+    lastName,
+    lat,
+    lon,
+    meta,
+    personName,
+    selectedCity,
+    tzCorrectionHours,
+  ]);
 
   useEffect(
     () => () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+      buildAbortRef.current?.abort();
     },
     [debounceTimer],
   );
 
   const handlePartChange = (field: keyof BirthParts, value: number) => {
-    const next = normalizeParts({ ...birthParts, [field]: value });
+    if (!Number.isFinite(value)) return;
+    const next = applyOverflowChange(birthParts, field, value);
     scheduleRebuild(next);
   };
 
@@ -661,51 +1228,315 @@ const AdditionalChartPage: React.FC = () => {
     return rotated;
   }, [chart, variantShift]);
 
+  const arcsForRender = useMemo(() => (Array.isArray(chart?.constellation_arcs) ? chart.constellation_arcs : []), [chart]);
+
+  const planetsByArc = useMemo(() => {
+    const map = new Map<string, ChartResponse["planets"]>();
+    if (!chart) return map;
+    const arcs = arcsForRender;
+    arcs.forEach((a) => map.set(a.iau_code, []));
+
+    const inArc = (lon: number, start: number, end: number) => {
+      const l = ((lon % 360) + 360) % 360;
+      const s = ((start % 360) + 360) % 360;
+      const e = ((end % 360) + 360) % 360;
+      if (s <= e) return l >= s && l < e;
+      return l >= s || l < e;
+    };
+
+    if (Array.isArray(chart.planets)) {
+      chart.planets.forEach((p) => {
+        const code = p.iau_constellation || "";
+        if (code && map.has(code)) {
+          map.get(code)!.push(p);
+          return;
+        }
+        for (const a of arcs) {
+          if (inArc(p.lon_sidereal, a.lon_start_deg, a.lon_end_deg)) {
+            const arr = map.get(a.iau_code) ?? [];
+            arr.push(p);
+            map.set(a.iau_code, arr);
+            break;
+          }
+        }
+      });
+    }
+
+    for (const [k, arr] of map.entries()) {
+      if (arr && arr.length) arr.sort((a, b) => a.lon_sidereal - b.lon_sidereal);
+      map.set(k, arr);
+    }
+    return map;
+  }, [arcsForRender, chart]);
+
+  const planetMarkers = useMemo(() => {
+    const markers = new Map<string, string[]>();
+    if (!chart?.planets) return markers;
+
+    chart.planets.forEach((planet) => {
+      const symbols: string[] = [];
+      const sign = planet.sign;
+      const rotatedHouse = rotateHouseNumber(planet.house ?? null, variantShift);
+      if (sign && EXALTATION_SIGNS[planet.name]?.includes(sign)) {
+        symbols.push("\u2191");
+      }
+      if (sign && DEBILITATION_SIGNS[planet.name]?.includes(sign)) {
+        symbols.push("\u2193");
+      }
+      if (rotatedHouse && KARAKA_HOUSES[planet.name]?.includes(rotatedHouse)) {
+        symbols.push("\u25cb");
+      }
+      if (rotatedHouse && DIGBALA_HOUSES[planet.name]?.includes(rotatedHouse)) {
+        symbols.push("\u25a1");
+      }
+      if (sign && OWN_SIGN_SIGNS[planet.name]?.includes(sign)) {
+        symbols.push("\u2302");
+      }
+      if (symbols.length) {
+        markers.set(planet.name, symbols);
+      }
+    });
+
+    const pushMarker = (name: string, symbol: string) => {
+      const arr = markers.get(name) ?? [];
+      if (!arr.includes(symbol)) {
+        arr.push(symbol);
+        markers.set(name, arr);
+      }
+    };
+
+    const sun = chart.planets.find((p) => p.name === "Su") || null;
+    if (sun) {
+      const sunRotatedHouse = rotateHouseNumber(sun.house ?? null, variantShift);
+      const sunDeg = ((sun.lon_sidereal % 30) + 30) % 30;
+      chart.planets.forEach((p) => {
+        if (p.name === "Su" || p.name === "Mo" || p.name === "Ra" || p.name === "Ke") return;
+        const prh = rotateHouseNumber(p.house ?? null, variantShift);
+        if (!prh || !sunRotatedHouse || prh !== sunRotatedHouse) return;
+        const pDeg = ((p.lon_sidereal % 30) + 30) % 30;
+        const diff = Math.abs(pDeg - sunDeg);
+
+        const isJupiterExalt = p.sign && EXALTATION_SIGNS["Ju"]?.includes(p.sign);
+        const isJupiterDigbala = typeof prh === "number" && DIGBALA_HOUSES["Ju"]?.includes(prh);
+        const jupThresh = isJupiterExalt || isJupiterDigbala ? 5 : 7;
+
+        const thresholds: Record<string, number> = {
+          Me: 3,
+          Ve: 5,
+          Ma: 5,
+          Sa: 10,
+          Ju: jupThresh,
+        };
+        const thr = thresholds[p.name];
+        if (typeof thr === "number") {
+          if (diff < 1) {
+            pushMarker(p.name, "\u263c");
+          } else if (diff <= thr) {
+            pushMarker(p.name, "\u25cf");
+          }
+        }
+      });
+    }
+
+    const groupsByHouse = new Map<number, { name: string; deg: number }[]>();
+    chart.planets.forEach((p) => {
+      if (p.name === "Su" || p.name === "Mo" || p.name === "Ra" || p.name === "Ke") return;
+      const prh = rotateHouseNumber(p.house ?? null, variantShift);
+      if (!prh) return;
+      const pDeg = ((p.lon_sidereal % 30) + 30) % 30;
+      const arr = groupsByHouse.get(prh) ?? [];
+      arr.push({ name: p.name, deg: pDeg });
+      groupsByHouse.set(prh, arr);
+    });
+    for (const arr of groupsByHouse.values()) {
+      if (arr.length < 2) continue;
+      const n = arr.length;
+      const visited = new Array(n).fill(false);
+      const adj: number[][] = Array.from({ length: n }, () => []);
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          if (Math.abs(arr[i].deg - arr[j].deg) < 1) {
+            adj[i].push(j);
+            adj[j].push(i);
+          }
+        }
+      }
+      const stack: number[] = [];
+      const pushLoser = (idxs: number[]) => {
+        if (idxs.length < 2) return;
+        let minIdx = idxs[0];
+        for (const k of idxs) {
+          if (arr[k].deg < arr[minIdx].deg) minIdx = k;
+        }
+        idxs.forEach((k) => {
+          if (k !== minIdx) pushMarker(arr[k].name, "\u00d8");
+        });
+      };
+      for (let i = 0; i < n; i++) {
+        if (visited[i]) continue;
+        stack.length = 0;
+        const comp: number[] = [];
+        stack.push(i);
+        visited[i] = true;
+        while (stack.length) {
+          const v = stack.pop()!;
+          comp.push(v);
+          for (const w of adj[v]) {
+            if (!visited[w]) {
+              visited[w] = true;
+              stack.push(w);
+            }
+          }
+        }
+        pushLoser(comp);
+      }
+    }
+
+    return markers;
+  }, [chart, variantShift]);
+
   const planetTable = useMemo(() => {
     if (!chart) return null;
+    const iauNameByCode = new Map<string, string>();
+    arcsForRender.forEach((a) => iauNameByCode.set(a.iau_code, a.iau_name_ru));
+
     return (
-      <div style={{ maxWidth: "1100px", width: "100%", marginTop: 16 }}>
+      <div style={{ maxWidth: "700px", width: "100%", margin: "16px auto 0" }}>
         <div style={{ fontWeight: 900, textTransform: "uppercase", marginBottom: 6 }}>
           СОЗВЕЗДИЯ И ПЛАНЕТЫ (
           <span style={{ fontWeight: 600 }}>
-            {"\u2191-уча, \u2193-нича, \u25cb-карака, \u25a1-дигбала, \u25c7-свой знак, \u25cf-сожжёная, \u00d8-проигравшая, \u2600-супер сильная"}
+            {"\u2191-уча, \u2193-нича, \u25cb-карака, \u25a1-дигбала, \u2302-свой знак, \u25cf-сожж\u0451ная, \u00d8-проигравшая, \u263c-супер сильная"}
           </span>
           )
         </div>
         <table style={{ width: "100%", borderCollapse: "collapse", background: "#f2e3c2", border: "1px solid #b38b52" }}>
           <thead>
             <tr>
-              <th style={{ border: "1px solid #b38b52", padding: "4px" }}>Планета</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px" }}>Дом</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px" }}>Знак</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px" }}>Созвездие</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px" }}>Долгота</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px" }}>Ретро</th>
+              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Созвездие (код)</th>
+              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Lon start</th>
+              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Lon end</th>
+              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Планета</th>
+              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Истин. созв.</th>
+              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Долгота</th>
+              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Рет.</th>
             </tr>
           </thead>
           <tbody>
-            {chart.planets.map((p) => {
-              const rotatedHouse = rotateHouseNumber(p.house ?? null, variantShift) ?? p.house;
-              const signRu = SIGN_INFO[p.sign]?.ru ?? p.sign;
-              return (
-	              <tr key={p.name}>
-	                <td style={{ border: "1px solid #b38b52", padding: "4px" }}>{PLANET_NAMES_RU[p.name] ?? p.name}</td>
-	                <td style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "center" }}>{rotatedHouse}</td>
-	                <td style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "center" }}>{signRu}</td>
-	                <td style={{ border: "1px solid #b38b52", padding: "4px" }}>{p.iau_constellation}</td>
-	                <td style={{ border: "1px solid #b38b52", padding: "4px" }}>{degStr(p.lon_sidereal)}</td>
-	                <td style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "center" }}>{p.is_retrograde ? "R" : ""}</td>
-	              </tr>
-              );
+            {arcsForRender.map((arc) => {
+              const planets = planetsByArc.get(arc.iau_code) ?? [];
+              if (planets.length === 0) {
+                return (
+                  <tr key={arc.iau_code}>
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
+                      {arc.iau_name_ru} ({arc.iau_code})
+                    </td>
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>{formatArcDegree(arc.lon_start_deg)}</td>
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>{formatArcDegree(arc.lon_end_deg)}</td>
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top", color: "rgba(0,0,0,0.45)" }}>-</td>
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>-</td>
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>-</td>
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}> </td>
+                  </tr>
+                );
+              }
+
+              return planets.map((p, idx) => {
+                const iauCode = p.iau_constellation || arc.iau_code || "";
+                const iauNameRu = iauNameByCode.get(iauCode) || "";
+                const markersForPlanet = planetMarkers.get(p.name) ?? [];
+                const strength = p.house_strength ?? 0;
+                const strengthPercent = Math.round(strength * 100);
+                const strengthColor = (() => {
+                  const percent = strength;
+                  if (percent <= 0.1) {
+                    return "#e53935";
+                  } else if (percent < 0.5) {
+                    const ratio = (percent - 0.1) / 0.4;
+                    const r = Math.round(229 + (251 - 229) * ratio);
+                    const g = Math.round(57 + (192 - 57) * ratio);
+                    const b = Math.round(53 + (45 - 53) * ratio);
+                    return `rgb(${r},${g},${b})`;
+                  } else if (percent < 0.99) {
+                    const ratio = (percent - 0.5) / 0.49;
+                    const r = Math.round(251 + (67 - 251) * ratio);
+                    const g = Math.round(192 + (160 - 192) * ratio);
+                    const b = Math.round(45 + (71 - 45) * ratio);
+                    return `rgb(${r},${g},${b})`;
+                  } else {
+                    return "#43a047";
+                  }
+                })();
+
+                return (
+                  <tr key={`${arc.iau_code}-${p.name}-${idx}`}>
+                    {idx === 0 ? (
+                      <>
+                        <td rowSpan={planets.length} style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
+                          {arc.iau_name_ru} ({arc.iau_code})
+                        </td>
+                        <td rowSpan={planets.length} style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
+                          {formatArcDegree(arc.lon_start_deg)}
+                        </td>
+                        <td rowSpan={planets.length} style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
+                          {formatArcDegree(arc.lon_end_deg)}
+                        </td>
+                      </>
+                    ) : null}
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <span
+                          title={`Сила: ${strengthPercent}%`}
+                          style={{
+                            display: "inline-block",
+                            width: "48px",
+                            height: "12px",
+                            borderRadius: "6px",
+                            background: "#444",
+                            position: "relative",
+                            overflow: "hidden",
+                            verticalAlign: "middle",
+                          }}
+                        >
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              top: 0,
+                              height: "100%",
+                              width: `${strengthPercent}%`,
+                              background: strengthColor,
+                              borderRadius: "6px",
+                              transition: "width 0.3s, background 0.3s",
+                            }}
+                          />
+                        </span>
+                        {markersForPlanet.length ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 16, lineHeight: 1 }}>
+                            {markersForPlanet.map((symbol, symbolIdx) => (
+                              <span key={`${p.name}-${symbol}-${symbolIdx}`}>{symbol}</span>
+                            ))}
+                          </span>
+                        ) : null}
+                        <span>{PLANET_NAMES_RU[p.name] ?? p.name}</span>
+                      </span>
+                    </td>
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
+                      {iauNameRu ? `${iauNameRu} (${iauCode})` : p.iau_constellation || ""}
+                    </td>
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>{formatDegreesWithoutSeconds(p.lon_sidereal)}</td>
+                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>{p.is_retrograde ? "R" : ""}</td>
+                  </tr>
+                );
+              });
             })}
           </tbody>
         </table>
       </div>
     );
-  }, [chart, variantShift]);
+  }, [arcsForRender, chart, planetMarkers, planetsByArc]);
 
   const headerLines = useMemo(() => {
-    const cityLabel = selectedCity?.nameRu || selectedCity?.name || cityQuery || "—";
+    const cityLabel = selectedCity?.nameRu || selectedCity?.name || cityQuery || "-";
     const coordsLabel = Number.isFinite(lat) && Number.isFinite(lon) ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : "";
     const localTime = meta
       ? `${birthParts.year}-${pad2(birthParts.month)}-${pad2(birthParts.day)}; T${pad2(birthParts.hour)}:${pad2(birthParts.minute)} (${ianaTz}, ${formatOffset(meta.finalOffsetMinutes)})`
@@ -747,6 +1578,218 @@ const AdditionalChartPage: React.FC = () => {
     selectedCity?.nameRu,
     sunPlanet?.lon_sidereal,
   ]);
+
+  const allowFullDetails = isLicensed && fullDetailsOpen;
+  const ascSectionTitle = chartVariantConfig.ascTitle;
+  const firstHouseBoxForText = houses.find((house) => house.houseNumber === 1);
+  const ascSignCodeForText = firstHouseBoxForText?.sign ?? chart?.ascendant?.sign ?? "";
+  const ascSignNameForText = SIGN_INFO[ascSignCodeForText]?.ru ?? ascSignCodeForText;
+  const ascLongitudeValueForText =
+    chartVariant === "chandra"
+      ? moonPlanet?.lon_sidereal ?? null
+      : chartVariant === "surya"
+        ? sunPlanet?.lon_sidereal ?? null
+        : chart?.ascendant?.lon_sidereal ?? null;
+  const ascLongitudeTextForText =
+    typeof ascLongitudeValueForText === "number" && Number.isFinite(ascLongitudeValueForText) ? degStr(ascLongitudeValueForText) : "";
+  const ascDescription =
+    (chartTextResources?.ascSignDescriptions ?? EMPTY_CHART_TEXT_RESOURCES.ascSignDescriptions)[ascSignCodeForText] ?? "";
+
+  const handleFullDetailsClick = useCallback(() => {
+    if (isLicensed) {
+      setFullDetailsOpen(true);
+      return;
+    }
+    fullDetailsRequestedRef.current = true;
+    try {
+      window.electronAPI?.license?.requestPrompt?.();
+    } catch (promptError) {
+      console.warn("Failed to request license prompt from Additional full description CTA", promptError);
+    }
+  }, [isLicensed]);
+
+  const lagneshaCode = ascSignCodeForText ? LAGNESHA_BY_ASC_SIGN[ascSignCodeForText] ?? "" : "";
+  const lagneshaName = lagneshaCode ? PLANET_NAMES_RU[lagneshaCode] ?? lagneshaCode : "";
+  const lagneshaDescription =
+    lagneshaCode
+      ? (chartTextResources?.lagneshaDescriptions ?? EMPTY_CHART_TEXT_RESOURCES.lagneshaDescriptions)[lagneshaCode] ?? ""
+      : "";
+  const lagneshaDescriptionParts = useMemo(() => splitDescription(lagneshaDescription), [lagneshaDescription]);
+  const lagneshaHeading = lagneshaDescriptionParts.heading || lagneshaName || lagneshaCode;
+  const lagneshaBody = lagneshaDescriptionParts.body || (!lagneshaDescriptionParts.heading ? lagneshaDescription : "");
+  const lagneshaPlanet = useMemo(() => {
+    if (!lagneshaCode || !chart?.planets) return null;
+    return chart.planets.find((planet) => planet.name === lagneshaCode) ?? null;
+  }, [chart, lagneshaCode]);
+  const lagneshaHouseNumber = rotateHouseNumber(lagneshaPlanet?.house ?? null, variantShift);
+  const lagneshaHouseTitle = lagneshaHouseNumber ? `Лагнеша в ${lagneshaHouseNumber}-м доме` : "";
+  const lagneshaHouseDescription = lagneshaHouseNumber
+    ? (chartTextResources?.lagneshaHouseDescriptions ?? EMPTY_CHART_TEXT_RESOURCES.lagneshaHouseDescriptions)[String(lagneshaHouseNumber)] ??
+      ""
+    : "";
+  const lagneshaHouseDescriptionParts = useMemo(() => splitDescription(lagneshaHouseDescription), [lagneshaHouseDescription]);
+  const lagneshaHouseHeading = lagneshaHouseDescriptionParts.heading || lagneshaHouseTitle;
+  const lagneshaHouseBody =
+    lagneshaHouseDescriptionParts.body || (!lagneshaHouseDescriptionParts.heading ? lagneshaHouseDescription : "");
+
+  const planetArcStats = useMemo<PlanetArcStat[]>(() => {
+    if (!chart?.planets) return [];
+    const arcs = arcsForRender;
+    const normalize = (deg: number) => ((deg % 360) + 360) % 360;
+    const inArc = (lon: number, start: number, end: number) => {
+      const l = normalize(lon);
+      const s = normalize(start);
+      const e = normalize(end);
+      if (s <= e) return l >= s && l < e;
+      return l >= s || l < e;
+    };
+
+    return chart.planets.reduce<PlanetArcStat[]>((acc, planet) => {
+      if (typeof planet.lon_sidereal !== "number" || !Number.isFinite(planet.lon_sidereal)) {
+        return acc;
+      }
+      const lon = normalize(planet.lon_sidereal);
+      const percent = ((lon % 30) / 30) * 100;
+      if (!Number.isFinite(percent)) {
+        return acc;
+      }
+
+      let arcName = planet.nakshatra || "";
+      if (!arcName && arcs.length) {
+        const found = arcs.find((arc) => inArc(lon, arc.lon_start_deg, arc.lon_end_deg));
+        if (found) {
+          arcName = found.iau_name_ru || found.iau_code || "";
+        }
+      }
+      if (!arcName) {
+        arcName = SIGN_INFO[planet.sign]?.ru ?? planet.sign ?? "";
+      }
+
+      acc.push({
+        planet: planet.name,
+        percent,
+        arcName,
+        lon,
+      });
+      return acc;
+    }, []);
+  }, [arcsForRender, chart]);
+
+  const atmaKarakaEntry = useMemo<PlanetArcStat | null>(() => {
+    if (!planetArcStats.length) return null;
+    return planetArcStats.reduce<PlanetArcStat | null>((best, current) => {
+      if (!best) return current;
+      if (current.percent > best.percent + ARC_EPSILON) return current;
+      if (Math.abs(current.percent - best.percent) <= ARC_EPSILON && current.lon > best.lon) return current;
+      return best;
+    }, null);
+  }, [planetArcStats]);
+
+  const daraKarakaEntry = useMemo<PlanetArcStat | null>(() => {
+    if (!planetArcStats.length) return null;
+    return planetArcStats.reduce<PlanetArcStat | null>((best, current) => {
+      if (!best) return current;
+      if (current.percent < best.percent - ARC_EPSILON) return current;
+      if (Math.abs(current.percent - best.percent) <= ARC_EPSILON && current.lon < best.lon) return current;
+      return best;
+    }, null);
+  }, [planetArcStats]);
+
+  const atmaKarakaCode = atmaKarakaEntry?.planet ?? "";
+  const atmaKarakaName = atmaKarakaCode ? PLANET_NAMES_RU[atmaKarakaCode] ?? atmaKarakaCode : "";
+  const atmaKarakaPercent = typeof atmaKarakaEntry?.percent === "number" ? atmaKarakaEntry.percent : null;
+  const atmaKarakaArcLabel = atmaKarakaEntry?.arcName ?? "";
+  const atmaKarakaDescription =
+    atmaKarakaCode
+      ? (chartTextResources?.atmaKarakaDescriptions ?? EMPTY_CHART_TEXT_RESOURCES.atmaKarakaDescriptions)[atmaKarakaCode] ?? ""
+      : "";
+  const atmaKarakaDescriptionParts = useMemo(() => splitDescription(atmaKarakaDescription), [atmaKarakaDescription]);
+  const atmaKarakaHeading = atmaKarakaDescriptionParts.heading || atmaKarakaName || atmaKarakaCode;
+  const atmaKarakaBody = atmaKarakaDescriptionParts.body || (!atmaKarakaDescriptionParts.heading ? atmaKarakaDescription : "");
+
+  const daraKarakaCode = daraKarakaEntry?.planet ?? "";
+  const daraKarakaName = daraKarakaCode ? PLANET_NAMES_RU[daraKarakaCode] ?? daraKarakaCode : "";
+  const daraKarakaPercent = typeof daraKarakaEntry?.percent === "number" ? daraKarakaEntry.percent : null;
+  const daraKarakaArcLabel = daraKarakaEntry?.arcName ?? "";
+  const daraKarakaDescription =
+    daraKarakaCode
+      ? (chartTextResources?.daraKarakaDescriptions ?? EMPTY_CHART_TEXT_RESOURCES.daraKarakaDescriptions)[daraKarakaCode] ?? ""
+      : "";
+  const daraKarakaDescriptionParts = useMemo(() => splitDescription(daraKarakaDescription), [daraKarakaDescription]);
+  const daraKarakaHeading = daraKarakaDescriptionParts.heading || daraKarakaName || daraKarakaCode;
+  const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptionParts.heading ? daraKarakaDescription : "");
+
+  const sunHouseNumber = rotateHouseNumber(sunPlanet?.house ?? null, variantShift);
+  const sunHouseLookup = sunHouseNumber
+    ? (chartTextResources?.suryaBhavas ?? EMPTY_CHART_TEXT_RESOURCES.suryaBhavas)[String(sunHouseNumber)]
+    : undefined;
+  const sunHouseHeading = sunHouseLookup?.title || (sunHouseNumber ? `Солнце в ${sunHouseNumber}-м доме` : "");
+  const sunHouseBody = sunHouseLookup?.body ?? "";
+
+  const moonHouseNumber = rotateHouseNumber(moonPlanet?.house ?? null, variantShift);
+  const moonHouseLookup = moonHouseNumber
+    ? (chartTextResources?.chandraBhavas ?? EMPTY_CHART_TEXT_RESOURCES.chandraBhavas)[String(moonHouseNumber)]
+    : undefined;
+  const moonHouseHeading = moonHouseLookup?.title || (moonHouseNumber ? `Луна в ${moonHouseNumber}-м доме` : "");
+  const moonHouseBody = moonHouseLookup?.body ?? "";
+  const showSunSection = chartVariantConfig.skipPlanet !== "sun" && Boolean(sunHouseBody);
+  const showMoonSection = chartVariantConfig.skipPlanet !== "moon" && Boolean(moonHouseBody);
+
+  const jupiterPlanet = useMemo(() => chart?.planets?.find((planet) => planet.name === "Ju") ?? null, [chart]);
+  const jupiterHouseNumber = rotateHouseNumber(jupiterPlanet?.house ?? null, variantShift);
+  const jupiterHouseLookup = jupiterHouseNumber
+    ? (chartTextResources?.guruBhavas ?? EMPTY_CHART_TEXT_RESOURCES.guruBhavas)[String(jupiterHouseNumber)]
+    : undefined;
+  const jupiterHouseHeading = jupiterHouseLookup?.title || (jupiterHouseNumber ? `Юпитер в ${jupiterHouseNumber}-м доме` : "");
+  const jupiterHouseBody = jupiterHouseLookup?.body ?? "";
+
+  const mercuryPlanet = useMemo(() => chart?.planets?.find((planet) => planet.name === "Me") ?? null, [chart]);
+  const mercuryHouseNumber = rotateHouseNumber(mercuryPlanet?.house ?? null, variantShift);
+  const mercuryHouseLookup = mercuryHouseNumber
+    ? (chartTextResources?.budhaBhavas ?? EMPTY_CHART_TEXT_RESOURCES.budhaBhavas)[String(mercuryHouseNumber)]
+    : undefined;
+  const mercuryHouseHeading = mercuryHouseLookup?.title || (mercuryHouseNumber ? `Меркурий в ${mercuryHouseNumber}-м доме` : "");
+  const mercuryHouseBody = mercuryHouseLookup?.body ?? "";
+
+  const venusPlanet = useMemo(() => chart?.planets?.find((planet) => planet.name === "Ve") ?? null, [chart]);
+  const venusHouseNumber = rotateHouseNumber(venusPlanet?.house ?? null, variantShift);
+  const venusHouseLookup = venusHouseNumber
+    ? (chartTextResources?.shukraBhavas ?? EMPTY_CHART_TEXT_RESOURCES.shukraBhavas)[String(venusHouseNumber)]
+    : undefined;
+  const venusHouseHeading = venusHouseLookup?.title || (venusHouseNumber ? `Венера в ${venusHouseNumber}-м доме` : "");
+  const venusHouseBody = venusHouseLookup?.body ?? "";
+
+  const saturnPlanet = useMemo(() => chart?.planets?.find((planet) => planet.name === "Sa") ?? null, [chart]);
+  const saturnHouseNumber = rotateHouseNumber(saturnPlanet?.house ?? null, variantShift);
+  const saturnHouseLookup = saturnHouseNumber
+    ? (chartTextResources?.shaniBhavas ?? EMPTY_CHART_TEXT_RESOURCES.shaniBhavas)[String(saturnHouseNumber)]
+    : undefined;
+  const saturnHouseHeading = saturnHouseLookup?.title || (saturnHouseNumber ? `Сатурн в ${saturnHouseNumber}-м доме` : "");
+  const saturnHouseBody = saturnHouseLookup?.body ?? "";
+
+  const marsPlanet = useMemo(() => chart?.planets?.find((planet) => planet.name === "Ma") ?? null, [chart]);
+  const marsHouseNumber = rotateHouseNumber(marsPlanet?.house ?? null, variantShift);
+  const marsHouseLookup = marsHouseNumber
+    ? (chartTextResources?.mangalaBhavas ?? EMPTY_CHART_TEXT_RESOURCES.mangalaBhavas)[String(marsHouseNumber)]
+    : undefined;
+  const marsHouseHeading = marsHouseLookup?.title || (marsHouseNumber ? `Марс в ${marsHouseNumber}-м доме` : "");
+  const marsHouseBody = marsHouseLookup?.body ?? "";
+
+  const rahuPlanet = useMemo(() => chart?.planets?.find((planet) => planet.name === "Ra") ?? null, [chart]);
+  const rahuHouseNumber = rotateHouseNumber(rahuPlanet?.house ?? null, variantShift);
+  const rahuHouseLookup = rahuHouseNumber
+    ? (chartTextResources?.rahuBhavas ?? EMPTY_CHART_TEXT_RESOURCES.rahuBhavas)[String(rahuHouseNumber)]
+    : undefined;
+  const rahuHouseHeading = rahuHouseLookup?.title || (rahuHouseNumber ? `Раху в ${rahuHouseNumber}-м доме` : "");
+  const rahuHouseBody = rahuHouseLookup?.body ?? "";
+
+  const ketuPlanet = useMemo(() => chart?.planets?.find((planet) => planet.name === "Ke") ?? null, [chart]);
+  const ketuHouseNumber = rotateHouseNumber(ketuPlanet?.house ?? null, variantShift);
+  const ketuHouseLookup = ketuHouseNumber
+    ? (chartTextResources?.ketuBhavas ?? EMPTY_CHART_TEXT_RESOURCES.ketuBhavas)[String(ketuHouseNumber)]
+    : undefined;
+  const ketuHouseHeading = ketuHouseLookup?.title || (ketuHouseNumber ? `Кету в ${ketuHouseNumber}-м доме` : "");
+  const ketuHouseBody = ketuHouseLookup?.body ?? "";
 
   return (
     <div className="additional-page min-h-screen bg-[#f5e4c3] text-[#2b1c0f]">
@@ -825,6 +1868,13 @@ const AdditionalChartPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap gap-2 mb-2 justify-start items-start">
+          <input
+            ref={openFileInputRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: "none" }}
+            onChange={handleOpenFileSelected}
+          />
           {CHART_VARIANT_OPTIONS.map((option) => {
             const isActive = option.value === chartVariant;
             const baseClasses = "px-3 py-2 text-left min-w-[160px] leading-tight border border-[#7a643a] bg-[#f7e4c1] text-black transition-colors";
@@ -849,6 +1899,13 @@ const AdditionalChartPage: React.FC = () => {
             disabled={!chart || !meta}
           >
             Сохранить в файл
+          </button>
+          <button
+            type="button"
+            className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
+            onClick={handleOpenFromFileClick}
+          >
+            Открыть файл
           </button>
         </div>
         <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "6px 8px", fontSize: 14 }}>
@@ -899,19 +1956,28 @@ const AdditionalChartPage: React.FC = () => {
                         type="number"
                         style={{ width: 70, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
                         value={birthParts.year}
-                        onChange={(e) => handlePartChange("year", parseInt(e.target.value || "0", 10))}
+                        onChange={(e) => {
+                          if (e.target.value === "") return;
+                          handlePartChange("year", parseInt(e.target.value, 10));
+                        }}
                       />
                       <input
                         type="number"
                         style={{ width: 46, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
-                        value={birthParts.month}
-                        onChange={(e) => handlePartChange("month", parseInt(e.target.value || "0", 10))}
+                        value={pad2(birthParts.month)}
+                        onChange={(e) => {
+                          if (e.target.value === "") return;
+                          handlePartChange("month", parseInt(e.target.value, 10));
+                        }}
                       />
                       <input
                         type="number"
                         style={{ width: 46, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
-                        value={birthParts.day}
-                        onChange={(e) => handlePartChange("day", parseInt(e.target.value || "0", 10))}
+                        value={pad2(birthParts.day)}
+                        onChange={(e) => {
+                          if (e.target.value === "") return;
+                          handlePartChange("day", parseInt(e.target.value, 10));
+                        }}
                       />
                     </div>
                   </td>
@@ -923,14 +1989,20 @@ const AdditionalChartPage: React.FC = () => {
                       <input
                         type="number"
                         style={{ width: 46, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
-                        value={birthParts.hour}
-                        onChange={(e) => handlePartChange("hour", parseInt(e.target.value || "0", 10))}
+                        value={pad2(birthParts.hour)}
+                        onChange={(e) => {
+                          if (e.target.value === "") return;
+                          handlePartChange("hour", parseInt(e.target.value, 10));
+                        }}
                       />
                       <input
                         type="number"
                         style={{ width: 46, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
-                        value={birthParts.minute}
-                        onChange={(e) => handlePartChange("minute", parseInt(e.target.value || "0", 10))}
+                        value={pad2(birthParts.minute)}
+                        onChange={(e) => {
+                          if (e.target.value === "") return;
+                          handlePartChange("minute", parseInt(e.target.value, 10));
+                        }}
                       />
                     </div>
                   </td>
@@ -1118,7 +2190,7 @@ const AdditionalChartPage: React.FC = () => {
                       type="button"
                       className={`${BUTTON_PRIMARY} w-full`}
                       style={{ background: "#f2e3c2", color: "#1f1309", border: "1px solid #b38b52", fontWeight: 700 }}
-                      onClick={() => scheduleRebuild(birthParts)}
+                      onClick={() => buildNow(birthParts)}
                     >
                       Построить натальную карту
                     </button>
@@ -1131,12 +2203,190 @@ const AdditionalChartPage: React.FC = () => {
 	        </div>
 
         {planetTable}
+        {chart ? (
+          <div
+            className="mt-6 space-y-4"
+            style={{ margin: "20px auto 30px", paddingBottom: "30px", maxWidth: "1100px", width: "100%" }}
+          >
+            <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <strong>{ascSectionTitle}</strong>
+              </div>
+              <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>
+                {ascSignNameForText}
+                {ascLongitudeTextForText
+                  ? chartVariantConfig.longitudeLabel
+                    ? ` - ${chartVariantConfig.longitudeLabel} ${ascLongitudeTextForText}`
+                    : ` - ${ascLongitudeTextForText}`
+                  : ""}
+              </div>
+              {ascDescription ? <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{ascDescription}</div> : null}
+            </div>
+
+            <div className="flex justify-center px-2 mt-5 mb-12" style={{ marginBottom: "60px" }}>
+              <button
+                type="button"
+                className={`${BUTTON_PRIMARY} rounded-xl px-4 py-3`}
+                style={{
+                  fontSize: "1.5rem",
+                  width: "500px",
+                  maxWidth: "100%",
+                  marginBottom: "20px",
+                  background: "#f2e3c2",
+                  color: "#1f1309",
+                  border: "1px solid #b38b52",
+                  fontWeight: 700,
+                }}
+                onClick={handleFullDetailsClick}
+              >
+                {"\u041F\u041E\u041B\u041D\u041E\u0415 \u041E\u041F\u0418\u0421\u0410\u041D\u0418\u0415 \u041A\u0410\u0420\u0422\u042B"}
+              </button>
+            </div>
+
+            {allowFullDetails && lagneshaDescription ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Лагнеша</strong>
+                </div>
+                {lagneshaHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{lagneshaHeading}</div> : null}
+                {lagneshaBody ? <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{lagneshaBody}</div> : null}
+              </div>
+            ) : null}
+
+            {allowFullDetails && lagneshaHouseDescription ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Лагнеша в доме</strong>
+                </div>
+                {lagneshaHouseHeading ? (
+                  <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{lagneshaHouseHeading}</div>
+                ) : null}
+                {lagneshaHouseBody ? <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{lagneshaHouseBody}</div> : null}
+              </div>
+            ) : null}
+
+            {allowFullDetails && atmaKarakaDescription ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Атма-карака</strong>
+                </div>
+                <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>
+                  {atmaKarakaHeading}
+                  {atmaKarakaPercent !== null ? ` - ${atmaKarakaPercent.toFixed(2)}%` : ""}
+                  {atmaKarakaArcLabel ? ` (${atmaKarakaArcLabel})` : ""}
+                </div>
+                {atmaKarakaBody ? <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{atmaKarakaBody}</div> : null}
+              </div>
+            ) : null}
+
+            {allowFullDetails && daraKarakaDescription ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Дара-карака</strong>
+                </div>
+                <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>
+                  {daraKarakaHeading}
+                  {daraKarakaPercent !== null ? ` - ${daraKarakaPercent.toFixed(2)}%` : ""}
+                  {daraKarakaArcLabel ? ` (${daraKarakaArcLabel})` : ""}
+                </div>
+                {daraKarakaBody ? <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{daraKarakaBody}</div> : null}
+              </div>
+            ) : null}
+
+            {allowFullDetails && showSunSection ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Солнце</strong>
+                </div>
+                {sunHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{sunHouseHeading}</div> : null}
+                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{sunHouseBody}</div>
+              </div>
+            ) : null}
+
+            {allowFullDetails && showMoonSection ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Луна</strong>
+                </div>
+                {moonHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{moonHouseHeading}</div> : null}
+                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{moonHouseBody}</div>
+              </div>
+            ) : null}
+
+            {allowFullDetails && jupiterHouseBody ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Юпитер</strong>
+                </div>
+                {jupiterHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{jupiterHouseHeading}</div> : null}
+                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{jupiterHouseBody}</div>
+              </div>
+            ) : null}
+
+            {allowFullDetails && mercuryHouseBody ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Меркурий</strong>
+                </div>
+                {mercuryHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{mercuryHouseHeading}</div> : null}
+                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{mercuryHouseBody}</div>
+              </div>
+            ) : null}
+
+            {allowFullDetails && venusHouseBody ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Венера</strong>
+                </div>
+                {venusHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{venusHouseHeading}</div> : null}
+                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{venusHouseBody}</div>
+              </div>
+            ) : null}
+
+            {allowFullDetails && saturnHouseBody ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Сатурн</strong>
+                </div>
+                {saturnHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{saturnHouseHeading}</div> : null}
+                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{saturnHouseBody}</div>
+              </div>
+            ) : null}
+
+            {allowFullDetails && marsHouseBody ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Марс</strong>
+                </div>
+                {marsHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{marsHouseHeading}</div> : null}
+                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{marsHouseBody}</div>
+              </div>
+            ) : null}
+
+            {allowFullDetails && rahuHouseBody ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Раху</strong>
+                </div>
+                {rahuHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{rahuHouseHeading}</div> : null}
+                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{rahuHouseBody}</div>
+              </div>
+            ) : null}
+
+            {allowFullDetails && ketuHouseBody ? (
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  <strong>Кету</strong>
+                </div>
+                {ketuHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{ketuHouseHeading}</div> : null}
+                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{ketuHouseBody}</div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
 };
 
 export default AdditionalChartPage;
-
-
-

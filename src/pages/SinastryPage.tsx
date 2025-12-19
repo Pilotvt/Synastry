@@ -1239,7 +1239,7 @@ function ProfilePanel({ heading, description, state, isLoading, onUploadRequest,
                     ) : null}
                     {sunMoonBonus > 0 ? (
                       <li key="sunmoon-bonus" className="mb-1">
-                        <span className="font-semibold text-white/80">Солнце↔Луна в одном доме</span>
+                        <span className="font-semibold text-white/80">Солнце↔Луна в одном доме</span>{" "}
                         <span className="ml-2 text-green-400">бонус +{sunMoonBonus}%</span>
                       </li>
                     ) : null}

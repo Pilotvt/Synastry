@@ -9,6 +9,12 @@ import { latinToRuName } from "../utils/transliterate";
 import { loadChartTextResources, type ChartTextResources } from "../lib/textResources";
 import NorthIndianChart from "../components/NorthIndianChart";
 import { requestNewChartReset } from "../utils/newChartRequest";
+import {
+  chartFingerprintKey,
+  clearCloudSavedChartFingerprints,
+  markCloudSavedChartFingerprint,
+  readCloudSavedChartFingerprintKeys,
+} from "../utils/cloudChartFingerprints";
 import { readProfileFromStorage, writeProfileToStorage } from "../utils/profileStorage";
 import { isOwnerMatch, clearProfileStorage } from "../utils/profileStorage";
 import { readSavedChart, writeSavedChart, clearSavedChart, type SavedChartSource, type SavedChartMetadata } from "../utils/savedChartStorage";
@@ -17,7 +23,6 @@ import { encodeSupabasePointer, needsSupabaseResolution, parseSupabaseStoragePoi
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 import {
   PROFILE_SNAPSHOT_STORAGE_KEY,
-  LAST_SAVED_CHART_FINGERPRINT_KEY,
   LAST_SAVED_PROFILE_FINGERPRINT_KEY,
 } from "../constants/storageKeys";
 // profile freshness handled locally to avoid cross-file type coupling
@@ -418,27 +423,6 @@ function writeLastSavedFingerprint(fingerprint: string | null): void {
     }
   } catch (error) {
     console.warn('Failed to persist profile fingerprint', error);
-  }
-}
-
-function readLastSavedChartFingerprint(): string | null {
-  try {
-    return localStorage.getItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
-  } catch (error) {
-    console.warn('Failed to read last saved chart fingerprint', error);
-    return null;
-  }
-}
-
-function writeLastSavedChartFingerprint(fingerprint: string | null): void {
-  try {
-    if (!fingerprint) {
-      localStorage.removeItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
-    } else {
-      localStorage.setItem(LAST_SAVED_CHART_FINGERPRINT_KEY, fingerprint);
-    }
-  } catch (error) {
-    console.warn('Failed to persist chart fingerprint', error);
   }
 }
 
@@ -1079,7 +1063,7 @@ const ChartPage = () => {
       console.warn('Failed to clear saved chart cache', error);
     }
     writeLastSavedFingerprint(null);
-    writeLastSavedChartFingerprint(null);
+    clearCloudSavedChartFingerprints();
     if (options?.clearProfile === false) {
       return;
     }
@@ -2610,9 +2594,12 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
 	      const fingerprint = computeChartFingerprint(chart, meta);
 	      const shouldUpdateScreenshot = Boolean(chartScreenshot && needsCloudScreenshot(chart));
 	      if (skipIfUnchanged && fingerprint) {
-	        const lastFingerprint = readLastSavedChartFingerprint();
-	        if (!shouldUpdateScreenshot && lastFingerprint && lastFingerprint === fingerprint) {
-	          return { success: true, skipped: true };
+	        const fpKey = chartFingerprintKey(fingerprint);
+	        if (!shouldUpdateScreenshot && fpKey) {
+	          const knownKeys = readCloudSavedChartFingerprintKeys();
+	          if (knownKeys.has(fpKey)) {
+	            return { success: true, skipped: true };
+	          }
 	        }
 	      }
       updateStatus?.('Проверяем сессию...');
@@ -2667,7 +2654,7 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
         }
       }
       if (fingerprint) {
-        writeLastSavedChartFingerprint(fingerprint);
+        markCloudSavedChartFingerprint(fingerprint);
       }
       return { success: true, chartId: saved.id, screenshotUploaded };
     },
@@ -2705,7 +2692,7 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
         return result;
       }
       if (result.skipped) {
-        setCloudSaveMsg('Изменений не обнаружено — облако уже актуально.');
+        setCloudSaveMsg('Изменений не обнаружено — облако уже актуально (эта карта уже сохранена).');
       } else {
         let screenshotSuffix = '';
         if (result.screenshotUploaded) {
