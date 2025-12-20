@@ -1325,7 +1325,7 @@ const Questionnaire: React.FC = () => {
               setGender("");
               setResidenceCountry("RU");
               setResidenceCityName("");
-              await hardResetAllData({ logout });
+              await hardResetAllData({ logout, clearCloud: false });
               // Перенаправляем на страницу создания новой карты
               navigate("/app");
             }}

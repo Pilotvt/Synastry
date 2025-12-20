@@ -2,3 +2,6 @@
 - [x] Update App.tsx UI to drop map section.
 - [x] Clean up Yandex Maps script/config references.
 - [x] Run npm build to verify.
+- [x] Refresh cloud screenshot on manual save.
+- [x] Backfill profile coordinates in saved charts/files.
+- [x] Tidy Additional page spacing and table styles.

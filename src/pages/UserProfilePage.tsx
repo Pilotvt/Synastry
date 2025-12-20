@@ -12,7 +12,7 @@ import { readProfileFromStorage, isOwnerMatch } from '../utils/profileStorage';
 import { stripResidenceFields } from '../utils/stripResidenceFields';
 import { isChartSessionFromFile } from '../utils/fromFileSession';
 import { useChartCache } from '../store/chartCache';
-import { needsSupabaseResolution, resolveSupabaseScreenshotUrl } from '../utils/screenshotUrl';
+import { encodeSupabasePointer, needsSupabaseResolution, resolveSupabaseScreenshotUrl } from '../utils/screenshotUrl';
 import { useBlocklistStore } from '../store/blocklist';
 import { PROFILE_SNAPSHOT_STORAGE_KEY as STORAGE_KEY } from '../constants/storageKeys';
 import { requestNewChartReset } from '../utils/newChartRequest';
@@ -574,6 +574,7 @@ const UserProfilePage: React.FC = () => {
   const [identityEmail, setIdentityEmail] = useState<string | null>(null);
   const [licenseStatus, setLicenseStatus] = useState<ElectronLicenseStatus | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const viewingOwnProfile = useMemo(() => Boolean(currentUserId && userId && currentUserId === userId), [currentUserId, userId]);
   const [otherProfiles, setOtherProfiles] = useState<OtherProfilePreview[]>([]);
   const [otherLoading, setOtherLoading] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
@@ -702,6 +703,9 @@ const UserProfilePage: React.FC = () => {
   }, [cachedOwnerId, cachedProfileRecord, cachedChartRecord, sanitizeOwnProfile]);
   useEffect(() => {
     if (!currentUserId) return;
+    // When a chart was opened from file in this session, avoid hydrating UI from the in-memory cache first:
+    // it may still contain the previous chart and causes a visible flash before localStorage load completes.
+    if (fromFileRef.current && viewingOwnProfile) return;
     const snapshot = chartCacheRef.current;
     if (!snapshot || snapshot.ownerId !== currentUserId) return;
     if (snapshot.profile) {
@@ -730,7 +734,7 @@ const UserProfilePage: React.FC = () => {
         return prev;
       });
     }
-  }, [currentUserId, cachedOwnerId, cachedProfileRecord, cachedChartRecord, sanitizeOwnProfile]);
+  }, [currentUserId, cachedOwnerId, cachedProfileRecord, cachedChartRecord, sanitizeOwnProfile, viewingOwnProfile]);
   useEffect(() => {
     if (arrivedFromFile) {
       fromFileRef.current = true;
@@ -975,7 +979,6 @@ const UserProfilePage: React.FC = () => {
     };
   }, [chart]);
   useEffect(() => {
-    const viewingOwnProfile = Boolean(currentUserId && userId && currentUserId === userId);
     const preferLocalSession = Boolean(fromFileRef.current && viewingOwnProfile);
     async function loadData() {
       if (!userId) return;
@@ -1004,8 +1007,9 @@ const UserProfilePage: React.FC = () => {
         const localInitialFp = personFingerprint(localInitialProfile);
         const hasMatchingCache = Boolean(viewingOwnProfile && cacheSnapshot?.ownerId && cacheSnapshot.ownerId === currentUserId);
         let resolvedLocalScreenshot: string | null = null;
-        const captureScreenshotSource = (source: unknown) => {
-          if (resolvedLocalScreenshot || !source) return;
+        const captureScreenshotSource = (source: unknown, options?: { force?: boolean }) => {
+          if (!source) return;
+          if (!options?.force && resolvedLocalScreenshot) return;
           const shot = resolveScreenshotFromAny(source);
           if (shot) {
             resolvedLocalScreenshot = shot;
@@ -1039,15 +1043,15 @@ const UserProfilePage: React.FC = () => {
           savedChartPayload = readSavedChartSource(currentUserId ?? undefined);
         }
         if (savedChartPayload) {
-          captureScreenshotSource(savedChartPayload['chart']);
+          captureScreenshotSource(savedChartPayload['chart'], { force: true });
           if (!resolvedLocalScreenshot) {
-            captureScreenshotSource(savedChartPayload);
+            captureScreenshotSource(savedChartPayload, { force: true });
           }
         } else if (viewingOwnProfile) {
           try {
             const fallbackSource = readSavedChartSource(currentUserId ?? undefined);
             if (fallbackSource) {
-              captureScreenshotSource(fallbackSource['chart'] ?? fallbackSource);
+              captureScreenshotSource(fallbackSource['chart'] ?? fallbackSource, { force: true });
             }
           } catch (resolveError) {
             console.warn('Failed to resolve screenshot from saved chart source', resolveError);
@@ -1061,7 +1065,15 @@ const UserProfilePage: React.FC = () => {
             if (chartCandidate && typeof chartCandidate === 'object') {
               const normalizedChart = isRecord(chartCandidate) ? chartCandidate : null;
               if (normalizedChart) {
-                setChart((prev) => prev ?? toChartRow({ chart: normalizedChart }));
+                setChart((prev) => {
+                  if (!prev) return toChartRow({ chart: normalizedChart });
+                  const nextSignature = computeChartSignature(normalizedChart as ChartPayload);
+                  const prevSignature = computeChartSignature(extractChartPayload(prev));
+                  if (!prevSignature || prevSignature !== nextSignature) {
+                    return toChartRow({ chart: normalizedChart });
+                  }
+                  return prev;
+                });
               }
             }
             const savedProfileRaw = savedChartPayload['profile'] as unknown;
@@ -1175,10 +1187,10 @@ const UserProfilePage: React.FC = () => {
                     }
                     const match = listData.find((item) => isRecord(item) && typeof item.name === 'string' && item.name.startsWith(`chart-${userId}-`));
                     if (match) {
-                      const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(match.name);
-                      const publicURL = publicData?.publicUrl;
-                      if (publicURL) {
-                        finalChart = applyScreenshotToChart(finalChart, publicURL);
+                      const pointer = encodeSupabasePointer({ bucket, path: match.name });
+                      const resolved = await resolveSupabaseScreenshotUrl(pointer);
+                      if (resolved) {
+                        finalChart = applyScreenshotToChart(finalChart, resolved);
                         break;
                       }
                     }
@@ -1366,11 +1378,17 @@ const UserProfilePage: React.FC = () => {
                 const normalized = toChartRow(chartRow);
                 chartPayload = normalized.chart ?? null;
                 chartScreenshot = extractChartScreenshot(normalized);
-                if (chartScreenshot && needsSupabaseResolution(chartScreenshot)) {
-                  const pointer = isRecord(normalized.chart) && typeof normalized.chart.screenshotStoragePointer === 'string'
-                    ? normalized.chart.screenshotStoragePointer
-                    : null;
-                  chartScreenshot = await resolveSupabaseScreenshotUrl(pointer ?? chartScreenshot);
+                // For previews we only use already-resolvable URLs (data/http/signed). Private storage pointers are not accessible.
+                if (chartScreenshot && typeof chartScreenshot === 'string' && chartScreenshot.startsWith('supabase://')) {
+                  chartScreenshot = null;
+                }
+                // Some users may have a stale "public" URL for a private bucket; hide it to avoid noisy 400s.
+                if (
+                  chartScreenshot &&
+                  typeof chartScreenshot === 'string' &&
+                  /\/storage\/v1\/object\/public\/charts-screenshots\//.test(chartScreenshot)
+                ) {
+                  chartScreenshot = null;
                 }
                 
                 // Extract ascSign from chart if not in profile

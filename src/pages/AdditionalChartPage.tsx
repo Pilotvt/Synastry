@@ -147,6 +147,7 @@ type ChartResponse = {
     ra_deg_b1875: number;
     dec_deg_b1875: number;
   }[];
+  debug_info?: Record<string, unknown> | null;
 };
 
 type BuildMeta = {
@@ -363,6 +364,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function coerceFiniteNumber(value: unknown): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : Number.NaN;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(",", ".");
+    if (!normalized) return Number.NaN;
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : Number.NaN;
+  }
+  return Number.NaN;
+}
+
+function extractChartCoords(value: unknown): { lat: number | null; lon: number | null } {
+  if (!isRecord(value)) return { lat: null, lon: null };
+  const debugInfo = value.debug_info;
+  if (!isRecord(debugInfo)) return { lat: null, lon: null };
+  const payload = isRecord(debugInfo.payload) ? debugInfo.payload : null;
+  const lat = coerceFiniteNumber((payload && (payload.latitude ?? payload.lat)) ?? debugInfo.latitude ?? debugInfo.lat);
+  const lon = coerceFiniteNumber((payload && (payload.longitude ?? payload.lon)) ?? debugInfo.longitude ?? debugInfo.lon);
+  return {
+    lat: Number.isFinite(lat) ? lat : null,
+    lon: Number.isFinite(lon) ? lon : null,
+  };
+}
+
 type AdditionalDraftCity = {
   id: string;
   name: string;
@@ -400,8 +427,8 @@ function parseAdditionalDraftCity(city: unknown): AdditionalDraftCity | null {
   const name = typeof obj.name === "string" ? obj.name : "";
   const nameRu = typeof obj.nameRu === "string" ? obj.nameRu : "";
   const country = typeof obj.country === "string" ? obj.country : "";
-  const lat = typeof obj.lat === "number" ? obj.lat : Number(obj.lat);
-  const lon = typeof obj.lon === "number" ? obj.lon : Number(obj.lon);
+  const lat = coerceFiniteNumber(obj.lat);
+  const lon = coerceFiniteNumber(obj.lon);
   if (!id || !name || !country || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   return { id, name, nameRu: nameRu || name, lat, lon, country };
 }
@@ -957,6 +984,7 @@ const AdditionalChartPage: React.FC = () => {
       const chartValue = root.chart;
       const metaValue = root.meta;
       const profileValue = root.profile;
+      const chartCoords = extractChartCoords(chartValue);
 
       setError(null);
 
@@ -970,16 +998,22 @@ const AdditionalChartPage: React.FC = () => {
         const cityQueryRaw = typeof profileValue.cityQuery === "string" ? profileValue.cityQuery : "";
         const selectedCityRaw = typeof profileValue.selectedCity === "string" ? profileValue.selectedCity : "";
         const cityNameRuRaw = typeof profileValue.cityNameRu === "string" ? profileValue.cityNameRu : "";
-        const latRaw = typeof profileValue.lat === "number" ? profileValue.lat : Number(profileValue.lat);
-        const lonRaw = typeof profileValue.lon === "number" ? profileValue.lon : Number(profileValue.lon);
+        const latRaw = coerceFiniteNumber(profileValue.lat);
+        const lonRaw = coerceFiniteNumber(profileValue.lon);
+        const latResolved = Number.isFinite(latRaw)
+          ? latRaw
+          : (typeof chartCoords.lat === "number" && Number.isFinite(chartCoords.lat) ? chartCoords.lat : null);
+        const lonResolved = Number.isFinite(lonRaw)
+          ? lonRaw
+          : (typeof chartCoords.lon === "number" && Number.isFinite(chartCoords.lon) ? chartCoords.lon : null);
 
         setPersonName(personNameRaw);
         setLastName(lastNameRaw);
         if (genderRaw) setGender(genderRaw);
         if (countryRaw) setCountry(countryRaw);
         if (cityQueryRaw) setCityQuery(cityQueryRaw);
-        if (Number.isFinite(latRaw)) setLat(latRaw);
-        if (Number.isFinite(lonRaw)) setLon(lonRaw);
+        if (typeof latResolved === "number") setLat(latResolved);
+        if (typeof lonResolved === "number") setLon(lonResolved);
 
         importedParts = parseBirthPartsFromIso(profileValue.birth);
         if (importedParts) setBirthParts(importedParts);
@@ -993,15 +1027,15 @@ const AdditionalChartPage: React.FC = () => {
         if (Number.isFinite(tzCorrectionHoursRaw)) setTzCorrectionHours(tzCorrectionHoursRaw);
         setDstManual(dstManualRaw);
 
-        if (selectedCityRaw && Number.isFinite(latRaw) && Number.isFinite(lonRaw)) {
+        if (selectedCityRaw && typeof latResolved === "number" && typeof lonResolved === "number") {
           const countryForCity = (countryRaw || country || "RU").toUpperCase();
           const suggestion = makeCitySuggestion({
-            id: `${countryForCity}:${selectedCityRaw}:${latRaw}:${lonRaw}`,
+            id: `${countryForCity}:${selectedCityRaw}:${latResolved}:${lonResolved}`,
             name: selectedCityRaw,
             nameRu: cityNameRuRaw || latinToRuName(selectedCityRaw),
             country: countryForCity,
-            lat: latRaw,
-            lon: lonRaw,
+            lat: latResolved,
+            lon: lonResolved,
           });
           setSelectedCity(suggestion);
           setAutoApplyCity(false);
@@ -1165,12 +1199,11 @@ const AdditionalChartPage: React.FC = () => {
     if (exact) handleCitySelect(exact);
   }, [autoApplyCity, cityQuery, cities]);
 
-  const utcString = useMemo(() => {
-    if (!meta) return "";
-    const effectiveDst = enableTzCorrection ? meta.manualDstMinutes > 0 : meta.autoDstMinutes > 0;
-    const dstLabel = effectiveDst ? "(DST)" : "(без DST)";
-    return `На момент рождения: ${formatOffset(meta.finalOffsetMinutes)} ${dstLabel}`;
-  }, [enableTzCorrection, meta]);
+  const ianaTzDisplay = useMemo(() => {
+    if (!ianaTz) return "";
+    if (!meta) return ianaTz;
+    return `${ianaTz}, ${formatOffset(meta.finalOffsetMinutes)}`;
+  }, [ianaTz, meta]);
 
   const handleSaveToFile = async () => {
     if (!chart || !meta) return;
@@ -1400,137 +1433,155 @@ const AdditionalChartPage: React.FC = () => {
     const iauNameByCode = new Map<string, string>();
     arcsForRender.forEach((a) => iauNameByCode.set(a.iau_code, a.iau_name_ru));
 
+    const tableFontSize = 16;
+    const cellStyle: React.CSSProperties = {
+      padding: "2px 6px",
+      verticalAlign: "top",
+      textAlign: "left",
+      whiteSpace: "nowrap",
+      fontWeight: 400,
+      color: "#1f1309",
+      lineHeight: "18px",
+    };
+    const headerCellStyle: React.CSSProperties = {
+      ...cellStyle,
+      color: "#000",
+      fontWeight: 700,
+    };
+
     return (
-      <div style={{ maxWidth: "700px", width: "100%", margin: "16px auto 0" }}>
-        <div style={{ fontWeight: 900, textTransform: "uppercase", marginBottom: 6 }}>
+      <div style={{ maxWidth: "700px", width: "100%", margin: "16px 0 0" }}>
+        <div style={{ fontSize: tableFontSize, fontWeight: 800, marginBottom: 6, color: "#1f1309" }}>
           СОЗВЕЗДИЯ И ПЛАНЕТЫ (
-          <span style={{ fontWeight: 600 }}>
-            {"\u2191-уча, \u2193-нича, \u25cb-карака, \u25a1-дигбала, \u2302-свой знак, \u25cf-сожж\u0451ная, \u00d8-проигравшая, \u263c-супер сильная"}
+          <span style={{ fontWeight: 400 }}>
+            {"\u2191-\u0443\u0447\u0430, \u2193-\u043d\u0438\u0447\u0430, \u25cb-\u043a\u0430\u0440\u0430\u043a\u0430, \u25a1-\u0434\u0438\u0433\u0431\u0430\u043b\u0430, \u2302-\u0441\u0432\u043e\u0439 \u0437\u043d\u0430\u043a, \u25cf-\u0441\u043e\u0436\u0436\u0451\u043d\u0430\u044f, \u00d8-\u043f\u0440\u043e\u0438\u0433\u0440\u0430\u0432\u0448\u0430\u044f, \u263c-\u0441\u0443\u043f\u0435\u0440 \u0441\u0438\u043b\u044c\u043d\u0430\u044f"}
           </span>
           )
         </div>
-        <table style={{ width: "100%", borderCollapse: "collapse", background: "#f2e3c2", border: "1px solid #b38b52" }}>
-          <thead>
-            <tr>
-              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Созвездие (код)</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Lon start</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Lon end</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Планета</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Истин. созв.</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Долгота</th>
-              <th style={{ border: "1px solid #b38b52", padding: "4px", textAlign: "left", whiteSpace: "nowrap" }}>Рет.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {arcsForRender.map((arc) => {
-              const planets = planetsByArc.get(arc.iau_code) ?? [];
-              if (planets.length === 0) {
-                return (
-                  <tr key={arc.iau_code}>
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
-                      {arc.iau_name_ru} ({arc.iau_code})
-                    </td>
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>{formatArcDegree(arc.lon_start_deg)}</td>
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>{formatArcDegree(arc.lon_end_deg)}</td>
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top", color: "rgba(0,0,0,0.45)" }}>-</td>
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>-</td>
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>-</td>
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}> </td>
-                  </tr>
-                );
-              }
-
-              return planets.map((p, idx) => {
-                const iauCode = p.iau_constellation || arc.iau_code || "";
-                const iauNameRu = iauNameByCode.get(iauCode) || "";
-                const markersForPlanet = planetMarkers.get(p.name) ?? [];
-                const strength = p.house_strength ?? 0;
-                const strengthPercent = Math.round(strength * 100);
-                const strengthColor = (() => {
-                  const percent = strength;
-                  if (percent <= 0.1) {
-                    return "#e53935";
-                  } else if (percent < 0.5) {
-                    const ratio = (percent - 0.1) / 0.4;
-                    const r = Math.round(229 + (251 - 229) * ratio);
-                    const g = Math.round(57 + (192 - 57) * ratio);
-                    const b = Math.round(53 + (45 - 53) * ratio);
-                    return `rgb(${r},${g},${b})`;
-                  } else if (percent < 0.99) {
-                    const ratio = (percent - 0.5) / 0.49;
-                    const r = Math.round(251 + (67 - 251) * ratio);
-                    const g = Math.round(192 + (160 - 192) * ratio);
-                    const b = Math.round(45 + (71 - 45) * ratio);
-                    return `rgb(${r},${g},${b})`;
-                  } else {
-                    return "#43a047";
-                  }
-                })();
-
-                return (
-                  <tr key={`${arc.iau_code}-${p.name}-${idx}`}>
-                    {idx === 0 ? (
-                      <>
-                        <td rowSpan={planets.length} style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
+        <div style={{ background: "#f7e4c1", border: "1px solid #7a643a", padding: "6px 8px" }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: tableFontSize, color: "#1f1309" }}>
+              <thead>
+                <tr>
+                  <th style={headerCellStyle}>Созвездие (код)</th>
+                  <th style={headerCellStyle}>Lon start</th>
+                  <th style={headerCellStyle}>Lon end</th>
+                  <th style={headerCellStyle}>Планета</th>
+                  <th style={headerCellStyle}>Истин. созв.</th>
+                  <th style={headerCellStyle}>Долгота</th>
+                  <th style={headerCellStyle}>Рет.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {arcsForRender.map((arc) => {
+                  const planets = planetsByArc.get(arc.iau_code) ?? [];
+                  if (planets.length === 0) {
+                    return (
+                      <tr key={arc.iau_code}>
+                        <td style={cellStyle}>
                           {arc.iau_name_ru} ({arc.iau_code})
                         </td>
-                        <td rowSpan={planets.length} style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
-                          {formatArcDegree(arc.lon_start_deg)}
-                        </td>
-                        <td rowSpan={planets.length} style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
-                          {formatArcDegree(arc.lon_end_deg)}
-                        </td>
-                      </>
-                    ) : null}
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        <span
-                          title={`Сила: ${strengthPercent}%`}
-                          style={{
-                            display: "inline-block",
-                            width: "48px",
-                            height: "12px",
-                            borderRadius: "6px",
-                            background: "#444",
-                            position: "relative",
-                            overflow: "hidden",
-                            verticalAlign: "middle",
-                          }}
-                        >
-                          <span
-                            style={{
-                              position: "absolute",
-                              left: 0,
-                              top: 0,
-                              height: "100%",
-                              width: `${strengthPercent}%`,
-                              background: strengthColor,
-                              borderRadius: "6px",
-                              transition: "width 0.3s, background 0.3s",
-                            }}
-                          />
-                        </span>
-                        {markersForPlanet.length ? (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 16, lineHeight: 1 }}>
-                            {markersForPlanet.map((symbol, symbolIdx) => (
-                              <span key={`${p.name}-${symbol}-${symbolIdx}`}>{symbol}</span>
-                            ))}
-                          </span>
+                        <td style={cellStyle}>{formatArcDegree(arc.lon_start_deg)}</td>
+                        <td style={cellStyle}>{formatArcDegree(arc.lon_end_deg)}</td>
+                        <td style={{ ...cellStyle, color: "rgba(0,0,0,0.45)" }}>-</td>
+                        <td style={cellStyle}>-</td>
+                        <td style={cellStyle}>-</td>
+                        <td style={cellStyle}> </td>
+                      </tr>
+                    );
+                  }
+
+                  return planets.map((p, idx) => {
+                    const iauCode = p.iau_constellation || arc.iau_code || "";
+                    const iauNameRu = iauNameByCode.get(iauCode) || "";
+                    const markersForPlanet = planetMarkers.get(p.name) ?? [];
+                    const strength = p.house_strength ?? 0;
+                    const strengthPercent = Math.round(strength * 100);
+                    const strengthColor = (() => {
+                      const percent = strength;
+                      if (percent <= 0.1) {
+                        return "#e53935";
+                      } else if (percent < 0.5) {
+                        const ratio = (percent - 0.1) / 0.4;
+                        const r = Math.round(229 + (251 - 229) * ratio);
+                        const g = Math.round(57 + (192 - 57) * ratio);
+                        const b = Math.round(53 + (45 - 53) * ratio);
+                        return `rgb(${r},${g},${b})`;
+                      } else if (percent < 0.99) {
+                        const ratio = (percent - 0.5) / 0.49;
+                        const r = Math.round(251 + (67 - 251) * ratio);
+                        const g = Math.round(192 + (160 - 192) * ratio);
+                        const b = Math.round(45 + (71 - 45) * ratio);
+                        return `rgb(${r},${g},${b})`;
+                      } else {
+                        return "#43a047";
+                      }
+                    })();
+
+                    return (
+                      <tr key={`${arc.iau_code}-${p.name}-${idx}`}>
+                        {idx === 0 ? (
+                          <>
+                            <td rowSpan={planets.length} style={cellStyle}>
+                              {arc.iau_name_ru} ({arc.iau_code})
+                            </td>
+                            <td rowSpan={planets.length} style={cellStyle}>
+                              {formatArcDegree(arc.lon_start_deg)}
+                            </td>
+                            <td rowSpan={planets.length} style={cellStyle}>
+                              {formatArcDegree(arc.lon_end_deg)}
+                            </td>
+                          </>
                         ) : null}
-                        <span>{PLANET_NAMES_RU[p.name] ?? p.name}</span>
-                      </span>
-                    </td>
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>
-                      {iauNameRu ? `${iauNameRu} (${iauCode})` : p.iau_constellation || ""}
-                    </td>
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>{formatDegreesWithoutSeconds(p.lon_sidereal)}</td>
-                    <td style={{ border: "1px solid #b38b52", padding: "4px", verticalAlign: "top" }}>{p.is_retrograde ? "R" : ""}</td>
-                  </tr>
-                );
-              });
-            })}
-          </tbody>
-        </table>
+                        <td style={cellStyle}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                            <span
+                              title={`Сила: ${strengthPercent}%`}
+                              style={{
+                                display: "inline-block",
+                                width: "48px",
+                                height: "12px",
+                                borderRadius: "6px",
+                                background: "#444",
+                                position: "relative",
+                                overflow: "hidden",
+                                verticalAlign: "middle",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  position: "absolute",
+                                  left: 0,
+                                  top: 0,
+                                  height: "100%",
+                                  width: `${strengthPercent}%`,
+                                  background: strengthColor,
+                                  borderRadius: "6px",
+                                  transition: "width 0.3s, background 0.3s",
+                                }}
+                              />
+                            </span>
+                            {markersForPlanet.length ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 16, lineHeight: 1 }}>
+                                {markersForPlanet.map((symbol, symbolIdx) => (
+                                  <span key={`${p.name}-${symbol}-${symbolIdx}`}>{symbol}</span>
+                                ))}
+                              </span>
+                            ) : null}
+                            <span>{PLANET_NAMES_RU[p.name] ?? p.name}</span>
+                          </span>
+                        </td>
+                        <td style={cellStyle}>{iauNameRu ? `${iauNameRu} (${iauCode})` : p.iau_constellation || ""}</td>
+                        <td style={cellStyle}>{formatDegreesWithoutSeconds(p.lon_sidereal)}</td>
+                        <td style={cellStyle}>{p.is_retrograde ? "R" : ""}</td>
+                      </tr>
+                    );
+                  });
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     );
   }, [arcsForRender, chart, planetMarkers, planetsByArc]);
@@ -1597,7 +1648,7 @@ const AdditionalChartPage: React.FC = () => {
 
   const handleFullDetailsClick = useCallback(() => {
     if (isLicensed) {
-      setFullDetailsOpen(true);
+      setFullDetailsOpen((prev) => !prev);
       return;
     }
     fullDetailsRequestedRef.current = true;
@@ -1894,7 +1945,7 @@ const AdditionalChartPage: React.FC = () => {
           })}
           <button
             type="button"
-            className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
+            className="px-3 py-1.5 text-sm border border-[#7a643a] bg-[#f7e4c1] text-black transition-colors hover:bg-[#edd7aa] disabled:opacity-60 disabled:cursor-not-allowed"
             onClick={handleSaveToFile}
             disabled={!chart || !meta}
           >
@@ -1902,7 +1953,7 @@ const AdditionalChartPage: React.FC = () => {
           </button>
           <button
             type="button"
-            className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
+            className="px-3 py-1.5 text-sm border border-[#7a643a] bg-[#f7e4c1] text-black transition-colors hover:bg-[#edd7aa]"
             onClick={handleOpenFromFileClick}
           >
             Открыть файл
@@ -2120,12 +2171,11 @@ const AdditionalChartPage: React.FC = () => {
                 <tr>
                   <td style={{ padding: "2px 4px" }}>IANA часовой пояс</td>
                   <td style={{ padding: "2px 4px" }}>
-                    <input style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }} value={ianaTz} readOnly />
-                  </td>
-                </tr>
-                <tr>
-                  <td colSpan={2} style={{ padding: "2px 4px", fontSize: 12, color: "#4a3822" }}>
-                    {utcString}
+                    <input
+                      style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                      value={ianaTzDisplay}
+                      readOnly
+                    />
                   </td>
                 </tr>
                 <tr>
@@ -2209,10 +2259,8 @@ const AdditionalChartPage: React.FC = () => {
             style={{ margin: "20px auto 30px", paddingBottom: "30px", maxWidth: "1100px", width: "100%" }}
           >
             <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
-                <strong>{ascSectionTitle}</strong>
-              </div>
-              <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{ascSectionTitle}</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "#4a3822", marginBottom: 6 }}>
                 {ascSignNameForText}
                 {ascLongitudeTextForText
                   ? chartVariantConfig.longitudeLabel
@@ -2220,13 +2268,13 @@ const AdditionalChartPage: React.FC = () => {
                     : ` - ${ascLongitudeTextForText}`
                   : ""}
               </div>
-              {ascDescription ? <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{ascDescription}</div> : null}
+              {ascDescription ? <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{ascDescription}</div> : null}
             </div>
 
-            <div className="flex justify-center px-2 mt-5 mb-12" style={{ marginBottom: "60px" }}>
+            <div className="flex justify-center px-2 mb-12" style={{ marginTop: "12px", marginBottom: "60px" }}>
               <button
                 type="button"
-                className={`${BUTTON_PRIMARY} rounded-xl px-4 py-3`}
+                className={`${BUTTON_SECONDARY} rounded-xl px-4 py-3`}
                 style={{
                   fontSize: "1.5rem",
                   width: "500px",
@@ -2239,7 +2287,7 @@ const AdditionalChartPage: React.FC = () => {
                 }}
                 onClick={handleFullDetailsClick}
               >
-                {"\u041F\u041E\u041B\u041D\u041E\u0415 \u041E\u041F\u0418\u0421\u0410\u041D\u0418\u0415 \u041A\u0410\u0420\u0422\u042B"}
+                {allowFullDetails ? "Скрыть полное описание" : "Полное описание карты"}
               </button>
             </div>
 

@@ -1233,14 +1233,14 @@ function ProfilePanel({ heading, description, state, isLoading, onUploadRequest,
                     ))}
                     {directionalSummary.kujaPenalty ? (
                       <li key="kuja-penalty" className="mb-1">
-                        <span className="font-semibold text-white/80">Куджа-доша</span>
-                        <span className="ml-2 text-red-400">штраф {directionalSummary.kujaPenalty}%</span>
+                        <span className="font-semibold text-white/80">Куджа-доша - штраф</span>
+                        <span className="ml-2 text-red-400">{directionalSummary.kujaPenalty}%</span>
                       </li>
                     ) : null}
                     {sunMoonBonus > 0 ? (
                       <li key="sunmoon-bonus" className="mb-1">
-                        <span className="font-semibold text-white/80">Солнце↔Луна в одном доме</span>{" "}
-                        <span className="ml-2 text-green-400">бонус +{sunMoonBonus}%</span>
+                        <span className="font-semibold text-white/80">Солнце↔Луна в одном доме - бонус</span>{" "}
+                        <span className="ml-2 text-green-400">+{sunMoonBonus}%</span>
                       </li>
                     ) : null}
                   </ul>

@@ -10,9 +10,12 @@ import {
 export type HardResetOptions = {
   clearCloud?: boolean;
   logout?: () => void;
+  preserveCloudChartFingerprints?: boolean;
 };
 
-export function resetLocalUserData(options?: Pick<HardResetOptions, "logout">) {
+export function resetLocalUserData(
+  options?: Pick<HardResetOptions, "logout" | "preserveCloudChartFingerprints">,
+) {
   try {
     clearSavedChart();
   } catch (error) {
@@ -24,7 +27,9 @@ export function resetLocalUserData(options?: Pick<HardResetOptions, "logout">) {
     console.warn("Не удалось очистить локальный профиль", error);
   }
   try {
-    localStorage.removeItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
+    if (!options?.preserveCloudChartFingerprints) {
+      localStorage.removeItem(LAST_SAVED_CHART_FINGERPRINT_KEY);
+    }
   } catch (error) {
     console.warn("Не удалось удалить хеш сохранённой карты", error);
   }
@@ -54,7 +59,9 @@ export async function resetCloudUserData() {
 }
 
 export async function hardResetAllData(options?: HardResetOptions) {
-  resetLocalUserData({ logout: options?.logout });
+  const preserveCloudChartFingerprints =
+    options?.preserveCloudChartFingerprints ?? options?.clearCloud === false;
+  resetLocalUserData({ logout: options?.logout, preserveCloudChartFingerprints });
   if (options?.clearCloud === false) {
     return;
   }

@@ -210,6 +210,9 @@ const DEBILITATION_SIGNS: Record<string, readonly string[]> = {
 type CloudSaveOptions = {
   silent?: boolean;
   skipIfUnchanged?: boolean;
+  forceScreenshot?: boolean;
+  screenshotDataUrl?: string | null;
+  screenshotHash?: string | null;
   updateStatus?: (message: string | null) => void;
   notifyScreenshotUploading?: (uploading: boolean) => void;
 };
@@ -324,6 +327,34 @@ function normalizeProfileNumbers(snapshot: ProfileSnapshot): ProfileSnapshot {
         ? snapshot.tzCorrectionHours
         : undefined,
   };
+}
+
+function extractChartCoords(chart: ChartResponse | null): { lat: number | null; lon: number | null } {
+  if (!chart) return { lat: null, lon: null };
+  if (!isRecord(chart.debug_info)) return { lat: null, lon: null };
+  const debug = chart.debug_info as Record<string, unknown>;
+  const payload = isRecord(debug.payload) ? (debug.payload as Record<string, unknown>) : null;
+  const lat = coerceFiniteNumber(
+    (payload && (payload.latitude ?? payload.lat)) ?? debug.latitude ?? debug.lat,
+  );
+  const lon = coerceFiniteNumber(
+    (payload && (payload.longitude ?? payload.lon)) ?? debug.longitude ?? debug.lon,
+  );
+  return {
+    lat: Number.isFinite(lat) ? lat : null,
+    lon: Number.isFinite(lon) ? lon : null,
+  };
+}
+
+function ensureProfileCoords(profile: ProfileSnapshot | null, chart: ChartResponse | null): ProfileSnapshot | null {
+  if (!profile) return null;
+  const lat = coerceFiniteNumber((profile as { lat?: unknown }).lat);
+  const lon = coerceFiniteNumber((profile as { lon?: unknown }).lon);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) return profile;
+  const { lat: chartLat, lon: chartLon } = extractChartCoords(chart);
+  if (typeof chartLat !== "number" || !Number.isFinite(chartLat)) return profile;
+  if (typeof chartLon !== "number" || !Number.isFinite(chartLon)) return profile;
+  return { ...profile, lat: chartLat, lon: chartLon };
 }
 
 function extractAscSignFromChart(chartValue: unknown): string | null {
@@ -503,16 +534,31 @@ function rotateHouseNumber(house: number | null | undefined, shift: number): num
   return normalized + 1;
 }
 
+function normalizeBuildMeta(value: unknown): BuildMeta | null {
+  if (!isRecord(value)) return null;
+  const ianaTz = typeof value.ianaTz === "string" ? value.ianaTz : null;
+  const datetimeIso = typeof value.datetimeIso === "string" ? value.datetimeIso : null;
+  const baseOffsetMinutes = coerceFiniteNumber(value.baseOffsetMinutes);
+  const finalOffsetMinutes = coerceFiniteNumber(value.finalOffsetMinutes);
+  const autoDstMinutes = coerceFiniteNumber(value.autoDstMinutes);
+  const manualDstMinutes = coerceFiniteNumber(value.manualDstMinutes);
+  if (!ianaTz || !datetimeIso) return null;
+  if (!Number.isFinite(baseOffsetMinutes)) return null;
+  if (!Number.isFinite(finalOffsetMinutes)) return null;
+  if (!Number.isFinite(autoDstMinutes)) return null;
+  if (!Number.isFinite(manualDstMinutes)) return null;
+  return {
+    ianaTz,
+    datetimeIso,
+    baseOffsetMinutes,
+    finalOffsetMinutes,
+    autoDstMinutes,
+    manualDstMinutes,
+  };
+}
+
 function isBuildMeta(value: unknown): value is BuildMeta {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.ianaTz === "string" &&
-    typeof value.datetimeIso === "string" &&
-    typeof value.baseOffsetMinutes === "number" &&
-    typeof value.finalOffsetMinutes === "number" &&
-    typeof value.autoDstMinutes === "number" &&
-    typeof value.manualDstMinutes === "number"
-  );
+  return normalizeBuildMeta(value) !== null;
 }
 
 const SIGN_INFO: Record<string, { index: number; ru: string; en: string }> = {
@@ -880,12 +926,13 @@ function buildFallbackMeta(profile: ProfileSnapshot | null): BuildMeta {
 
 function resolveMetaForDisplay(metaSource: unknown, profile: ProfileSnapshot | null): BuildMeta {
   const fallback = buildFallbackMeta(profile);
-  if (!isBuildMeta(metaSource)) return fallback;
-  if (metaSource.ianaTz === "local" && fallback.ianaTz !== "local") return fallback;
-  const looksPlaceholder = metaSource.baseOffsetMinutes === 0 && metaSource.finalOffsetMinutes === 0;
+  const normalizedMeta = normalizeBuildMeta(metaSource);
+  if (!normalizedMeta) return fallback;
+  if (normalizedMeta.ianaTz === "local" && fallback.ianaTz !== "local") return fallback;
+  const looksPlaceholder = normalizedMeta.baseOffsetMinutes === 0 && normalizedMeta.finalOffsetMinutes === 0;
   const fallbackLooksBetter = fallback.baseOffsetMinutes !== 0 || fallback.finalOffsetMinutes !== 0 || fallback.ianaTz !== "local";
   if (looksPlaceholder && fallbackLooksBetter) return fallback;
-  return metaSource;
+  return normalizedMeta;
 }
 
 // Helper: pick freshest profile by updated_at (missing treated as 0)
@@ -996,7 +1043,8 @@ function QuestionnaireButton({ profile, chart, meta, navigate, fromFile, ownerId
       } as ProfileSnapshot;
 
       try {
-        const payloadToSave = { profile: stamped, chart: chart ?? null, meta: meta ?? null };
+        const profileWithCoords = ensureProfileCoords(stamped, chart ?? null) ?? stamped;
+        const payloadToSave = { profile: profileWithCoords, chart: chart ?? null, meta: meta ?? null };
         const sourceForSave: SavedChartSource = fromFile ? 'file' : 'local';
         writeSavedChart(payloadToSave, ownerId ?? null, {
           meta: {
@@ -1005,7 +1053,7 @@ function QuestionnaireButton({ profile, chart, meta, navigate, fromFile, ownerId
             fingerprint: null,
           },
         });
-        writeProfileToStorage(PROFILE_SNAPSHOT_STORAGE_KEY, stamped, ownerId ?? null, false);
+        writeProfileToStorage(PROFILE_SNAPSHOT_STORAGE_KEY, profileWithCoords, ownerId ?? null, false);
       } catch (storageErr) {
         console.warn('Failed to write saved chart/profile to localStorage before questionnaire:', storageErr);
       }
@@ -1040,7 +1088,6 @@ const ChartPage = () => {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const saveInFlightRef = useRef(false);
   const autoSavePendingRef = useRef(false);
-  const fileAutoSaveRef = useRef(false);
   const autoSaveFingerprintRef = useRef<string | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
   const newChartButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1482,16 +1529,17 @@ const ChartPage = () => {
                     const chartResponse = chartCandidate as ChartResponse;
                     const metaSource = (data as Record<string, unknown>).meta;
                     const resolvedProfile = savedProfile ?? null;
-                    const metaValue: BuildMeta = resolveMetaForDisplay(metaSource, resolvedProfile);
-                    const resolvedFingerprint = hasFingerprintableCore(resolvedProfile)
-                      ? personFingerprint(resolvedProfile)
+                    const hydratedProfile = ensureProfileCoords(resolvedProfile, chartResponse);
+                    const metaValue: BuildMeta = resolveMetaForDisplay(metaSource, hydratedProfile);
+                    const resolvedFingerprint = hasFingerprintableCore(hydratedProfile)
+                      ? personFingerprint(hydratedProfile)
                       : null;
                     lastLoadedFingerprintRef.current = resolvedFingerprint;
-                    if (resolvedProfile) {
-                      setProfile(resolvedProfile);
-                      persistProfileSnapshotLocal(resolvedProfile, sessionUserId);
+                    if (hydratedProfile) {
+                      setProfile(hydratedProfile);
+                      persistProfileSnapshotLocal(hydratedProfile, sessionUserId);
                       if (!fallbackProfile) {
-                        fallbackProfile = resolvedProfile;
+                        fallbackProfile = hydratedProfile;
                       }
                     } else {
                       setProfile(null);
@@ -1511,10 +1559,11 @@ const ChartPage = () => {
                   loadedFromFileRef.current = fromFileSession;
                   setLoadedFromFile(fromFileSession);
                   if (fromFileSession) {
-                    autoSavePendingRef.current = true;
-                    autoSaveFingerprintRef.current = null;
-                    fileAutoSaveRef.current = true;
-                    requestScreenshotRefresh();
+                    const fingerprint = computeChartFingerprint(chartResponse, metaValue);
+                    const fpKey = fingerprint ? chartFingerprintKey(fingerprint) : null;
+                    const known = fpKey ? readCloudSavedChartFingerprintKeys().has(fpKey) : false;
+                    autoSavePendingRef.current = !known;
+                    autoSaveFingerprintRef.current = known ? fingerprint : null;
                   } else {
                     autoSavePendingRef.current = false;
                   }
@@ -1569,24 +1618,26 @@ const ChartPage = () => {
                   }
                 }
 
-                if (isCompleteChart(savedChartRow.chart) && isBuildMeta(savedChartRow.meta)) {
+                const cloudMeta = normalizeBuildMeta(savedChartRow.meta);
+                if (isCompleteChart(savedChartRow.chart) && cloudMeta) {
                   const resolvedProfile = mergedProfile ?? fallbackProfile ?? null;
                   const chartResponse = savedChartRow.chart;
-                  const fingerprint = hasFingerprintableCore(resolvedProfile)
-                    ? personFingerprint(resolvedProfile)
+                  const hydratedProfile = ensureProfileCoords(resolvedProfile, chartResponse);
+                  const fingerprint = hasFingerprintableCore(hydratedProfile)
+                    ? personFingerprint(hydratedProfile)
                     : null;
                   lastLoadedFingerprintRef.current = fingerprint;
-                  if (resolvedProfile) {
-                    setProfile(resolvedProfile);
-                    persistProfileSnapshotLocal(resolvedProfile, sessionUserId);
+                  if (hydratedProfile) {
+                    setProfile(hydratedProfile);
+                    persistProfileSnapshotLocal(hydratedProfile, sessionUserId);
                     if (!fallbackProfile) {
-                      fallbackProfile = resolvedProfile;
+                      fallbackProfile = hydratedProfile;
                     }
                   } else {
                     setProfile(null);
                   }
                   setChart(chartResponse);
-                  setMeta(resolveMetaForDisplay(savedChartRow.meta, resolvedProfile));
+                  setMeta(resolveMetaForDisplay(cloudMeta, hydratedProfile));
                   setChartSource('cloud');
                   if (typeof chartResponse.screenshotUrl === "string") {
                     setChartScreenshot(chartResponse.screenshotUrl);
@@ -1599,7 +1650,7 @@ const ChartPage = () => {
                   loadedFromFileRef.current = false;
                   setLoadedFromFile(false);
                   autoSavePendingRef.current = false;
-                  autoSaveFingerprintRef.current = computeChartFingerprint(chartResponse, savedChartRow.meta) ?? null;
+                  autoSaveFingerprintRef.current = computeChartFingerprint(chartResponse, cloudMeta) ?? null;
                     setLoading(false);
                     initialLoadCompleteRef.current = true;
                   return;
@@ -1693,12 +1744,13 @@ const ChartPage = () => {
         const ascSign = extractAscSignFromChart(json);
         const updatedSnapshot = ascSign ? { ...snapshot, ascSign } : snapshot;
         const localizedSnapshot = ensureProfileLocalization(updatedSnapshot);
+        const enrichedProfile = ensureProfileCoords(localizedSnapshot, json);
 
-        setProfile(localizedSnapshot);
-        lastLoadedFingerprintRef.current = hasFingerprintableCore(localizedSnapshot)
-          ? personFingerprint(localizedSnapshot)
+        setProfile(enrichedProfile);
+        lastLoadedFingerprintRef.current = hasFingerprintableCore(enrichedProfile)
+          ? personFingerprint(enrichedProfile)
           : null;
-        persistProfileSnapshotLocal(localizedSnapshot, sessionUserId);
+        persistProfileSnapshotLocal(enrichedProfile, sessionUserId);
 
         // Update global profile store with ascSign
         if (ascSign) {
@@ -1711,7 +1763,7 @@ const ChartPage = () => {
             const { data: sessionData } = await supabase.auth.getSession();
             const userId = sessionData?.session?.user?.id;
             if (userId) {
-            await supabase.from('profiles').upsert({ id: userId, data: localizedSnapshot ?? updatedSnapshot }).select('id');
+            await supabase.from('profiles').upsert({ id: userId, data: enrichedProfile ?? localizedSnapshot ?? updatedSnapshot }).select('id');
             }
           } catch (cloudErr) {
             console.warn('Failed to save ascSign to cloud profile:', cloudErr);
@@ -1763,7 +1815,8 @@ const ChartPage = () => {
   useEffect(() => {
     if (!chart || !profile || !meta || !currentUserId) return;
     try {
-      const payloadToSave = { profile: profile ?? null, chart: chart ?? null, meta: meta ?? null };
+      const profileForSave = ensureProfileCoords(profile, chart) ?? profile;
+      const payloadToSave = { profile: profileForSave ?? null, chart: chart ?? null, meta: meta ?? null };
       const fingerprint = computeChartFingerprint(chart, meta);
       const sourceForSave: SavedChartSource = chartSource ?? (fromFile ? 'file' : 'local');
       writeSavedChart(payloadToSave, currentUserId, {
@@ -1853,8 +1906,9 @@ const ChartPage = () => {
     if (!profile) return null;
     const localized = ensureProfileLocalization({ ...profile });
     if (!localized) return null;
+    const withCoords = ensureProfileCoords(localized, chart ?? null) ?? localized;
 
-    const localizedFingerprint = personFingerprint(localized);
+    const localizedFingerprint = personFingerprint(withCoords);
     let samePersonAsStore = false;
     if (storeProfile && localizedFingerprint) {
       const storeSnapshot: ProfileSnapshot = {
@@ -1875,15 +1929,15 @@ const ChartPage = () => {
     }
 
     return {
-      ...localized,
+      ...withCoords,
       residenceCountry: samePersonAsStore
-        ? localized.residenceCountry ?? storeProfile?.residenceCountry ?? undefined
-        : localized.residenceCountry ?? undefined,
+        ? withCoords.residenceCountry ?? storeProfile?.residenceCountry ?? undefined
+        : withCoords.residenceCountry ?? undefined,
       residenceCityName: samePersonAsStore
-        ? localized.residenceCityName ?? storeProfile?.residenceCityName ?? undefined
-        : localized.residenceCityName ?? undefined,
+        ? withCoords.residenceCityName ?? storeProfile?.residenceCityName ?? undefined
+        : withCoords.residenceCityName ?? undefined,
     };
-  }, [profile, storeProfile]);
+  }, [profile, storeProfile, chart]);
 // Capture SVG of NorthIndianChart as PNG data URL and save to localStorage / cloud
   useEffect(() => {
     if (!screenshotTaskKey) return;
@@ -2574,6 +2628,9 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
       const {
         silent = true,
         skipIfUnchanged = true,
+        forceScreenshot = false,
+        screenshotDataUrl,
+        screenshotHash,
         updateStatus,
         notifyScreenshotUploading,
       } = options;
@@ -2591,11 +2648,13 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
 	        if (!silent) updateStatus?.('Нет данных карты для сохранения.');
 	        return { success: false };
 	      }
+	      const effectiveScreenshot = screenshotDataUrl ?? chartScreenshot ?? null;
+	      const effectiveScreenshotHash = screenshotHash ?? chartScreenshotHash ?? null;
+	      const shouldUploadScreenshot = Boolean(effectiveScreenshot && (forceScreenshot || needsCloudScreenshot(chart)));
 	      const fingerprint = computeChartFingerprint(chart, meta);
-	      const shouldUpdateScreenshot = Boolean(chartScreenshot && needsCloudScreenshot(chart));
 	      if (skipIfUnchanged && fingerprint) {
 	        const fpKey = chartFingerprintKey(fingerprint);
-	        if (!shouldUpdateScreenshot && fpKey) {
+	        if (fpKey) {
 	          const knownKeys = readCloudSavedChartFingerprintKeys();
 	          if (knownKeys.has(fpKey)) {
 	            return { success: true, skipped: true };
@@ -2621,13 +2680,13 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
       updateStatus?.('Сохраняем карту...');
       const saved = await saveChart(userId, name, 'private', profileForCloud, enrichedChart, meta ?? undefined);
       let screenshotUploaded = false;
-      if (chartScreenshot && needsCloudScreenshot(chart)) {
+      if (shouldUploadScreenshot && effectiveScreenshot) {
         notifyScreenshotUploading?.(true);
         const result = await uploadChartScreenshot({
           userId,
           chartId: saved.id,
-          screenshotDataUrl: chartScreenshot,
-          screenshotHash: chartScreenshotHash ?? undefined,
+          screenshotDataUrl: effectiveScreenshot,
+          screenshotHash: effectiveScreenshotHash ?? undefined,
           enrichedChart,
         });
         notifyScreenshotUploading?.(false);
@@ -2638,7 +2697,7 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
           }
           const storagePointer = result.storagePointer ?? null;
           const screenshotUrl = result.finalScreenshotUrl;
-          const hash = chartScreenshotHash ?? null;
+          const hash = effectiveScreenshotHash;
           setChart((prev) => (prev ? { ...prev, screenshotUrl, screenshotHash: hash ?? prev.screenshotHash ?? null, screenshotStoragePointer: storagePointer ?? prev.screenshotStoragePointer ?? null } : prev));
           setChartScreenshot(screenshotUrl);
           setChartScreenshotHash(hash);
@@ -2679,9 +2738,41 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
     saveInFlightRef.current = true;
     try {
       const force = Boolean(options?.force);
+      let forcedScreenshotDataUrl: string | null = null;
+      let forcedScreenshotHash: string | null = null;
+      if (force) {
+        const existingDataUrl = chartScreenshot && (chartScreenshot.startsWith('data:') || chartScreenshot.startsWith('blob:'))
+          ? chartScreenshot
+          : null;
+        let captured: string | null = existingDataUrl;
+        if (!captured) {
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            captured = await captureChartImage();
+            if (captured) break;
+            await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+          }
+        }
+        if (captured) {
+          forcedScreenshotDataUrl = captured;
+          if (captured === chartScreenshot && chartScreenshotHash) {
+            forcedScreenshotHash = chartScreenshotHash;
+          } else {
+            try {
+              const res = await fetch(captured);
+              const blob = await res.blob();
+              forcedScreenshotHash = await computeBlobSha256(blob);
+            } catch (hashErr) {
+              console.warn('Не удалось вычислить хеш скриншота перед сохранением в облако', hashErr);
+            }
+          }
+        }
+      }
       const result = await saveChartToCloud({
         silent: false,
         skipIfUnchanged: !force,
+        forceScreenshot: force,
+        screenshotDataUrl: forcedScreenshotDataUrl ?? undefined,
+        screenshotHash: forcedScreenshotHash ?? undefined,
         updateStatus: (msg) => setCloudSaveMsg(msg),
         notifyScreenshotUploading: (uploading) => setScreenshotUploading(uploading),
       });
@@ -2717,14 +2808,15 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
       setCloudSaving(false);
       setScreenshotUploading(false);
     }
-  }, [cloudSaveMsg, saveChartToCloud]);
+  }, [captureChartImage, chartScreenshot, chartScreenshotHash, cloudSaveMsg, saveChartToCloud]);
 
   useEffect(() => {
     if (!autoSavePendingRef.current) return;
     if (loading) return;
     if (!chart || !profile || !meta) return;
     if (saveInFlightRef.current) return;
-    if (screenshotTaskKey && screenshotPhaseRef.current !== 'ready') {
+    const isFileSession = Boolean(fromFile || loadedFromFileRef.current || chartSource === 'file' || isChartSessionFromFile());
+    if (!isFileSession && screenshotTaskKey && screenshotPhaseRef.current !== 'ready') {
       return; // ждём завершения захвата/загрузки скриншота
     }
     const fingerprint = computeChartFingerprint(chart, meta);
@@ -2734,7 +2826,7 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
     }
     autoSavePendingRef.current = false;
     void (async () => {
-      const result = await handleSaveCloud();
+      const result = await handleSaveCloud(isFileSession ? { force: true } : undefined);
       if (result?.success && fingerprint) {
         autoSaveFingerprintRef.current = fingerprint;
       }
@@ -2743,36 +2835,15 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
     chart,
     profile,
     meta,
+    fromFile,
+    chartSource,
     loading,
     handleSaveCloud,
     chartScreenshot,
     screenshotTaskKey,
   ]);
 
-  useEffect(() => {
-    if (!fileAutoSaveRef.current) return;
-    if (loading) return;
-    if (!chart || !profile || !meta) return;
-    if (saveInFlightRef.current) return;
-    if (screenshotTaskKey && screenshotPhaseRef.current !== 'ready') return;
-
-    fileAutoSaveRef.current = false;
-    autoSavePendingRef.current = false;
-    void (async () => {
-      const result = await handleSaveCloud();
-      if (!result?.success) {
-        fileAutoSaveRef.current = true;
-      }
-    })();
-  }, [
-    chart,
-    profile,
-    meta,
-    loading,
-    chartScreenshot,
-    screenshotTaskKey,
-    handleSaveCloud,
-  ]);
+  // Note: file autosave is handled via `autoSavePendingRef` (no separate retry loop).
 
   if (loading) {
     return (
@@ -3005,9 +3076,10 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
                   const chartForExport = chartScreenshot
                     ? mergeChartWithScreenshot(chart, chartScreenshot, chartScreenshotHash, chart.screenshotStoragePointer ?? null)
                     : chart;
+                  const profileForExport = ensureProfileCoords(profile, chart) ?? profile;
                   const payload: Record<string, unknown> = {
                     chart: chartForExport,
-                    profile,
+                    profile: profileForExport,
                     meta,
                   };
                   if (chartScreenshot) {

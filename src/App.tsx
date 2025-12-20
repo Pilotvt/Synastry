@@ -1417,17 +1417,6 @@ if (!sessionReady) {
               type="button"
               className={`${BUTTON_SECONDARY} px-3 py-1 text-xs`}
               onClick={() => {
-                const id = session?.user?.id;
-                if (id) navigate(`/user/${id}`);
-                else navigate('/user/unknown');
-              }}
-            >
-              Профиль
-            </button>
-            <button
-              type="button"
-              className={`${BUTTON_SECONDARY} px-3 py-1 text-xs`}
-              onClick={() => {
                 const input = document.createElement("input");
                 input.type = "file";
                 input.accept = ".json,application/json";
