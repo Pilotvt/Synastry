@@ -2054,7 +2054,7 @@ const SinastryPage: React.FC = () => {
 
   return (
     <>
-      <div className="min-h-screen bg-slate-950 text-white px-4 py-8">
+      <div className="min-h-screen bg-slate-950 text-white px-4 pb-8 pt-3">
       {licenseGate}
       <div className="max-w-6xl mx-auto">
         <header className="mb-6">

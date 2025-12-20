@@ -1291,6 +1291,7 @@ const ChartPage = () => {
     setScreenshotForceCounter((value) => value + 1);
   }, []);
   const screenshotPhaseRef = useRef<'idle' | 'capturing' | 'uploading' | 'ready'>('idle');
+  const lastScreenshotTaskKeyRef = useRef<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [meta, setMeta] = useState<BuildMeta | null>(null);
   const [chartVariant, setChartVariant] = useState<ChartVariant>("rashi");
@@ -1941,6 +1942,12 @@ const ChartPage = () => {
 // Capture SVG of NorthIndianChart as PNG data URL and save to localStorage / cloud
   useEffect(() => {
     if (!screenshotTaskKey) return;
+    if (
+      lastScreenshotTaskKeyRef.current === screenshotTaskKey
+      && screenshotPhaseRef.current !== 'idle'
+    ) {
+      return;
+    }
     const chartSnapshot = chartLatestRef.current;
     if (!chartSnapshot) return;
     const metaSource = chartSource ?? (fromFile ? 'file' : 'local');
@@ -1983,6 +1990,7 @@ const ChartPage = () => {
       if (!capture) {
         if (!unmounted) {
           screenshotPhaseRef.current = 'idle';
+          lastScreenshotTaskKeyRef.current = null;
           setScreenshotStatus('Не удалось снять скриншот. Попробуйте ещё раз.');
         }
         return;
@@ -2018,6 +2026,7 @@ const ChartPage = () => {
     };
 
     const scheduleCapture = () => {
+      lastScreenshotTaskKeyRef.current = screenshotTaskKey;
       if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
         rafId = window.requestAnimationFrame(() => {
           void runCapture();
@@ -2049,10 +2058,6 @@ const ChartPage = () => {
     currentUserId,
     chartSource,
     fromFile,
-    buildProfileForCloud,
-    profile,
-    meta,
-    personLabel,
   ]);
   const genderText = profile?.gender === 'male' ? 'мужской' : profile?.gender === 'female' ? 'женский' : '—';
 
@@ -2904,7 +2909,7 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
     <>
       <div className="min-h-screen bg-slate-950 text-white">
       {licenseGate}
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 pb-8 pt-3">
         <div className="max-w-[1450px] mx-auto w-full">
           <header className="mb-6">
             <div className="flex justify-between items-center mb-4">

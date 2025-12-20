@@ -1035,11 +1035,11 @@ const Questionnaire: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="p-4">
+      <div className="p-4 pt-3">
       <div className="max-w-6xl mx-auto">
         <header className="mb-4 flex flex-col items-start gap-2">
           <div className="w-full flex justify-between items-center mb-2">
-            <h2 className="text-3xl font-bold">{headerData ? `${headerData.name} ${headerData.last}` : 'Имя Фамилия'}</h2>
+            <h1 className="text-3xl font-bold">{headerData ? `${headerData.name} ${headerData.last}` : 'Имя Фамилия'}</h1>
             <div className="flex flex-wrap gap-2 items-start">
               <button
                 onClick={(event) => {

@@ -111,12 +111,15 @@ const extractChartScreenshot = (row: ChartRow | null): string | null => {
   if (!row) return null;
   const chartValue = row.chart;
   if (isRecord(chartValue)) {
-    if (typeof chartValue.screenshotUrl === 'string') {
-      return chartValue.screenshotUrl;
+    const url = typeof chartValue.screenshotUrl === 'string' ? chartValue.screenshotUrl.trim() : '';
+    const pointer = typeof chartValue.screenshotStoragePointer === 'string' ? chartValue.screenshotStoragePointer : null;
+    if (url && (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http'))) {
+      return url;
     }
-    if (typeof chartValue.screenshotStoragePointer === 'string') {
-      return chartValue.screenshotStoragePointer;
+    if (pointer && pointer.trim()) {
+      return pointer;
     }
+    if (url) return url;
   }
   return null;
 };
@@ -702,40 +705,6 @@ const UserProfilePage: React.FC = () => {
     };
   }, [cachedOwnerId, cachedProfileRecord, cachedChartRecord, sanitizeOwnProfile]);
   useEffect(() => {
-    if (!currentUserId) return;
-    // When a chart was opened from file in this session, avoid hydrating UI from the in-memory cache first:
-    // it may still contain the previous chart and causes a visible flash before localStorage load completes.
-    if (fromFileRef.current && viewingOwnProfile) return;
-    const snapshot = chartCacheRef.current;
-    if (!snapshot || snapshot.ownerId !== currentUserId) return;
-    if (snapshot.profile) {
-      const normalized = mergeProfileSnapshots(snapshot.profile, null);
-      if (normalized) {
-        setProfile((prev) => {
-          if (!prev) return sanitizeOwnProfile(normalized);
-          const prevFp = personFingerprint(prev);
-          const nextFp = personFingerprint(normalized);
-          if (!prevFp || prevFp === nextFp) {
-            const merged = mergeProfileSnapshots(prev, normalized) ?? normalized;
-            return sanitizeOwnProfile(merged);
-          }
-          return prev;
-        });
-      }
-    }
-    if (snapshot.chart) {
-      setChart((prev) => {
-        if (!prev) return toChartRow({ chart: snapshot.chart });
-        const nextSignature = computeChartSignature(snapshot.chart as ChartPayload);
-        const prevSignature = computeChartSignature(extractChartPayload(prev));
-        if (!prevSignature || prevSignature !== nextSignature) {
-          return toChartRow({ chart: snapshot.chart });
-        }
-        return prev;
-      });
-    }
-  }, [currentUserId, cachedOwnerId, cachedProfileRecord, cachedChartRecord, sanitizeOwnProfile, viewingOwnProfile]);
-  useEffect(() => {
     if (arrivedFromFile) {
       fromFileRef.current = true;
     }
@@ -951,7 +920,8 @@ const UserProfilePage: React.FC = () => {
       };
     }
     const pointer = typeof chartValue.screenshotStoragePointer === 'string' ? chartValue.screenshotStoragePointer : null;
-    const raw = typeof chartValue.screenshotUrl === 'string' ? chartValue.screenshotUrl : pointer;
+    const rawUrl = typeof chartValue.screenshotUrl === 'string' ? chartValue.screenshotUrl : null;
+    const raw = pointer ?? rawUrl;
     if (!raw || raw.startsWith('data:') || raw.startsWith('blob:')) {
       return () => {
         cancelled = true;
@@ -964,13 +934,19 @@ const UserProfilePage: React.FC = () => {
     }
     (async () => {
       const resolved = await resolveSupabaseScreenshotUrl(pointer ?? raw);
-      if (!cancelled && resolved) {
-        setChart((prev) => {
-          if (!prev || !isRecord(prev.chart)) return prev;
-          if (prev.chart?.screenshotResolved) return prev;
-          return { ...prev, chart: { ...prev.chart, screenshotUrl: resolved, screenshotResolved: true } };
-        });
-      }
+      if (cancelled || !resolved) return;
+      const suppressBrokenPublic = /\/storage\/v1\/object\/public\/charts-screenshots\//.test(raw) && resolved === raw;
+      setChart((prev) => {
+        if (!prev || !isRecord(prev.chart)) return prev;
+        if (prev.chart?.screenshotResolved) return prev;
+        const nextChart: Record<string, unknown> = { ...prev.chart, screenshotResolved: true };
+        if (suppressBrokenPublic) {
+          nextChart.screenshotUrl = null;
+        } else {
+          nextChart.screenshotUrl = resolved;
+        }
+        return { ...prev, chart: nextChart };
+      });
     })().catch((err) => {
       console.warn('Failed to resolve profile screenshot', err);
     });
@@ -979,14 +955,14 @@ const UserProfilePage: React.FC = () => {
     };
   }, [chart]);
   useEffect(() => {
+    let cancelled = false;
     const preferLocalSession = Boolean(fromFileRef.current && viewingOwnProfile);
     async function loadData() {
       if (!userId) return;
-      const cacheSnapshot = chartCacheRef.current;
       
       try {
-        setLoadingError(null);
-        // Мгновенная загрузка из localStorage (если есть) — отображаем сразу
+        if (!cancelled) setLoadingError(null);
+        // Мгновенная загрузка из localStorage (если есть) - отображаем сразу
         let localInitialProfile: UserProfile | null = null;
         if (viewingOwnProfile) {
           try {
@@ -1005,7 +981,6 @@ const UserProfilePage: React.FC = () => {
           }
         }
         const localInitialFp = personFingerprint(localInitialProfile);
-        const hasMatchingCache = Boolean(viewingOwnProfile && cacheSnapshot?.ownerId && cacheSnapshot.ownerId === currentUserId);
         let resolvedLocalScreenshot: string | null = null;
         const captureScreenshotSource = (source: unknown, options?: { force?: boolean }) => {
           if (!source) return;
@@ -1025,14 +1000,7 @@ const UserProfilePage: React.FC = () => {
         }
         const savedChartMeta = savedChartRecord?.meta ?? null;
         let savedChartPayload: Record<string, unknown> | null = null;
-        if (hasMatchingCache && (cacheSnapshot?.chart || cacheSnapshot?.profile)) {
-          savedChartPayload = {};
-          if (cacheSnapshot?.chart) {
-            savedChartPayload.chart = cacheSnapshot.chart;
-            captureScreenshotSource(cacheSnapshot.chart);
-          }
-          if (cacheSnapshot?.profile) savedChartPayload.profile = cacheSnapshot.profile;
-        } else if (savedChartRecord) {
+        if (savedChartRecord) {
           if (savedChartRecord.payload && isRecord(savedChartRecord.payload)) {
             savedChartPayload = savedChartRecord.payload;
           } else if (savedChartRecord.raw && isRecord(savedChartRecord.raw)) {
@@ -1041,6 +1009,19 @@ const UserProfilePage: React.FC = () => {
         }
         if (!savedChartPayload && viewingOwnProfile) {
           savedChartPayload = readSavedChartSource(currentUserId ?? undefined);
+        }
+        // Fallback to in-memory cache only when we are not in a file session and no local saved record exists.
+        if (!savedChartPayload && viewingOwnProfile && !preferLocalSession) {
+          const cacheSnapshot = chartCacheRef.current;
+          const hasMatchingCache = Boolean(cacheSnapshot?.ownerId && cacheSnapshot.ownerId === currentUserId);
+          if (hasMatchingCache && (cacheSnapshot?.chart || cacheSnapshot?.profile)) {
+            savedChartPayload = {};
+            if (cacheSnapshot?.chart) {
+              savedChartPayload.chart = cacheSnapshot.chart;
+              captureScreenshotSource(cacheSnapshot.chart);
+            }
+            if (cacheSnapshot?.profile) savedChartPayload.profile = cacheSnapshot.profile;
+          }
         }
         if (savedChartPayload) {
           captureScreenshotSource(savedChartPayload['chart'], { force: true });
@@ -1065,7 +1046,7 @@ const UserProfilePage: React.FC = () => {
             if (chartCandidate && typeof chartCandidate === 'object') {
               const normalizedChart = isRecord(chartCandidate) ? chartCandidate : null;
               if (normalizedChart) {
-                setChart((prev) => {
+                if (!cancelled) setChart((prev) => {
                   if (!prev) return toChartRow({ chart: normalizedChart });
                   const nextSignature = computeChartSignature(normalizedChart as ChartPayload);
                   const prevSignature = computeChartSignature(extractChartPayload(prev));
@@ -1092,7 +1073,7 @@ const UserProfilePage: React.FC = () => {
             !localInitialFp ||
             (localSavedChartFp && localInitialFp && localSavedChartFp !== localInitialFp);
           if (preferChartProfile) {
-            setProfile(sanitizeOwnProfile(localSavedChartProfile));
+            if (!cancelled) setProfile(sanitizeOwnProfile(localSavedChartProfile));
           }
         }
         if (!isOnline) {
@@ -1105,12 +1086,13 @@ const UserProfilePage: React.FC = () => {
           .eq('id', userId)
           .single();
           
+        if (cancelled) return;
         if (profileError) throw profileError;
         const normalizedCloudProfile = mergeProfileSnapshots(null, profileData?.data as Record<string, unknown>);
         if (!normalizedCloudProfile) {
-          setProfile(sanitizeOwnProfile(localSavedChartProfile));
+          if (!cancelled) setProfile(sanitizeOwnProfile(localSavedChartProfile));
           if (!localSavedChartProfile) {
-            setLoadingError('Профиль пользователя не найден.');
+            if (!cancelled) setLoadingError('Профиль пользователя не найден.');
             return;
           }
         }
@@ -1131,7 +1113,7 @@ const UserProfilePage: React.FC = () => {
         } else {
           effectiveProfile = normalizedCloudProfile ?? localSavedChartProfile;
         }
-        setProfile(sanitizeOwnProfile(effectiveProfile));
+        if (!cancelled) setProfile(sanitizeOwnProfile(effectiveProfile));
         // Load latest chart (optional)
         const { data: chartData, error: chartError } = await supabase
           .from('charts')
@@ -1140,6 +1122,7 @@ const UserProfilePage: React.FC = () => {
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
+        if (cancelled) return;
         if (chartError && chartError.code !== 'PGRST116') {
           console.warn('Error loading latest chart:', chartError);
         }
@@ -1249,16 +1232,21 @@ const UserProfilePage: React.FC = () => {
                 console.warn('Не удалось сохранить карту в локальный кеш', chartCacheError);
               }
             }
-            setChart(finalChart);
+            if (!cancelled) setChart(finalChart);
           }
         }
       } catch (e) {
         console.error('Error loading profile:', e);
-        setLoadingError('Не удалось загрузить профиль. Проверьте соединение или активность проекта Supabase.');
+        if (!cancelled) {
+          setLoadingError('Не удалось загрузить профиль. Проверьте соединение или активность проекта Supabase.');
+        }
       }
     }
     void loadData();
-  }, [userId, currentUserId, isOnline, sanitizeOwnProfile]);
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, currentUserId, isOnline, sanitizeOwnProfile, viewingOwnProfile]);
   useEffect(() => {
     const blockedSet = new Set(blockedKeys);
     async function loadOtherProfiles() {
@@ -1378,17 +1366,24 @@ const UserProfilePage: React.FC = () => {
                 const normalized = toChartRow(chartRow);
                 chartPayload = normalized.chart ?? null;
                 chartScreenshot = extractChartScreenshot(normalized);
-                // For previews we only use already-resolvable URLs (data/http/signed). Private storage pointers are not accessible.
-                if (chartScreenshot && typeof chartScreenshot === 'string' && chartScreenshot.startsWith('supabase://')) {
-                  chartScreenshot = null;
-                }
-                // Some users may have a stale "public" URL for a private bucket; hide it to avoid noisy 400s.
-                if (
-                  chartScreenshot &&
-                  typeof chartScreenshot === 'string' &&
-                  /\/storage\/v1\/object\/public\/charts-screenshots\//.test(chartScreenshot)
-                ) {
-                  chartScreenshot = null;
+                if (chartScreenshot && typeof chartScreenshot === 'string' && needsSupabaseResolution(chartScreenshot)) {
+                  try {
+                    const resolved = await resolveSupabaseScreenshotUrl(chartScreenshot);
+                    const isSupabasePublic = /\/storage\/v1\/object\/public\//.test(chartScreenshot);
+                    if (
+                      resolved &&
+                      typeof resolved === 'string' &&
+                      !resolved.startsWith('supabase://') &&
+                      !(isSupabasePublic && resolved === chartScreenshot)
+                    ) {
+                      chartScreenshot = resolved;
+                    } else {
+                      chartScreenshot = null;
+                    }
+                  } catch (resolveError) {
+                    console.warn('Failed to resolve chart screenshot for preview', resolveError);
+                    chartScreenshot = null;
+                  }
                 }
                 
                 // Extract ascSign from chart if not in profile
@@ -1566,7 +1561,8 @@ const UserProfilePage: React.FC = () => {
   if (!profile) {
     return <div className="p-8">Загрузка данных пользователя...</div>;
   }
-  const screenshotUrl = chart ? extractChartScreenshot(chart) : null;
+  const rawScreenshotUrl = chart ? extractChartScreenshot(chart) : null;
+  const screenshotUrl = rawScreenshotUrl && rawScreenshotUrl.startsWith('supabase://') ? null : rawScreenshotUrl;
   const ownChartPayload = extractChartPayload(chart);
   const isOwnProfile = Boolean(currentUserId && userId && currentUserId === userId);
   
@@ -1610,7 +1606,7 @@ const UserProfilePage: React.FC = () => {
   const profileResidenceLabel = formatResidenceLabel(profile.residenceCityName, profile.residenceCountry);
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-6xl mx-auto p-8">
+      <div className="max-w-6xl mx-auto p-8 pt-3">
       {!isOnline && (
         <div className="mb-6 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-sm text-yellow-200">
           Нет подключения к сети. Показаны закэшированные данные профиля и анкет.

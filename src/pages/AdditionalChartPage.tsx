@@ -15,6 +15,15 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?
 const DEBOUNCE_MS = 800;
 const ADDITIONAL_DRAFT_STORAGE_KEY = "synastry_additional_draft_v1";
 
+type AdditionalRightTabId = "tithi" | "vimshottari-dasha" | "nakshatra" | "panchanga" | "sade-sati";
+const ADDITIONAL_RIGHT_TABS: Array<{ id: AdditionalRightTabId; label: string }> = [
+  { id: "tithi", label: "Титхи" },
+  { id: "vimshottari-dasha", label: "Вимшотари даши" },
+  { id: "nakshatra", label: "Накшатра" },
+  { id: "panchanga", label: "Панчанга" },
+  { id: "sade-sati", label: "Саде-Сати" },
+];
+
 const COUNTRY_RU_NAMES: Record<string, string> = {
   RU: "Россия",
   UA: "Украина",
@@ -687,6 +696,7 @@ const AdditionalChartPage: React.FC = () => {
   const [licenseStatus, setLicenseStatus] = useState<ElectronLicenseStatus | null>(null);
   const isLicensed = Boolean(licenseStatus?.licensed);
   const [fullDetailsOpen, setFullDetailsOpen] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<AdditionalRightTabId>("tithi");
   const fullDetailsRequestedRef = useRef(false);
   const [debounceTimer, setDebounceTimer] = useState<number | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -1435,12 +1445,12 @@ const AdditionalChartPage: React.FC = () => {
 
     const tableFontSize = 16;
     const cellStyle: React.CSSProperties = {
-      padding: "2px 6px",
+      padding: "1px 4px",
       verticalAlign: "top",
       textAlign: "left",
       whiteSpace: "nowrap",
       fontWeight: 400,
-      color: "#1f1309",
+      color: "#000",
       lineHeight: "18px",
     };
     const headerCellStyle: React.CSSProperties = {
@@ -1450,141 +1460,186 @@ const AdditionalChartPage: React.FC = () => {
     };
 
     return (
-      <div style={{ maxWidth: "700px", width: "100%", margin: "16px 0 0" }}>
-        <div style={{ fontSize: tableFontSize, fontWeight: 800, marginBottom: 6, color: "#1f1309" }}>
-          СОЗВЕЗДИЯ И ПЛАНЕТЫ (
+      <div style={{ maxWidth: "1100px", width: "100%", margin: "16px 0 0" }}>
+        <div style={{ fontSize: tableFontSize, marginBottom: 6, color: "#1f1309" }}>
+          <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>{" "}
           <span style={{ fontWeight: 400 }}>
+            (
             {"\u2191-\u0443\u0447\u0430, \u2193-\u043d\u0438\u0447\u0430, \u25cb-\u043a\u0430\u0440\u0430\u043a\u0430, \u25a1-\u0434\u0438\u0433\u0431\u0430\u043b\u0430, \u2302-\u0441\u0432\u043e\u0439 \u0437\u043d\u0430\u043a, \u25cf-\u0441\u043e\u0436\u0436\u0451\u043d\u0430\u044f, \u00d8-\u043f\u0440\u043e\u0438\u0433\u0440\u0430\u0432\u0448\u0430\u044f, \u263c-\u0441\u0443\u043f\u0435\u0440 \u0441\u0438\u043b\u044c\u043d\u0430\u044f"}
+            )
           </span>
-          )
         </div>
-        <div style={{ background: "#f7e4c1", border: "1px solid #7a643a", padding: "6px 8px" }}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: tableFontSize, color: "#1f1309" }}>
-              <thead>
-                <tr>
-                  <th style={headerCellStyle}>Созвездие (код)</th>
-                  <th style={headerCellStyle}>Lon start</th>
-                  <th style={headerCellStyle}>Lon end</th>
-                  <th style={headerCellStyle}>Планета</th>
-                  <th style={headerCellStyle}>Истин. созв.</th>
-                  <th style={headerCellStyle}>Долгота</th>
-                  <th style={headerCellStyle}>Рет.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {arcsForRender.map((arc) => {
-                  const planets = planetsByArc.get(arc.iau_code) ?? [];
-                  if (planets.length === 0) {
-                    return (
-                      <tr key={arc.iau_code}>
-                        <td style={cellStyle}>
-                          {arc.iau_name_ru} ({arc.iau_code})
-                        </td>
-                        <td style={cellStyle}>{formatArcDegree(arc.lon_start_deg)}</td>
-                        <td style={cellStyle}>{formatArcDegree(arc.lon_end_deg)}</td>
-                        <td style={{ ...cellStyle, color: "rgba(0,0,0,0.45)" }}>-</td>
-                        <td style={cellStyle}>-</td>
-                        <td style={cellStyle}>-</td>
-                        <td style={cellStyle}> </td>
-                      </tr>
-                    );
-                  }
+        <div style={{ overflowX: "auto" }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "nowrap", minWidth: 1052 }}>
+            <div
+              style={{
+                flex: "0 0 680px",
+                minWidth: 680,
+                background: "#f7e4c1",
+                border: "1px solid #7a643a",
+                padding: "6px 8px",
+              }}
+            >
+              <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: tableFontSize, color: "#000" }}>
+                <thead>
+                  <tr>
+                    <th style={headerCellStyle}>Созвездие (код)</th>
+                    <th style={headerCellStyle}>Lon start</th>
+                    <th style={headerCellStyle}>Lon end</th>
+                    <th style={headerCellStyle}>Планета</th>
+                    <th style={headerCellStyle}>Истин. созв.</th>
+                    <th style={headerCellStyle}>Долгота</th>
+                    <th style={headerCellStyle}>Рет.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {arcsForRender.map((arc) => {
+                    const planets = planetsByArc.get(arc.iau_code) ?? [];
+                    if (planets.length === 0) {
+                      return (
+                        <tr key={arc.iau_code}>
+                          <td style={cellStyle}>
+                            {arc.iau_name_ru} ({arc.iau_code})
+                          </td>
+                          <td style={cellStyle}>{formatArcDegree(arc.lon_start_deg)}</td>
+                          <td style={cellStyle}>{formatArcDegree(arc.lon_end_deg)}</td>
+                          <td style={{ ...cellStyle, color: "rgba(0,0,0,0.45)" }}>-</td>
+                          <td style={cellStyle}>-</td>
+                          <td style={cellStyle}>-</td>
+                          <td style={cellStyle}> </td>
+                        </tr>
+                      );
+                    }
 
-                  return planets.map((p, idx) => {
-                    const iauCode = p.iau_constellation || arc.iau_code || "";
-                    const iauNameRu = iauNameByCode.get(iauCode) || "";
-                    const markersForPlanet = planetMarkers.get(p.name) ?? [];
-                    const strength = p.house_strength ?? 0;
-                    const strengthPercent = Math.round(strength * 100);
-                    const strengthColor = (() => {
-                      const percent = strength;
-                      if (percent <= 0.1) {
-                        return "#e53935";
-                      } else if (percent < 0.5) {
-                        const ratio = (percent - 0.1) / 0.4;
-                        const r = Math.round(229 + (251 - 229) * ratio);
-                        const g = Math.round(57 + (192 - 57) * ratio);
-                        const b = Math.round(53 + (45 - 53) * ratio);
-                        return `rgb(${r},${g},${b})`;
-                      } else if (percent < 0.99) {
-                        const ratio = (percent - 0.5) / 0.49;
-                        const r = Math.round(251 + (67 - 251) * ratio);
-                        const g = Math.round(192 + (160 - 192) * ratio);
-                        const b = Math.round(45 + (71 - 45) * ratio);
-                        return `rgb(${r},${g},${b})`;
-                      } else {
-                        return "#43a047";
-                      }
-                    })();
+                    return planets.map((p, idx) => {
+                      const iauCode = p.iau_constellation || arc.iau_code || "";
+                      const iauNameRu = iauNameByCode.get(iauCode) || "";
+                      const markersForPlanet = planetMarkers.get(p.name) ?? [];
+                      const strength = p.house_strength ?? 0;
+                      const strengthPercent = Math.round(strength * 100);
+                      const strengthColor = (() => {
+                        const percent = strength;
+                        if (percent <= 0.1) {
+                          return "#e53935";
+                        } else if (percent < 0.5) {
+                          const ratio = (percent - 0.1) / 0.4;
+                          const r = Math.round(229 + (251 - 229) * ratio);
+                          const g = Math.round(57 + (192 - 57) * ratio);
+                          const b = Math.round(53 + (45 - 53) * ratio);
+                          return `rgb(${r},${g},${b})`;
+                        } else if (percent < 0.99) {
+                          const ratio = (percent - 0.5) / 0.49;
+                          const r = Math.round(251 + (67 - 251) * ratio);
+                          const g = Math.round(192 + (160 - 192) * ratio);
+                          const b = Math.round(45 + (71 - 45) * ratio);
+                          return `rgb(${r},${g},${b})`;
+                        } else {
+                          return "#43a047";
+                        }
+                      })();
 
-                    return (
-                      <tr key={`${arc.iau_code}-${p.name}-${idx}`}>
-                        {idx === 0 ? (
-                          <>
-                            <td rowSpan={planets.length} style={cellStyle}>
-                              {arc.iau_name_ru} ({arc.iau_code})
-                            </td>
-                            <td rowSpan={planets.length} style={cellStyle}>
-                              {formatArcDegree(arc.lon_start_deg)}
-                            </td>
-                            <td rowSpan={planets.length} style={cellStyle}>
-                              {formatArcDegree(arc.lon_end_deg)}
-                            </td>
-                          </>
-                        ) : null}
-                        <td style={cellStyle}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                            <span
-                              title={`Сила: ${strengthPercent}%`}
-                              style={{
-                                display: "inline-block",
-                                width: "48px",
-                                height: "12px",
-                                borderRadius: "6px",
-                                background: "#444",
-                                position: "relative",
-                                overflow: "hidden",
-                                verticalAlign: "middle",
-                              }}
-                            >
+                      return (
+                        <tr key={`${arc.iau_code}-${p.name}-${idx}`}>
+                          {idx === 0 ? (
+                            <>
+                              <td rowSpan={planets.length} style={cellStyle}>
+                                {arc.iau_name_ru} ({arc.iau_code})
+                              </td>
+                              <td rowSpan={planets.length} style={cellStyle}>
+                                {formatArcDegree(arc.lon_start_deg)}
+                              </td>
+                              <td rowSpan={planets.length} style={cellStyle}>
+                                {formatArcDegree(arc.lon_end_deg)}
+                              </td>
+                            </>
+                          ) : null}
+                          <td style={cellStyle}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                               <span
+                                title={`Сила: ${strengthPercent}%`}
                                 style={{
-                                  position: "absolute",
-                                  left: 0,
-                                  top: 0,
-                                  height: "100%",
-                                  width: `${strengthPercent}%`,
-                                  background: strengthColor,
+                                  display: "inline-block",
+                                  width: "44px",
+                                  height: "12px",
                                   borderRadius: "6px",
-                                  transition: "width 0.3s, background 0.3s",
+                                  background: "#444",
+                                  position: "relative",
+                                  overflow: "hidden",
+                                  verticalAlign: "middle",
                                 }}
-                              />
-                            </span>
-                            {markersForPlanet.length ? (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 16, lineHeight: 1 }}>
-                                {markersForPlanet.map((symbol, symbolIdx) => (
-                                  <span key={`${p.name}-${symbol}-${symbolIdx}`}>{symbol}</span>
-                                ))}
+                              >
+                                <span
+                                  style={{
+                                    position: "absolute",
+                                    left: 0,
+                                    top: 0,
+                                    height: "100%",
+                                    width: `${strengthPercent}%`,
+                                    background: strengthColor,
+                                    borderRadius: "6px",
+                                    transition: "width 0.3s, background 0.3s",
+                                  }}
+                                />
                               </span>
-                            ) : null}
-                            <span>{PLANET_NAMES_RU[p.name] ?? p.name}</span>
-                          </span>
-                        </td>
-                        <td style={cellStyle}>{iauNameRu ? `${iauNameRu} (${iauCode})` : p.iau_constellation || ""}</td>
-                        <td style={cellStyle}>{formatDegreesWithoutSeconds(p.lon_sidereal)}</td>
-                        <td style={cellStyle}>{p.is_retrograde ? "R" : ""}</td>
-                      </tr>
-                    );
-                  });
-                })}
-              </tbody>
-            </table>
+                              {markersForPlanet.length ? (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 16, lineHeight: 1 }}>
+                                  {markersForPlanet.map((symbol, symbolIdx) => (
+                                    <span key={`${p.name}-${symbol}-${symbolIdx}`}>{symbol}</span>
+                                  ))}
+                                </span>
+                              ) : null}
+                              <span>{PLANET_NAMES_RU[p.name] ?? p.name}</span>
+                            </span>
+                          </td>
+                          <td style={cellStyle}>{iauNameRu ? `${iauNameRu} (${iauCode})` : p.iau_constellation || ""}</td>
+                          <td style={cellStyle}>{formatDegreesWithoutSeconds(p.lon_sidereal)}</td>
+                          <td style={cellStyle}>{p.is_retrograde ? "R" : ""}</td>
+                        </tr>
+                      );
+                    });
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+            <div style={{ flex: "0 0 360px", minWidth: 360, background: "#f7e4c1", border: "1px solid #7a643a" }}>
+            <div style={{ display: "flex", flexWrap: "nowrap", overflowX: "auto", borderBottom: "1px solid #7a643a" }}>
+              {ADDITIONAL_RIGHT_TABS.map((tab, idx) => {
+                const active = tab.id === rightPanelTab;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setRightPanelTab(tab.id)}
+                    style={{
+                      padding: "4px 8px",
+                      fontSize: 14,
+                      fontWeight: active ? 700 : 600,
+                      background: active ? "#e8d7b0" : "#f7e4c1",
+                      color: "#1f1309",
+                      border: "1px solid #7a643a",
+                      borderBottom: active ? "1px solid #e8d7b0" : "1px solid #7a643a",
+                      marginLeft: idx === 0 ? 0 : -1,
+                      whiteSpace: "nowrap",
+                    }}
+                    aria-pressed={active}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ background: "#f2e3c2", padding: "10px 12px", minHeight: 220 }}>
+              <div style={{ fontSize: 14, color: "#4a3822" }}>Пока пусто.</div>
+            </div>
+          </div>
+        </div>
         </div>
       </div>
     );
-  }, [arcsForRender, chart, planetMarkers, planetsByArc]);
+  }, [arcsForRender, chart, planetMarkers, planetsByArc, rightPanelTab]);
 
   const headerLines = useMemo(() => {
     const cityLabel = selectedCity?.nameRu || selectedCity?.name || cityQuery || "-";
@@ -1864,46 +1919,47 @@ const AdditionalChartPage: React.FC = () => {
           -webkit-appearance: inner-spin-button;
         }
       `}</style>
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex flex-wrap gap-2 mb-4 justify-end">
-          <button
-            type="button"
-            className={`${BUTTON_SECONDARY} px-3 py-1`}
-            onClick={() => requestNewChartReset("additional")}
-          >
-            Новая карта
-          </button>
-          <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1`} onClick={() => navigate("/chart")}>
-            Натальная карта
-          </button>
-          <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1`} onClick={() => navigate("/questionnaire")}>
-            Изменить анкету
-          </button>
-          <button
-            type="button"
-            className={`${BUTTON_SECONDARY} px-3 py-1`}
-            onClick={async () => {
-              const { data: sessionData } = await supabase.auth.getSession();
-              const userId = sessionData?.session?.user?.id;
-              if (userId) {
-                navigate(`/user/${userId}`);
-              } else {
-                navigate("/auth");
-              }
-            }}
-          >
-            Профиль
-          </button>
-          <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1`} onClick={() => navigate("/sinastry")}>
-            Синастрия
-          </button>
-          <button type="button" className={`${BUTTON_PRIMARY} px-3 py-1 cursor-default`} disabled>
-            Дополнительно
-          </button>
-        </div>
-
-        <div className="mb-2">
-          <h1 className="text-3xl font-bold text-[#2b1c0f]">Натальная карта</h1>
+      <div className="container mx-auto px-4 pb-4 pt-3">
+        <header className="mb-6">
+          <div className="flex justify-between items-center mb-2">
+            <h1 className="text-3xl font-bold text-[#2b1c0f]">Натальная карта</h1>
+            <div className="flex flex-wrap gap-2 items-start justify-end">
+              <button
+                type="button"
+                className={`${BUTTON_SECONDARY} px-3 py-1`}
+                onClick={() => requestNewChartReset("additional")}
+              >
+                Новая карта
+              </button>
+              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1`} onClick={() => navigate("/chart")}>
+                Натальная карта
+              </button>
+              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1`} onClick={() => navigate("/questionnaire")}>
+                Изменить анкету
+              </button>
+              <button
+                type="button"
+                className={`${BUTTON_SECONDARY} px-3 py-1`}
+                onClick={async () => {
+                  const { data: sessionData } = await supabase.auth.getSession();
+                  const userId = sessionData?.session?.user?.id;
+                  if (userId) {
+                    navigate(`/user/${userId}`);
+                  } else {
+                    navigate("/auth");
+                  }
+                }}
+              >
+                Профиль
+              </button>
+              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1`} onClick={() => navigate("/sinastry")}>
+                Синастрия
+              </button>
+              <button type="button" className={`${BUTTON_PRIMARY} px-3 py-1 cursor-default`} disabled>
+                Дополнительно
+              </button>
+            </div>
+          </div>
           <div className="text-sm text-[#2b1c0f] leading-5 mt-1">
             {personName || lastName ? (
               <div>
@@ -1916,7 +1972,7 @@ const AdditionalChartPage: React.FC = () => {
             <div>{headerLines.ascLine}</div>
             <div>{headerLines.mcLine}</div>
           </div>
-        </div>
+        </header>
 
         <div className="flex flex-wrap gap-2 mb-2 justify-start items-start">
           <input
@@ -2271,7 +2327,7 @@ const AdditionalChartPage: React.FC = () => {
               {ascDescription ? <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{ascDescription}</div> : null}
             </div>
 
-            <div className="flex justify-center px-2 mb-12" style={{ marginTop: "12px", marginBottom: "60px" }}>
+            <div className="flex justify-center px-2" style={{ marginTop: "12px", marginBottom: "12px" }}>
               <button
                 type="button"
                 className={`${BUTTON_SECONDARY} rounded-xl px-4 py-3`}
@@ -2279,7 +2335,7 @@ const AdditionalChartPage: React.FC = () => {
                   fontSize: "1.5rem",
                   width: "500px",
                   maxWidth: "100%",
-                  marginBottom: "20px",
+                  marginBottom: "0px",
                   background: "#f2e3c2",
                   color: "#1f1309",
                   border: "1px solid #b38b52",
@@ -2292,142 +2348,142 @@ const AdditionalChartPage: React.FC = () => {
             </div>
 
             {allowFullDetails && lagneshaDescription ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px", marginTop: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Лагнеша</strong>
                 </div>
-                {lagneshaHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{lagneshaHeading}</div> : null}
-                {lagneshaBody ? <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{lagneshaBody}</div> : null}
+                {lagneshaHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{lagneshaHeading}</div> : null}
+                {lagneshaBody ? <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{lagneshaBody}</div> : null}
               </div>
             ) : null}
 
             {allowFullDetails && lagneshaHouseDescription ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Лагнеша в доме</strong>
                 </div>
                 {lagneshaHouseHeading ? (
-                  <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{lagneshaHouseHeading}</div>
+                  <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{lagneshaHouseHeading}</div>
                 ) : null}
-                {lagneshaHouseBody ? <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{lagneshaHouseBody}</div> : null}
+                {lagneshaHouseBody ? <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{lagneshaHouseBody}</div> : null}
               </div>
             ) : null}
 
             {allowFullDetails && atmaKarakaDescription ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Атма-карака</strong>
                 </div>
-                <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>
+                <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>
                   {atmaKarakaHeading}
                   {atmaKarakaPercent !== null ? ` - ${atmaKarakaPercent.toFixed(2)}%` : ""}
                   {atmaKarakaArcLabel ? ` (${atmaKarakaArcLabel})` : ""}
                 </div>
-                {atmaKarakaBody ? <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{atmaKarakaBody}</div> : null}
+                {atmaKarakaBody ? <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{atmaKarakaBody}</div> : null}
               </div>
             ) : null}
 
             {allowFullDetails && daraKarakaDescription ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Дара-карака</strong>
                 </div>
-                <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>
+                <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>
                   {daraKarakaHeading}
                   {daraKarakaPercent !== null ? ` - ${daraKarakaPercent.toFixed(2)}%` : ""}
                   {daraKarakaArcLabel ? ` (${daraKarakaArcLabel})` : ""}
                 </div>
-                {daraKarakaBody ? <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{daraKarakaBody}</div> : null}
+                {daraKarakaBody ? <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{daraKarakaBody}</div> : null}
               </div>
             ) : null}
 
             {allowFullDetails && showSunSection ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Солнце</strong>
                 </div>
-                {sunHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{sunHouseHeading}</div> : null}
-                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{sunHouseBody}</div>
+                {sunHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{sunHouseHeading}</div> : null}
+                <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{sunHouseBody}</div>
               </div>
             ) : null}
 
             {allowFullDetails && showMoonSection ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Луна</strong>
                 </div>
-                {moonHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{moonHouseHeading}</div> : null}
-                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{moonHouseBody}</div>
+                {moonHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{moonHouseHeading}</div> : null}
+                <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{moonHouseBody}</div>
               </div>
             ) : null}
 
             {allowFullDetails && jupiterHouseBody ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Юпитер</strong>
                 </div>
-                {jupiterHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{jupiterHouseHeading}</div> : null}
-                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{jupiterHouseBody}</div>
+                {jupiterHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{jupiterHouseHeading}</div> : null}
+                <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{jupiterHouseBody}</div>
               </div>
             ) : null}
 
             {allowFullDetails && mercuryHouseBody ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Меркурий</strong>
                 </div>
-                {mercuryHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{mercuryHouseHeading}</div> : null}
-                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{mercuryHouseBody}</div>
+                {mercuryHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{mercuryHouseHeading}</div> : null}
+                <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{mercuryHouseBody}</div>
               </div>
             ) : null}
 
             {allowFullDetails && venusHouseBody ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Венера</strong>
                 </div>
-                {venusHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{venusHouseHeading}</div> : null}
-                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{venusHouseBody}</div>
+                {venusHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{venusHouseHeading}</div> : null}
+                <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{venusHouseBody}</div>
               </div>
             ) : null}
 
             {allowFullDetails && saturnHouseBody ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Сатурн</strong>
                 </div>
-                {saturnHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{saturnHouseHeading}</div> : null}
-                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{saturnHouseBody}</div>
+                {saturnHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{saturnHouseHeading}</div> : null}
+                <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{saturnHouseBody}</div>
               </div>
             ) : null}
 
             {allowFullDetails && marsHouseBody ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Марс</strong>
                 </div>
-                {marsHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{marsHouseHeading}</div> : null}
-                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{marsHouseBody}</div>
+                {marsHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{marsHouseHeading}</div> : null}
+                <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{marsHouseBody}</div>
               </div>
             ) : null}
 
             {allowFullDetails && rahuHouseBody ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Раху</strong>
                 </div>
-                {rahuHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{rahuHouseHeading}</div> : null}
-                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{rahuHouseBody}</div>
+                {rahuHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{rahuHouseHeading}</div> : null}
+                <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{rahuHouseBody}</div>
               </div>
             ) : null}
 
             {allowFullDetails && ketuHouseBody ? (
               <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Кету</strong>
                 </div>
-                {ketuHouseHeading ? <div style={{ fontSize: 14, color: "#4a3822", marginBottom: 6 }}>{ketuHouseHeading}</div> : null}
-                <div style={{ fontSize: 14, whiteSpace: "pre-line" }}>{ketuHouseBody}</div>
+                {ketuHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{ketuHouseHeading}</div> : null}
+                <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{ketuHouseBody}</div>
               </div>
             ) : null}
           </div>

@@ -1397,7 +1397,7 @@ if (!sessionReady) {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto w-full px-4 py-8" style={{ maxWidth: FORM_MAX_WIDTH }}>
+      <div className="mx-auto w-full px-4 pb-8 pt-3" style={{ maxWidth: FORM_MAX_WIDTH }}>
         <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Новая карта</h1>
