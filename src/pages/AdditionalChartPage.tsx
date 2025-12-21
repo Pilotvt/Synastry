@@ -760,7 +760,7 @@ const AdditionalChartPage: React.FC = () => {
         const api = typeof window !== "undefined" ? window.electronAPI?.license : undefined;
         const status = await api?.getStatus?.();
         if (!cancelled) setLicenseStatus(status ?? null);
-      } catch (error) {
+      } catch {
         if (!cancelled) setLicenseStatus(null);
       }
     })();
@@ -1609,16 +1609,16 @@ const AdditionalChartPage: React.FC = () => {
 
             <div
               style={{
-                width: "fit-content",
-                minWidth: 620,
-                maxWidth: 680,
+                width: 520,
+                minWidth: 480,
+                maxWidth: 520,
                 background: PAPER_BLOCK_BG,
                 border: "1px solid #000",
                 display: "flex",
                 flexDirection: "column",
               }}
             >
-            <div style={{ display: "flex", flexWrap: "nowrap", borderBottom: "1px solid #000" }}>
+            <div style={{ display: "flex", flexWrap: "nowrap", borderBottom: "1px solid #000", overflowX: "auto" }}>
               {ADDITIONAL_RIGHT_TABS.map((tab, idx) => {
                 const active = tab.id === rightPanelTab;
                 return (
@@ -1626,17 +1626,15 @@ const AdditionalChartPage: React.FC = () => {
                     key={tab.id}
                     type="button"
                     onClick={() => setRightPanelTab(tab.id)}
+                    className={`px-3 py-1.5 text-sm font-normal whitespace-nowrap ${
+                      active
+                        ? `${BUTTON_PRIMARY} cursor-default`
+                        : "border border-black bg-[#f1d6ae] text-[#1f1309] transition-colors hover:bg-[#edd7aa]"
+                    }`}
                     style={{
-                      padding: "4px 8px",
-                      fontSize: 14,
-                      fontWeight: active ? 700 : 600,
-                      background: active ? "#e8d7b0" : PAPER_BLOCK_BG,
-                      color: "#1f1309",
-                      border: "1px solid #000",
-                      borderBottom: active ? "1px solid #e8d7b0" : "1px solid #000",
                       marginLeft: idx === 0 ? 0 : -1,
-                      whiteSpace: "nowrap",
                     }}
+                    disabled={active}
                     aria-pressed={active}
                   >
                     {tab.label}
@@ -1940,20 +1938,28 @@ const AdditionalChartPage: React.FC = () => {
             <div className="flex flex-wrap gap-2 items-start justify-end">
               <button
                 type="button"
-                className={`${BUTTON_SECONDARY} px-3 py-1`}
+                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
                 onClick={() => requestNewChartReset("additional")}
               >
                 Новая карта
               </button>
-              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1`} onClick={() => navigate("/chart")}>
+              <button
+                type="button"
+                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
+                onClick={() => navigate("/chart")}
+              >
                 Натальная карта
               </button>
-              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1`} onClick={() => navigate("/questionnaire")}>
+              <button
+                type="button"
+                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
+                onClick={() => navigate("/questionnaire")}
+              >
                 Изменить анкету
               </button>
               <button
                 type="button"
-                className={`${BUTTON_SECONDARY} px-3 py-1`}
+                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
                 onClick={async () => {
                   const { data: sessionData } = await supabase.auth.getSession();
                   const userId = sessionData?.session?.user?.id;
@@ -1966,10 +1972,18 @@ const AdditionalChartPage: React.FC = () => {
               >
                 Профиль
               </button>
-              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1`} onClick={() => navigate("/sinastry")}>
+              <button
+                type="button"
+                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
+                onClick={() => navigate("/sinastry")}
+              >
                 Синастрия
               </button>
-              <button type="button" className={`${BUTTON_PRIMARY} px-3 py-1 cursor-default`} disabled>
+              <button
+                type="button"
+                className={`${BUTTON_PRIMARY} px-3 py-1.5 text-sm cursor-default`}
+                disabled
+              >
                 Дополнительно
               </button>
             </div>
@@ -1998,18 +2012,20 @@ const AdditionalChartPage: React.FC = () => {
           />
           {CHART_VARIANT_OPTIONS.map((option) => {
             const isActive = option.value === chartVariant;
-            const baseClasses = "px-3 py-2 text-left min-w-[160px] leading-tight border border-black bg-[#f1d6ae] text-black transition-colors";
-            const stateClasses = isActive ? "bg-[#e8d7b0] text-[#9a8046] cursor-default" : "hover:bg-[#edd7aa]";
+            const baseClasses = "px-3 py-2 text-left min-w-[160px] leading-tight";
+            const inactiveClasses = "border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]";
+            const activeClasses = `${BUTTON_PRIMARY} cursor-default`;
             return (
               <button
                 key={option.value}
                 type="button"
                 onClick={() => setChartVariant(option.value)}
-                className={`${baseClasses} ${stateClasses}`}
+                className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}
+                disabled={isActive}
                 aria-pressed={isActive}
               >
                 <div className="text-sm font-semibold">{option.title}</div>
-                <div className="text-xs text-black/60">{option.subtitle}</div>
+                <div className={`text-xs ${isActive ? "text-white/80" : "text-black/60"}`}>{option.subtitle}</div>
               </button>
             );
           })}
@@ -2309,7 +2325,7 @@ const AdditionalChartPage: React.FC = () => {
                     <button
                       type="button"
                       className={`${BUTTON_PRIMARY} w-full`}
-                      style={{ background: PAPER_BLOCK_BG, color: "#1f1309", border: "1px solid #b38b52", fontWeight: 700 }}
+                      style={{ background: PAPER_BLOCK_BG, color: "#1f1309", border: "1px solid #000", fontWeight: 700 }}
                       onClick={() => buildNow(birthParts)}
                     >
                       Построить натальную карту
@@ -2328,7 +2344,7 @@ const AdditionalChartPage: React.FC = () => {
             className="mt-6 space-y-4"
             style={{ margin: "20px auto 30px", paddingBottom: "30px", maxWidth: "1450px", width: "100%" }}
           >
-            <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+            <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
               <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{ascSectionTitle}</div>
               <div style={{ fontSize: 16, fontWeight: 600, color: "#4a3822", marginBottom: 6 }}>
                 {ascSignNameForText}
@@ -2352,7 +2368,7 @@ const AdditionalChartPage: React.FC = () => {
                   marginBottom: "0px",
                   background: PAPER_BLOCK_BG,
                   color: "#1f1309",
-                  border: "1px solid #b38b52",
+                  border: "1px solid #000",
                   fontWeight: 700,
                 }}
                 onClick={handleFullDetailsClick}
@@ -2362,7 +2378,7 @@ const AdditionalChartPage: React.FC = () => {
             </div>
 
             {allowFullDetails && lagneshaDescription ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px", marginTop: 0 }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px", marginTop: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Лагнеша</strong>
                 </div>
@@ -2372,7 +2388,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && lagneshaHouseDescription ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Лагнеша в доме</strong>
                 </div>
@@ -2384,7 +2400,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && atmaKarakaDescription ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Атма-карака</strong>
                 </div>
@@ -2398,7 +2414,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && daraKarakaDescription ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Дара-карака</strong>
                 </div>
@@ -2412,7 +2428,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && showSunSection ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Солнце</strong>
                 </div>
@@ -2422,7 +2438,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && showMoonSection ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Луна</strong>
                 </div>
@@ -2432,7 +2448,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && jupiterHouseBody ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Юпитер</strong>
                 </div>
@@ -2442,7 +2458,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && mercuryHouseBody ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Меркурий</strong>
                 </div>
@@ -2452,7 +2468,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && venusHouseBody ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Венера</strong>
                 </div>
@@ -2462,7 +2478,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && saturnHouseBody ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Сатурн</strong>
                 </div>
@@ -2472,7 +2488,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && marsHouseBody ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Марс</strong>
                 </div>
@@ -2482,7 +2498,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && rahuHouseBody ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Раху</strong>
                 </div>
@@ -2492,7 +2508,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && ketuHouseBody ? (
-              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Кету</strong>
                 </div>

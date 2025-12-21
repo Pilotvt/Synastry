@@ -557,10 +557,6 @@ function normalizeBuildMeta(value: unknown): BuildMeta | null {
   };
 }
 
-function isBuildMeta(value: unknown): value is BuildMeta {
-  return normalizeBuildMeta(value) !== null;
-}
-
 const SIGN_INFO: Record<string, { index: number; ru: string; en: string }> = {
   Ar: { index: 1, ru: "Овен", en: "Aries" },
   Ta: { index: 2, ru: "Телец", en: "Taurus" },
@@ -1996,7 +1992,7 @@ const ChartPage = () => {
         return;
       }
       const { dataUrl } = capture;
-      let { blob: blobPng, hash: screenshotHash } = capture;
+      const screenshotHash = capture.hash;
 
       if (!unmounted) {
         screenshotPhaseRef.current = 'capturing';

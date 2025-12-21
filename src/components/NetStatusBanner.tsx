@@ -8,7 +8,7 @@ const NetStatusBanner: React.FC = () => {
 
   return (
     <div className="fixed left-0 right-0 top-0 z-[2000] flex justify-center">
-      <div className="mt-3 max-w-lg rounded-lg border border-red-400/70 bg-red-700/90 px-4 py-2 text-center text-xs font-semibold text-white shadow-lg">
+      <div className="mt-3 max-w-lg rounded-lg border border-gray-400 bg-gray-300 px-4 py-2 text-center text-xs font-semibold text-black shadow-lg">
         Нет подключения к сети. Приложение работает в офлайн-режиме.
       </div>
     </div>

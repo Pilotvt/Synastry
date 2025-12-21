@@ -5,6 +5,7 @@ import { useProfile } from '../store/profile';
 import { blockUser, unblockUser } from '../lib/blocklist';
 import { useBlocklistStore } from '../store/blocklist';
 import { moderateText } from '../services/moderation';
+import { BUTTON_SECONDARY } from '../constants/buttonPalette';
 
 type ChatMessage = {
   id: string;
@@ -502,9 +503,7 @@ const ChatPopupPage: React.FC = () => {
               type="button"
               onClick={isTargetBlocked ? handleUnblock : handleStartBlock}
               disabled={blockBusy}
-              className={`text-xs px-3 py-1.5 rounded-lg border text-white/80 hover:bg-white/10 disabled:opacity-50 ${
-                isTargetBlocked ? 'border-emerald-400 text-emerald-200' : 'border-red-400 text-red-200'
-              }`}
+              className={`${BUTTON_SECONDARY} px-3 py-1.5 text-xs`}
             >
               {isTargetBlocked ? 'Разблокировать' : 'Заблокировать'}
             </button>
@@ -594,7 +593,7 @@ const ChatPopupPage: React.FC = () => {
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
-                  className="px-4 py-2 text-sm rounded-lg border border-white/30 text-white/80 hover:bg-white/10 disabled:opacity-50"
+                  className={`${BUTTON_SECONDARY} px-4 py-2 text-sm`}
                   onClick={() => setShowBlockConfirm(false)}
                   disabled={blockBusy}
                 >
@@ -602,7 +601,7 @@ const ChatPopupPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white font-semibold disabled:opacity-50"
+                  className={`${BUTTON_SECONDARY} px-4 py-2 text-sm`}
                   onClick={handleBlockConfirm}
                   disabled={blockBusy}
                 >
