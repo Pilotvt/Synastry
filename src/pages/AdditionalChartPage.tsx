@@ -15,6 +15,8 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?
 const DEBOUNCE_MS = 800;
 const ADDITIONAL_DRAFT_STORAGE_KEY = "synastry_additional_draft_v1";
 
+const PAPER_BLOCK_BG = "#f1d6ae";
+
 type AdditionalRightTabId = "tithi" | "vimshottari-dasha" | "nakshatra" | "panchanga" | "sade-sati";
 const ADDITIONAL_RIGHT_TABS: Array<{ id: AdditionalRightTabId; label: string }> = [
   { id: "tithi", label: "Титхи" },
@@ -1460,7 +1462,7 @@ const AdditionalChartPage: React.FC = () => {
     };
 
     return (
-      <div style={{ maxWidth: "1100px", width: "100%", margin: "16px 0 0" }}>
+      <div style={{ maxWidth: "1450px", width: "100%", margin: "16px 0 0" }}>
         <div style={{ fontSize: tableFontSize, marginBottom: 6, color: "#1f1309" }}>
           <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>{" "}
           <span style={{ fontWeight: 400 }}>
@@ -1470,18 +1472,19 @@ const AdditionalChartPage: React.FC = () => {
           </span>
         </div>
         <div style={{ overflowX: "auto" }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "nowrap", minWidth: 1052 }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "stretch", flexWrap: "nowrap", minWidth: 1082 }}>
             <div
               style={{
-                flex: "0 0 680px",
-                minWidth: 680,
-                background: "#f7e4c1",
-                border: "1px solid #7a643a",
+                width: "fit-content",
+                minWidth: 650,
+                maxWidth: 680,
+                background: PAPER_BLOCK_BG,
+                border: "1px solid #000",
                 padding: "6px 8px",
               }}
             >
               <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: tableFontSize, color: "#000" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: tableFontSize, color: "#000" }}>
                 <thead>
                   <tr>
                     <th style={headerCellStyle}>Созвездие (код)</th>
@@ -1601,11 +1604,21 @@ const AdditionalChartPage: React.FC = () => {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
-          </div>
 
-            <div style={{ flex: "0 0 360px", minWidth: 360, background: "#f7e4c1", border: "1px solid #7a643a" }}>
-            <div style={{ display: "flex", flexWrap: "nowrap", overflowX: "auto", borderBottom: "1px solid #7a643a" }}>
+            <div
+              style={{
+                width: "fit-content",
+                minWidth: 620,
+                maxWidth: 680,
+                background: PAPER_BLOCK_BG,
+                border: "1px solid #000",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+            <div style={{ display: "flex", flexWrap: "nowrap", borderBottom: "1px solid #000" }}>
               {ADDITIONAL_RIGHT_TABS.map((tab, idx) => {
                 const active = tab.id === rightPanelTab;
                 return (
@@ -1617,10 +1630,10 @@ const AdditionalChartPage: React.FC = () => {
                       padding: "4px 8px",
                       fontSize: 14,
                       fontWeight: active ? 700 : 600,
-                      background: active ? "#e8d7b0" : "#f7e4c1",
+                      background: active ? "#e8d7b0" : PAPER_BLOCK_BG,
                       color: "#1f1309",
-                      border: "1px solid #7a643a",
-                      borderBottom: active ? "1px solid #e8d7b0" : "1px solid #7a643a",
+                      border: "1px solid #000",
+                      borderBottom: active ? "1px solid #e8d7b0" : "1px solid #000",
                       marginLeft: idx === 0 ? 0 : -1,
                       whiteSpace: "nowrap",
                     }}
@@ -1631,12 +1644,12 @@ const AdditionalChartPage: React.FC = () => {
                 );
               })}
             </div>
-            <div style={{ background: "#f2e3c2", padding: "10px 12px", minHeight: 220 }}>
+            <div style={{ background: PAPER_BLOCK_BG, padding: "10px 12px", flex: "1 1 auto", minHeight: 220 }}>
               <div style={{ fontSize: 14, color: "#4a3822" }}>Пока пусто.</div>
             </div>
           </div>
         </div>
-        </div>
+      </div>
       </div>
     );
   }, [arcsForRender, chart, planetMarkers, planetsByArc, rightPanelTab]);
@@ -1920,6 +1933,7 @@ const AdditionalChartPage: React.FC = () => {
         }
       `}</style>
       <div className="container mx-auto px-4 pb-4 pt-3">
+        <div className="max-w-[1450px] mx-auto w-full">
         <header className="mb-6">
           <div className="flex justify-between items-center mb-2">
             <h1 className="text-3xl font-bold text-[#2b1c0f]">Натальная карта</h1>
@@ -1984,7 +1998,7 @@ const AdditionalChartPage: React.FC = () => {
           />
           {CHART_VARIANT_OPTIONS.map((option) => {
             const isActive = option.value === chartVariant;
-            const baseClasses = "px-3 py-2 text-left min-w-[160px] leading-tight border border-[#7a643a] bg-[#f7e4c1] text-black transition-colors";
+            const baseClasses = "px-3 py-2 text-left min-w-[160px] leading-tight border border-black bg-[#f1d6ae] text-black transition-colors";
             const stateClasses = isActive ? "bg-[#e8d7b0] text-[#9a8046] cursor-default" : "hover:bg-[#edd7aa]";
             return (
               <button
@@ -2001,7 +2015,7 @@ const AdditionalChartPage: React.FC = () => {
           })}
           <button
             type="button"
-            className="px-3 py-1.5 text-sm border border-[#7a643a] bg-[#f7e4c1] text-black transition-colors hover:bg-[#edd7aa] disabled:opacity-60 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-sm border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] disabled:opacity-60 disabled:cursor-not-allowed"
             onClick={handleSaveToFile}
             disabled={!chart || !meta}
           >
@@ -2009,13 +2023,13 @@ const AdditionalChartPage: React.FC = () => {
           </button>
           <button
             type="button"
-            className="px-3 py-1.5 text-sm border border-[#7a643a] bg-[#f7e4c1] text-black transition-colors hover:bg-[#edd7aa]"
+            className="px-3 py-1.5 text-sm border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
             onClick={handleOpenFromFileClick}
           >
             Открыть файл
           </button>
         </div>
-        <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "6px 8px", fontSize: 14 }}>
+        <div className="text-sm" style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "6px 8px" }}>
           {chartVariantConfig.description}
         </div>
 
@@ -2032,7 +2046,7 @@ const AdditionalChartPage: React.FC = () => {
 	          </div>
           <div style={{ minWidth: 520, maxWidth: 560 }}>
             <div className="birth-panel-title">ДАННЫЕ РОЖДЕНИЯ (локально)</div>
-            <div style={{ background: "#e8d6b0", border: "1px solid #b38b52", padding: "10px 12px" }}>
+            <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
               <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
                 <tbody>
                 <tr>
@@ -2042,14 +2056,14 @@ const AdditionalChartPage: React.FC = () => {
                 <tr>
                   <td style={{ padding: "2px 4px" }}>
                     <input
-                      style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={personName}
                       onChange={(e) => setPersonName(e.target.value)}
                     />
                   </td>
                   <td style={{ padding: "2px 4px" }}>
                     <input
-                      style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                     />
@@ -2061,7 +2075,7 @@ const AdditionalChartPage: React.FC = () => {
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <input
                         type="number"
-                        style={{ width: 70, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                        style={{ width: 70, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                         value={birthParts.year}
                         onChange={(e) => {
                           if (e.target.value === "") return;
@@ -2070,7 +2084,7 @@ const AdditionalChartPage: React.FC = () => {
                       />
                       <input
                         type="number"
-                        style={{ width: 46, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                        style={{ width: 46, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                         value={pad2(birthParts.month)}
                         onChange={(e) => {
                           if (e.target.value === "") return;
@@ -2079,7 +2093,7 @@ const AdditionalChartPage: React.FC = () => {
                       />
                       <input
                         type="number"
-                        style={{ width: 46, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                        style={{ width: 46, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                         value={pad2(birthParts.day)}
                         onChange={(e) => {
                           if (e.target.value === "") return;
@@ -2095,7 +2109,7 @@ const AdditionalChartPage: React.FC = () => {
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <input
                         type="number"
-                        style={{ width: 46, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                        style={{ width: 46, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                         value={pad2(birthParts.hour)}
                         onChange={(e) => {
                           if (e.target.value === "") return;
@@ -2104,7 +2118,7 @@ const AdditionalChartPage: React.FC = () => {
                       />
                       <input
                         type="number"
-                        style={{ width: 46, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                        style={{ width: 46, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                         value={pad2(birthParts.minute)}
                         onChange={(e) => {
                           if (e.target.value === "") return;
@@ -2130,7 +2144,7 @@ const AdditionalChartPage: React.FC = () => {
                   <td style={{ padding: "2px 4px" }}>Страна</td>
                   <td style={{ padding: "2px 4px" }}>
 	                    <select
-	                      style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+	                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
 	                      value={country}
 	                      onChange={(e) => {
 	                        const next = e.target.value;
@@ -2153,7 +2167,7 @@ const AdditionalChartPage: React.FC = () => {
                   <td style={{ padding: "2px 4px" }}>Город</td>
                   <td style={{ padding: "2px 4px", position: "relative" }}>
                     <input
-                      style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={cityQuery}
                       onChange={(e) => handleCityInput(e.target.value)}
                       onFocus={() => setSuggestionsOpen(true)}
@@ -2167,8 +2181,8 @@ const AdditionalChartPage: React.FC = () => {
                         style={{
                           position: "absolute",
                           zIndex: 10,
-                          background: "#f2e3c2",
-                          border: "1px solid #b38b52",
+                          background: PAPER_BLOCK_BG,
+                          border: "1px solid #000",
                           width: "100%",
                           maxHeight: 200,
                           overflowY: "auto",
@@ -2199,7 +2213,7 @@ const AdditionalChartPage: React.FC = () => {
                 <tr>
                   <td style={{ padding: "2px 4px" }}>
                     <input
-                      style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={lat}
                       onChange={(e) => {
                         const num = Number(e.target.value);
@@ -2212,7 +2226,7 @@ const AdditionalChartPage: React.FC = () => {
                   </td>
                   <td style={{ padding: "2px 4px" }}>
                     <input
-                      style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={lon}
                       onChange={(e) => {
                         const num = Number(e.target.value);
@@ -2228,7 +2242,7 @@ const AdditionalChartPage: React.FC = () => {
                   <td style={{ padding: "2px 4px" }}>IANA часовой пояс</td>
                   <td style={{ padding: "2px 4px" }}>
                     <input
-                      style={{ width: "100%", background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={ianaTzDisplay}
                       readOnly
                     />
@@ -2257,7 +2271,7 @@ const AdditionalChartPage: React.FC = () => {
 	                    <input
 	                      type="number"
 	                      inputMode="numeric"
-	                      style={{ width: 60, marginLeft: 8, background: "#f2e3c2", border: "1px solid #b38b52", padding: "2px 4px" }}
+	                      style={{ width: 60, marginLeft: 8, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
 	                      value={tzCorrectionHours}
 	                      onChange={(e) => {
                         const val = e.target.value;
@@ -2295,7 +2309,7 @@ const AdditionalChartPage: React.FC = () => {
                     <button
                       type="button"
                       className={`${BUTTON_PRIMARY} w-full`}
-                      style={{ background: "#f2e3c2", color: "#1f1309", border: "1px solid #b38b52", fontWeight: 700 }}
+                      style={{ background: PAPER_BLOCK_BG, color: "#1f1309", border: "1px solid #b38b52", fontWeight: 700 }}
                       onClick={() => buildNow(birthParts)}
                     >
                       Построить натальную карту
@@ -2312,9 +2326,9 @@ const AdditionalChartPage: React.FC = () => {
         {chart ? (
           <div
             className="mt-6 space-y-4"
-            style={{ margin: "20px auto 30px", paddingBottom: "30px", maxWidth: "1100px", width: "100%" }}
+            style={{ margin: "20px auto 30px", paddingBottom: "30px", maxWidth: "1450px", width: "100%" }}
           >
-            <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+            <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
               <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{ascSectionTitle}</div>
               <div style={{ fontSize: 16, fontWeight: 600, color: "#4a3822", marginBottom: 6 }}>
                 {ascSignNameForText}
@@ -2336,7 +2350,7 @@ const AdditionalChartPage: React.FC = () => {
                   width: "500px",
                   maxWidth: "100%",
                   marginBottom: "0px",
-                  background: "#f2e3c2",
+                  background: PAPER_BLOCK_BG,
                   color: "#1f1309",
                   border: "1px solid #b38b52",
                   fontWeight: 700,
@@ -2348,7 +2362,7 @@ const AdditionalChartPage: React.FC = () => {
             </div>
 
             {allowFullDetails && lagneshaDescription ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px", marginTop: 0 }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px", marginTop: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Лагнеша</strong>
                 </div>
@@ -2358,7 +2372,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && lagneshaHouseDescription ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Лагнеша в доме</strong>
                 </div>
@@ -2370,7 +2384,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && atmaKarakaDescription ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Атма-карака</strong>
                 </div>
@@ -2384,7 +2398,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && daraKarakaDescription ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Дара-карака</strong>
                 </div>
@@ -2398,7 +2412,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && showSunSection ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Солнце</strong>
                 </div>
@@ -2408,7 +2422,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && showMoonSection ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Луна</strong>
                 </div>
@@ -2418,7 +2432,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && jupiterHouseBody ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Юпитер</strong>
                 </div>
@@ -2428,7 +2442,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && mercuryHouseBody ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Меркурий</strong>
                 </div>
@@ -2438,7 +2452,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && venusHouseBody ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Венера</strong>
                 </div>
@@ -2448,7 +2462,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && saturnHouseBody ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Сатурн</strong>
                 </div>
@@ -2458,7 +2472,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && marsHouseBody ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Марс</strong>
                 </div>
@@ -2468,7 +2482,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && rahuHouseBody ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Раху</strong>
                 </div>
@@ -2478,7 +2492,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
 
             {allowFullDetails && ketuHouseBody ? (
-              <div style={{ background: "#f2e3c2", border: "1px solid #b38b52", padding: "10px 12px" }}>
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #b38b52", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Кету</strong>
                 </div>
@@ -2488,6 +2502,7 @@ const AdditionalChartPage: React.FC = () => {
             ) : null}
           </div>
         ) : null}
+        </div>
       </div>
     </div>
   );

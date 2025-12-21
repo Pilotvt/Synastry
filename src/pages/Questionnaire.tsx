@@ -1036,7 +1036,7 @@ const Questionnaire: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="p-4 pt-3">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-[1450px] mx-auto">
         <header className="mb-4 flex flex-col items-start gap-2">
           <div className="w-full flex justify-between items-center mb-2">
             <h1 className="text-3xl font-bold">{headerData ? `${headerData.name} ${headerData.last}` : 'Имя Фамилия'}</h1>

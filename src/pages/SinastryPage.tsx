@@ -2056,7 +2056,7 @@ const SinastryPage: React.FC = () => {
     <>
       <div className="min-h-screen bg-slate-950 text-white px-4 pb-8 pt-3">
       {licenseGate}
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-[1450px] mx-auto">
         <header className="mb-6">
           <div className="flex justify-between items-center mb-4">
             <h1 className="text-3xl font-bold">Синастрия</h1>

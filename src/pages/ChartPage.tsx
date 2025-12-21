@@ -3045,11 +3045,11 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
                 const isActive = option.value === chartVariant;
                 const isLockedVariant = !isLicensed && option.value !== "rashi";
                 const baseClasses =
-                  "px-3 py-2 text-left min-w-[160px] leading-tight border border-[#7a643a] bg-[#f7e4c1] text-black transition-colors";
+                  "px-3 py-2 text-left min-w-[160px] leading-tight border border-[#7a643a] bg-[#f1d6ae] text-black transition-colors";
                 const stateClasses = isLockedVariant
                   ? "bg-[#e6dcc5] text-[#b5a888] border-[#b5a888] cursor-not-allowed"
                   : isActive
-                  ? "bg-[#e8d7b0] text-[#9a8046] cursor-not-allowed"
+                  ? "bg-[#e8d7b0] text-[#9a8046] cursor-default"
                   : "hover:bg-[#edd7aa]";
                 return (
                   <button
@@ -3069,7 +3069,7 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
                     aria-pressed={isActive}
                   >
                     <div className="text-sm font-semibold">{option.title}</div>
-                    <div className="text-xs text-white/70">{option.subtitle}</div>
+                    <div className="text-xs text-black/60">{option.subtitle}</div>
                   </button>
                 );
               })}

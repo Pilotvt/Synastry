@@ -1606,7 +1606,7 @@ const UserProfilePage: React.FC = () => {
   const profileResidenceLabel = formatResidenceLabel(profile.residenceCityName, profile.residenceCountry);
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-6xl mx-auto p-8 pt-3">
+      <div className="max-w-[1450px] mx-auto p-8 pt-3">
       {!isOnline && (
         <div className="mb-6 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-sm text-yellow-200">
           Нет подключения к сети. Показаны закэшированные данные профиля и анкет.
