@@ -80,7 +80,7 @@ const BlocklistPopupPage: React.FC = () => {
                   </div>
                   <button
                     type="button"
-                    className={`${BUTTON_PRIMARY} px-3 py-1.5 text-xs`}
+                    className={`${BUTTON_SECONDARY} px-3 py-1.5 text-xs`}
                     onClick={() => handleUnblock(entry.id)}
                     disabled={busyId === entry.id}
                   >

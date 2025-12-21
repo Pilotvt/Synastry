@@ -515,17 +515,16 @@ const ChatPopupPage: React.FC = () => {
           </div>
         ) : null}
       </header>
-      {isTargetBlocked ? (
-        <div className="px-4 py-2 text-xs text-amber-200 bg-amber-500/10 border-b border-amber-400/20">
-          Пользователь находится в чёрном списке. Сообщения скрыты до разблокировки.
-        </div>
-      ) : null}
       <div className="flex-1 px-4 py-3 flex flex-col gap-3 overflow-hidden">
         <div
           ref={scrollRef}
           className="flex-1 min-h-0 overflow-y-auto rounded-2xl bg-white/5 border border-white/10 p-3 space-y-2"
         >
-          {historyLoading ? (
+          {isTargetBlocked ? (
+            <div className="h-full flex items-center justify-center text-sm text-white/70 text-center px-4">
+              Пользователь находится в чёрном списке. Сообщения скрыты до разблокировки.
+            </div>
+          ) : historyLoading ? (
             <div className="text-sm text-white/70">Загрузка переписки...</div>
           ) : messages.length === 0 ? (
             <div className="text-sm text-white/60">Нет сообщений. Напишите первым.</div>

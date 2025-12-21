@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 
 const AUTH_REDIRECT_URI = "synastry://auth-callback";
 
@@ -120,24 +121,16 @@ export default function AuthPage() {
           <button
             type="button"
             onClick={() => setMode("signup")}
-            className={`px-3 py-1 border border-black text-sm font-semibold transition-colors hover:shadow-md ${
-              mode === "signup"
-                ? "bg-[#e8dcbe] text-[#7e7362] hover:bg-[#f3e5c4]"
-                : "bg-[#f4d4a4] text-black hover:bg-[#fce3b8]"
-            }`}
-            style={{ boxShadow: mode === "signup" ? "inset 0 0 0 1px rgba(0,0,0,0.15)" : undefined }}
+            className={`${mode === "signup" ? BUTTON_PRIMARY : BUTTON_SECONDARY} px-3 py-1 text-sm cursor-default`}
+            disabled={mode === "signup"}
           >
             Регистрация
           </button>
           <button
             type="button"
             onClick={() => setMode("login")}
-            className={`px-3 py-1 border border-black text-sm font-semibold transition-colors hover:shadow-md ${
-              mode === "login"
-                ? "bg-[#e8dcbe] text-[#7e7362] hover:bg-[#f3e5c4]"
-                : "bg-[#f4d4a4] text-black hover:bg-[#fce3b8]"
-            }`}
-            style={{ boxShadow: mode === "login" ? "inset 0 0 0 1px rgba(0,0,0,0.15)" : undefined }}
+            className={`${mode === "login" ? BUTTON_PRIMARY : BUTTON_SECONDARY} px-3 py-1 text-sm cursor-default`}
+            disabled={mode === "login"}
           >
             Вход
           </button>
