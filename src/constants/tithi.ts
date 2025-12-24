@@ -115,7 +115,7 @@ export function tithiOrdinalRu(tithi: number): string {
 }
 
 export function tithiPakshaRu(paksha: TithiPaksha): string {
-  return paksha === "krishna" ? "Кришна" : "Шукла";
+  return paksha === "krishna" ? "Кришна пакша (убывающая Луна)" : "Шукла пакша (растущая Луна)";
 }
 
 export function getTithiStatic(tithi: number): TithiStatic {

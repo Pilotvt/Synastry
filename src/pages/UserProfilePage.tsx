@@ -302,7 +302,10 @@ const formatAgoLabel = (diffMs: number): string => {
   return 'давно';
 };
 
-const describeOnlineStatus = (lastSeenAt: string | null): OnlineStatusDescriptor => {
+const describeOnlineStatus = (
+  lastSeenAt: string | null,
+  gender?: "male" | "female" | null,
+): OnlineStatusDescriptor => {
   if (!lastSeenAt) {
     return {
       label: 'оффлайн',
@@ -334,8 +337,9 @@ const describeOnlineStatus = (lastSeenAt: string | null): OnlineStatusDescriptor
     };
   }
   const recent = diff < HOUR_MS;
+  const verb = gender === "female" ? "была" : "был";
   return {
-    label: `был ${formatAgoLabel(diff)} назад`,
+    label: `${verb} ${formatAgoLabel(diff)} назад`,
     badgeClass: recent
       ? 'text-amber-50'
       : 'text-slate-200/80',
@@ -1810,7 +1814,7 @@ const UserProfilePage: React.FC = () => {
                           ? `${entry.typeazh.slice(0, 157).trim()}…`
                           : entry.typeazh
                         : 'Не указано';
-                      const statusBadge = describeOnlineStatus(entry.lastSeenAt);
+                      const statusBadge = describeOnlineStatus(entry.lastSeenAt, entry.gender);
                       return (
                         <li
                           key={entry.id}

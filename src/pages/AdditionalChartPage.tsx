@@ -1718,6 +1718,7 @@ const AdditionalChartPage: React.FC = () => {
                     const endLocal = moment.parseZone(tithiInfo.end_utc).tz(ianaTz).format("DD.MM.YYYY HH:mm");
                     const tithiLabel = `${tithiOrdinalRu(tithiInfo.tithi)} Лунные сутки - ${staticInfo.title}`;
                     const pakshaLabel = tithiPakshaRu(tithiInfo.paksha);
+                    const headerLine = `${tithiLabel}; ${pakshaLabel}`;
                     const iconPath = `moon/tithi-${String(tithiInfo.tithi).padStart(2, "0")}.png`;
 
                     return (
@@ -1729,21 +1730,21 @@ const AdditionalChartPage: React.FC = () => {
                             style={{ width: 120, height: 120, flex: "0 0 auto" }}
                           />
                           <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-                            <div style={{ fontSize: 16, color: "#1f1309", marginBottom: 6, fontWeight: 600 }}>
-                              {pakshaLabel} - {tithiLabel}
+                            <div style={{ fontSize: 16, color: "#000", marginBottom: 6, fontWeight: 400, lineHeight: "18px" }}>
+                              {headerLine}
                             </div>
-                            <div style={{ fontSize: 14, color: "#1f1309", lineHeight: 1.35 }}>
+                            <div style={{ fontSize: 16, color: "#000", fontWeight: 400, lineHeight: "18px" }}>
                               <div>
-                                <span style={{ fontWeight: 600 }}>Начало</span> - {startLocal}
+                                Начало - {startLocal}
                               </div>
                               <div>
-                                <span style={{ fontWeight: 600 }}>Конец</span> - {endLocal}
+                                Конец - {endLocal}
                               </div>
                             </div>
                           </div>
                         </div>
                         {staticInfo.description ? (
-                          <div style={{ fontSize: 14, color: "#1f1309", whiteSpace: "pre-line", lineHeight: 1.4 }}>
+                          <div style={{ fontSize: 16, color: "#000", fontWeight: 400, whiteSpace: "pre-line", lineHeight: "18px" }}>
                             {staticInfo.description}
                           </div>
                         ) : null}
@@ -2041,7 +2042,7 @@ const AdditionalChartPage: React.FC = () => {
         .additional-page .birth-panel textarea:focus {
           outline: 2px solid #000;
           outline-offset: 1px;
-          background: #fff3d6 !important;
+          background: #f5e4c3 !important;
           box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
         }
         .additional-page .birth-panel input:not([type="radio"]):not([type="checkbox"]):focus-visible,

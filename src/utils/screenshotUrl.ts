@@ -60,35 +60,15 @@ export function needsSupabaseResolution(raw: string | null | undefined): boolean
 
 export async function resolveSupabaseScreenshotUrl(
   raw: string | null | undefined,
-  expiresInSeconds = 60 * 60 * 24,
+  _expiresInSeconds = 60 * 60 * 24,
 ): Promise<string | null> {
   if (!raw) return null;
-  const rawIsPointer = raw.startsWith("supabase://");
-  const rawIsSignedUrl = /\/storage\/v1\/object\/sign\//.test(raw);
-  const rawIsPublicUrl = /\/storage\/v1\/object\/public\//.test(raw);
   const pointer = parseSupabaseStoragePointer(raw);
   if (!pointer) {
     return raw;
   }
-  try {
-    const { data, error } = await supabase
-      .storage
-      .from(pointer.bucket)
-      .createSignedUrl(pointer.path, Math.min(expiresInSeconds, 60 * 60 * 24 * 6));
-    if (!error && data?.signedUrl) {
-      return data.signedUrl;
-    }
-  } catch (err) {
-    console.warn("Failed to create signed screenshot URL", err);
-  }
-  // If we already have a signed or public URL, don't downgrade it to a public bucket URL on failure.
-  if (rawIsSignedUrl || rawIsPublicUrl) {
-    return raw;
-  }
-  // For pointers we either sign successfully or keep the existing screenshot URL in the caller.
-  if (rawIsPointer) {
-    return null;
-  }
+  // Screenshots are served as public URLs to avoid expiring signed tokens.
+  // NOTE: Buckets must allow public read access for the URL to actually load.
   try {
     const { data } = supabase.storage.from(pointer.bucket).getPublicUrl(pointer.path);
     if (data?.publicUrl) {
