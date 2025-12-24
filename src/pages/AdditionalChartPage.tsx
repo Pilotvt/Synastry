@@ -7,6 +7,7 @@ import { supabase } from "../lib/supabase";
 import { loadChartTextResources, type ChartTextResources } from "../lib/textResources";
 import NorthIndianChart from "../components/NorthIndianChart";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
+import { getTithiStatic, tithiOrdinalRu, tithiPakshaRu } from "../constants/tithi";
 import { getRussianCities } from "../utils/russianCitiesClient";
 import { requestNewChartReset } from "../utils/newChartRequest";
 import { norm, latinToRuName, ruToLat } from "../utils/transliterate";
@@ -169,6 +170,15 @@ type BuildMeta = {
   autoDstMinutes: number;
   manualDstMinutes: number;
   tzCorrectionMinutes: number;
+};
+
+type TithiApiResponse = {
+  tithi: number;
+  paksha: "shukla" | "krishna";
+  start_utc: string;
+  end_utc: string;
+  phase_angle_deg: number;
+  illumination: number;
 };
 
 type ChartVariant = "rashi" | "chandra" | "surya";
@@ -700,6 +710,10 @@ const AdditionalChartPage: React.FC = () => {
   const [fullDetailsOpen, setFullDetailsOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<AdditionalRightTabId>("tithi");
   const fullDetailsRequestedRef = useRef(false);
+  const [tithiInfo, setTithiInfo] = useState<TithiApiResponse | null>(null);
+  const [tithiLoading, setTithiLoading] = useState(false);
+  const [tithiError, setTithiError] = useState<string | null>(null);
+  const tithiAbortRef = useRef<AbortController | null>(null);
   const [debounceTimer, setDebounceTimer] = useState<number | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const blurTimerRef = useRef<number | null>(null);
@@ -962,6 +976,53 @@ const AdditionalChartPage: React.FC = () => {
   useEffect(() => {
     buildChartRef.current = buildChart;
   }, [buildChart]);
+
+  useEffect(() => {
+    if (rightPanelTab !== "tithi") return;
+    if (!meta?.datetimeIso) {
+      setTithiInfo(null);
+      setTithiLoading(false);
+      setTithiError(null);
+      return;
+    }
+
+    tithiAbortRef.current?.abort();
+    const controller = new AbortController();
+    tithiAbortRef.current = controller;
+
+    setTithiLoading(true);
+    setTithiError(null);
+
+    (async () => {
+      try {
+        const endpoint = `${API_BASE_URL.replace(/\/$/, "")}/api/tithi`;
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ datetime_iso: meta.datetimeIso }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(`Ошибка сервера: ${res.status} ${txt}`);
+        }
+        const json = (await res.json()) as TithiApiResponse;
+        if (controller.signal.aborted) return;
+        setTithiInfo(json);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        setTithiError(msg);
+        setTithiInfo(null);
+      } finally {
+        if (!controller.signal.aborted) setTithiLoading(false);
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [meta?.datetimeIso, rightPanelTab]);
 
   const scheduleRebuild = useCallback(
     (nextParts: BirthParts) => {
@@ -1645,14 +1706,63 @@ const AdditionalChartPage: React.FC = () => {
               })}
             </div>
             <div style={{ background: PAPER_BLOCK_BG, padding: "10px 12px", flex: "1 1 auto", minHeight: 220 }}>
-              <div style={{ fontSize: 14, color: "#4a3822" }}>Пока пусто.</div>
+              {rightPanelTab === "tithi" ? (
+                tithiLoading ? (
+                  <div style={{ fontSize: 14, color: "#4a3822" }}>Загрузка…</div>
+                ) : tithiError ? (
+                  <div style={{ fontSize: 14, color: "#9b1c1c", whiteSpace: "pre-line" }}>{tithiError}</div>
+                ) : tithiInfo ? (
+                  (() => {
+                    const staticInfo = getTithiStatic(tithiInfo.tithi);
+                    const startLocal = moment.parseZone(tithiInfo.start_utc).tz(ianaTz).format("DD.MM.YYYY HH:mm");
+                    const endLocal = moment.parseZone(tithiInfo.end_utc).tz(ianaTz).format("DD.MM.YYYY HH:mm");
+                    const tithiLabel = `${tithiOrdinalRu(tithiInfo.tithi)} Лунные сутки - ${staticInfo.title}`;
+                    const pakshaLabel = tithiPakshaRu(tithiInfo.paksha);
+                    const iconPath = `moon/tithi-${String(tithiInfo.tithi).padStart(2, "0")}.png`;
+
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                          <img
+                            src={publicAssetUrl(iconPath)}
+                            alt={tithiLabel}
+                            style={{ width: 120, height: 120, flex: "0 0 auto" }}
+                          />
+                          <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                            <div style={{ fontSize: 16, color: "#1f1309", marginBottom: 6, fontWeight: 600 }}>
+                              {pakshaLabel} - {tithiLabel}
+                            </div>
+                            <div style={{ fontSize: 14, color: "#1f1309", lineHeight: 1.35 }}>
+                              <div>
+                                <span style={{ fontWeight: 600 }}>Начало</span> - {startLocal}
+                              </div>
+                              <div>
+                                <span style={{ fontWeight: 600 }}>Конец</span> - {endLocal}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        {staticInfo.description ? (
+                          <div style={{ fontSize: 14, color: "#1f1309", whiteSpace: "pre-line", lineHeight: 1.4 }}>
+                            {staticInfo.description}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div style={{ fontSize: 14, color: "#4a3822" }}>Пока пусто.</div>
+                )
+              ) : (
+                <div style={{ fontSize: 14, color: "#4a3822" }}>Пока пусто.</div>
+              )}
             </div>
           </div>
         </div>
       </div>
       </div>
     );
-  }, [arcsForRender, chart, planetMarkers, planetsByArc, rightPanelTab]);
+  }, [arcsForRender, chart, ianaTz, planetMarkers, planetsByArc, rightPanelTab, tithiError, tithiInfo, tithiLoading]);
 
   const headerLines = useMemo(() => {
     const cityLabel = selectedCity?.nameRu || selectedCity?.name || cityQuery || "-";
@@ -1926,6 +2036,20 @@ const AdditionalChartPage: React.FC = () => {
           letter-spacing: 0.06em;
           margin-bottom: 12px;
         }
+        .additional-page .birth-panel input:not([type="radio"]):not([type="checkbox"]):focus,
+        .additional-page .birth-panel select:focus,
+        .additional-page .birth-panel textarea:focus {
+          outline: 2px solid #000;
+          outline-offset: 1px;
+          background: #fff3d6 !important;
+          box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+        }
+        .additional-page .birth-panel input:not([type="radio"]):not([type="checkbox"]):focus-visible,
+        .additional-page .birth-panel select:focus-visible,
+        .additional-page .birth-panel textarea:focus-visible {
+          outline: 2px solid #000;
+          outline-offset: 1px;
+        }
         .additional-page input[type="number"]::-webkit-outer-spin-button,
         .additional-page input[type="number"]::-webkit-inner-spin-button {
           opacity: 1;
@@ -2064,7 +2188,7 @@ const AdditionalChartPage: React.FC = () => {
 	          </div>
           <div style={{ minWidth: 520, maxWidth: 560 }}>
             <div className="birth-panel-title">ДАННЫЕ РОЖДЕНИЯ (локально)</div>
-            <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
+            <div className="birth-panel" style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
               <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
                 <tbody>
                 <tr>

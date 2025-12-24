@@ -3040,13 +3040,15 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
               {CHART_VARIANT_OPTIONS.map((option) => {
                 const isActive = option.value === chartVariant;
                 const isLockedVariant = !isLicensed && option.value !== "rashi";
-                const baseClasses =
-                  "px-3 py-2 text-left min-w-[160px] leading-tight border border-[#7a643a] bg-[#f1d6ae] text-black transition-colors";
-                const stateClasses = isLockedVariant
-                  ? "bg-[#e6dcc5] text-[#b5a888] border-[#b5a888] cursor-not-allowed"
+                const layoutClasses = "px-3 py-2 text-left min-w-[160px] leading-tight";
+                const inactiveClasses = "border border-[#7a643a] bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]";
+                const lockedClasses = "border border-[#b5a888] bg-[#e6dcc5] text-[#b5a888] cursor-not-allowed";
+                const activeClasses = `${BUTTON_PRIMARY} cursor-default`;
+                const subtitleClasses = isLockedVariant
+                  ? "text-[#b5a888]"
                   : isActive
-                  ? "bg-[#e8d7b0] text-[#9a8046] cursor-default"
-                  : "hover:bg-[#edd7aa]";
+                    ? "text-white/80"
+                    : "text-black/60";
                 return (
                   <button
                     key={option.value}
@@ -3061,11 +3063,12 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
                       setChartVariant(option.value);
                       setFullDetailsUnlocked(isLicensed);
                     }}
-                    className={`${baseClasses} ${stateClasses}`}
+                    className={`${layoutClasses} ${isLockedVariant ? lockedClasses : isActive ? activeClasses : inactiveClasses}`}
+                    disabled={isActive && !isLockedVariant}
                     aria-pressed={isActive}
                   >
                     <div className="text-sm font-semibold">{option.title}</div>
-                    <div className="text-xs text-black/60">{option.subtitle}</div>
+                    <div className={`text-xs ${subtitleClasses}`}>{option.subtitle}</div>
                   </button>
                 );
               })}

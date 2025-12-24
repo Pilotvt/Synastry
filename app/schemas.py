@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Dict, List, Literal, Optional
+from datetime import datetime
 
 class ChartRequest(BaseModel):
     datetime_iso: str
@@ -102,6 +103,19 @@ class ImageModerationResponse(BaseModel):
     raw_scores: Dict[str, float] = Field(default_factory=dict)
     filename: Optional[str] = None
     reason: Optional[str] = None
+
+
+class TithiRequest(BaseModel):
+    datetime_iso: str = Field(..., description="ISO datetime with timezone offset, e.g. 2025-12-22T00:00:00+06:00")
+
+
+class TithiResponse(BaseModel):
+    tithi: int = Field(..., ge=1, le=30)
+    paksha: Literal["shukla", "krishna"]
+    start_utc: datetime
+    end_utc: datetime
+    phase_angle_deg: float = Field(..., ge=0.0, lt=360.0)
+    illumination: float = Field(..., ge=0.0, le=1.0)
 
 # Пример использования moment-timezone для установки временной зоны и формата даты
 # birth = '1987-02-21T18:45'

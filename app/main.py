@@ -7,8 +7,11 @@ from .schemas import (
     ImageModerationResponse,
     TextModerationRequest,
     TextModerationResponse,
+    TithiRequest,
+    TithiResponse,
 )
 from .jyotish import compute_chart
+from .tithi import compute_tithi
 from .moderation.image import analyze_image
 from .moderation.text import analyze_text
 
@@ -26,6 +29,11 @@ app.add_middleware(
 @app.post("/api/chart", response_model=ChartResponse)
 def chart_endpoint(data: ChartRequest):
     return compute_chart(data)
+
+
+@app.post("/api/tithi", response_model=TithiResponse)
+def tithi_endpoint(data: TithiRequest) -> TithiResponse:
+    return TithiResponse(**compute_tithi(data.datetime_iso).__dict__)
 
 
 @app.post("/api/moderation/text", response_model=TextModerationResponse)

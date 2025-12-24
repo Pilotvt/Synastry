@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import { BUTTON_SECONDARY } from "../constants/buttonPalette";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -111,7 +112,7 @@ const ChangePasswordPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-white px-4 py-10">
       <div className="max-w-xl mx-auto">
-        <button type="button" className="text-sm text-white/70 hover:text-white" onClick={() => navigate(-1)}>
+        <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`} onClick={() => navigate(-1)}>
           ← Назад
         </button>
         <h1 className="text-2xl font-semibold mt-4 mb-3">Смена пароля</h1>

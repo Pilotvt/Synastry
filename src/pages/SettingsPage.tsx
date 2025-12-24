@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { BUTTON_SECONDARY } from "../constants/buttonPalette";
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -102,7 +103,7 @@ const SettingsPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6">
       <div className="max-w-2xl mx-auto">
-        <button type="button" className="text-sm text-white/70 hover:text-white" onClick={() => navigate(-1)}>
+        <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`} onClick={() => navigate(-1)}>
           ← Назад
         </button>
         <h1 className="text-2xl font-semibold mt-4 mb-4">Настройки уведомлений</h1>

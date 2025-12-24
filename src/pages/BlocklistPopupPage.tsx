@@ -1,6 +1,6 @@
 import React from "react";
 import { useBlocklistController } from "../hooks/useBlocklistController";
-import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
+import { BUTTON_SECONDARY } from "../constants/buttonPalette";
 
 const BlocklistPopupPage: React.FC = () => {
   const {
