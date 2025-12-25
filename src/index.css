@@ -36,6 +36,14 @@ body,
 	background-repeat: repeat;
 }
 
+.paper-texture-solid {
+	background-color: #f9e0bb !important;
+	background-image: var(--paper-texture-image) !important;
+	background-size: var(--paper-texture-size) !important;
+	background-repeat: repeat !important;
+	background-attachment: fixed;
+}
+
 .bg-white,
 .bg-white\/5,
 .bg-white\/10,
@@ -98,6 +106,34 @@ select:focus {
 	outline: none;
 	border-color: rgba(176, 112, 48, 0.65);
 	box-shadow: 0 0 0 2px rgba(176, 112, 48, 0.25);
+}
+
+.paper-input {
+	background-color: rgba(249, 224, 187, 0.92) !important;
+	background-image: var(--paper-texture-image) !important;
+	background-size: var(--paper-texture-size) !important;
+	background-repeat: repeat !important;
+	border: 1px solid rgba(120, 80, 40, 0.35) !important;
+	color: #2b1c0f !important;
+}
+
+.paper-menu {
+	background-color: rgba(249, 224, 187, 0.98);
+	background-image: var(--paper-texture-image);
+	background-size: var(--paper-texture-size);
+	background-repeat: repeat;
+	border: 1px solid rgba(120, 80, 40, 0.35);
+	color: #2b1c0f;
+}
+
+.paper-menu-item {
+	padding: 6px 10px;
+	cursor: pointer;
+}
+
+.paper-menu-item:hover,
+.paper-menu-item[aria-selected="true"] {
+	background-color: rgba(0, 0, 0, 0.06);
 }
 
 .synastry-preview,

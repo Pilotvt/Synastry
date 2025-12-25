@@ -1,5 +1,43 @@
 const api = window.licensePrompt;
 
+function scheduleWindowResize() {
+  if (!api || typeof api.resizeToContent !== 'function') return () => undefined;
+  let raf = 0;
+  const request = () => {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      try {
+        const height = Math.ceil(document.documentElement.scrollHeight || document.body.scrollHeight || 0);
+        if (height > 0) api.resizeToContent(height);
+      } catch {}
+    });
+  };
+  request();
+
+  let observer = null;
+  try {
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => request());
+      observer.observe(document.body);
+    }
+  } catch {}
+
+  window.addEventListener('load', request);
+  document.fonts?.ready?.then?.(request).catch?.(() => {});
+
+  return () => {
+    try {
+      if (raf) cancelAnimationFrame(raf);
+    } catch {}
+    try {
+      observer?.disconnect?.();
+    } catch {}
+    try {
+      window.removeEventListener('load', request);
+    } catch {}
+  };
+}
+
 function formatStatus(status) {
   if (!status) return 'Статус лицензии недоступен.';
   const lines = [];
@@ -38,6 +76,7 @@ function applyColorScheme() {
 function main() {
   if (!api) { console.error('licensePrompt API unavailable'); return; }
 
+  const cleanupResize = scheduleWindowResize();
   const cleanupTheme = applyColorScheme();
 
   const keyInput = document.getElementById('license-key');
@@ -57,6 +96,7 @@ function main() {
   };
   const showMessage = (text, kind = '') => {
     messageBox.textContent = text || ''; messageBox.className = `message ${kind}`.trim();
+    try { api.resizeToContent?.(Math.ceil(document.documentElement.scrollHeight)); } catch {}
   };
   const updateStatus = (status) => {
     statusBox.textContent = formatStatus(status);
@@ -64,6 +104,7 @@ function main() {
       const email = status?.identityEmail || '';
       identityBox.textContent = `Ваш логин: ${email || 'не определён'}`;
     } catch {}
+    try { api.resizeToContent?.(Math.ceil(document.documentElement.scrollHeight)); } catch {}
     if (status && status.licensed) { setTimeout(() => api.close(), 250); }
   };
 
@@ -88,7 +129,7 @@ function main() {
   unsubscribeStatus = api.onStatus((s) => updateStatus(s));
   api.getStatus().then(updateStatus).catch((err) => { console.error('status error', err); showMessage('Не удалось получить статус лицензии.', 'error'); });
 
-  window.addEventListener('beforeunload', () => { try { unsubscribeStatus && unsubscribeStatus(); } catch {}; try { cleanupTheme(); } catch {}; });
+  window.addEventListener('beforeunload', () => { try { unsubscribeStatus && unsubscribeStatus(); } catch {}; try { cleanupTheme(); } catch {}; try { cleanupResize(); } catch {}; });
   setTimeout(() => { try { keyInput.focus(); } catch {} }, 50);
 }
 

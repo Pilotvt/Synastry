@@ -87,6 +87,10 @@ const blocklistChannel = {
   open: () => ipcRenderer.invoke('blocklist:open'),
 };
 
+const uiChannel = {
+  showOfflineAccessDialog: () => ipcRenderer.invoke('ui:offline-access-dialog'),
+};
+
 const authChannel = {
   getPending: () => ipcRenderer.invoke('auth:get-pending'),
   acknowledge: () => ipcRenderer.invoke('auth:acknowledge'),
@@ -122,6 +126,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   auth: authChannel,
   chat: chatChannel,
   blocklist: blocklistChannel,
+  ui: uiChannel,
   navigation: {
     onOpenApp: (callback) => {
       if (typeof callback !== 'function') return () => undefined;

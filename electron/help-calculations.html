@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Справка</title>
+    <style>
+      :root {
+        --border: rgba(0, 0, 0, 0.18);
+        --sidebar-bg: #f2f2f2;
+        --sidebar-tab: #e8e8e8;
+        --sidebar-tab-active: #ffffff;
+        --text: #111111;
+        --muted: rgba(0, 0, 0, 0.6);
+        --focus: rgba(37, 99, 235, 0.35);
+        --selection: rgba(37, 99, 235, 0.15);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: flex;
+        overflow: hidden;
+        font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+        color: var(--text);
+        background: #ffffff;
+      }
+
+      .sidebar {
+        width: 290px;
+        min-width: 240px;
+        max-width: 420px;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--border);
+        background: var(--sidebar-bg);
+      }
+
+      .tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--border);
+        background: var(--sidebar-tab);
+      }
+
+      .tab {
+        appearance: none;
+        border: 0;
+        border-right: 1px solid var(--border);
+        background: transparent;
+        padding: 8px 10px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .tab.active {
+        background: var(--sidebar-tab-active);
+        font-weight: 600;
+      }
+
+      .sidebar-body {
+        padding: 10px;
+        overflow: auto;
+        flex: 1;
+      }
+
+      .filter {
+        width: 100%;
+        padding: 7px 9px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: #ffffff;
+        outline: none;
+        font-size: 13px;
+      }
+
+      .filter:focus {
+        box-shadow: 0 0 0 3px var(--focus);
+      }
+
+      .tree {
+        margin: 10px 0 0;
+        padding: 0;
+        list-style: none;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .tree-item {
+        display: block;
+        margin: 0;
+      }
+
+      .tree-btn {
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: transparent;
+        padding: 6px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .tree-btn:hover {
+        background: rgba(0, 0, 0, 0.06);
+      }
+
+      .tree-btn.selected {
+        background: var(--selection);
+        outline: 1px solid rgba(37, 99, 235, 0.35);
+      }
+
+      .tree-children {
+        list-style: none;
+        margin: 2px 0 6px;
+        padding: 0 0 0 16px;
+      }
+
+      .content {
+        flex: 1;
+        overflow: auto;
+        padding: 18px 24px;
+      }
+
+      .content h1 {
+        margin: 0 0 10px;
+        font-size: 30px;
+        font-weight: 650;
+      }
+
+      .meta {
+        margin: 0 0 14px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .page-text {
+        white-space: pre-wrap;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .empty {
+        padding: 12px;
+        border: 1px dashed var(--border);
+        border-radius: 10px;
+        color: var(--muted);
+        background: rgba(0, 0, 0, 0.03);
+      }
+    </style>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="tabs">
+        <button class="tab active" id="tab-contents" type="button">Содержание</button>
+        <button class="tab" id="tab-index" type="button">Указатель</button>
+      </div>
+      <div class="sidebar-body">
+        <input class="filter" id="filter" type="text" placeholder="Поиск по темам…" />
+        <ul class="tree" id="tree"></ul>
+        <div id="index" class="empty" style="display: none; margin-top: 10px;">
+          Указатель пока не настроен.
+        </div>
+      </div>
+    </aside>
+    <main class="content">
+      <h1 id="page-title">Справка</h1>
+      <p class="meta" id="page-meta"></p>
+      <div class="page-text" id="page-text"></div>
+    </main>
+
+    <script id="embedded-calculations" type="text/plain">Натальная карта:
+
+В приложении доступны: Карта Асцендента (восходящего знака), Лунная, Солнечная, Санькхья-шастра.
+Нумерология будет реализована в следующем обновлении.
+
+Карта Асцендента - это те данные, которые сопровождают нас всю жизнь, она имеет силу влияния 80% от своего описания.
+Лунная карта начинает действовать после 30 лет и действует на 50%.
+Сила и влияние на личность Солнечной карты 30%. Солнечная карта влияет на 10%.
+
+Сразу оговорюсь: в Ведической астрологии Грахи - это планеты или небесные тела, и Солнце с Луной тоже называются грахами (планетами).
+Описание карт точны на столько, на сколько верные дата, время и место рождения!
+
+Карта асцендента.
+Восходящий знак - это созвездие, которое взошло над горизонтом, на Востоке, в момент рождения, именно от этого созвездия и будет строится расчёт.
+
+Если вы неочень понимаете почему вдруг вы были всю жизнь одним знаком, а теперь оказались другим, пожалуйста посмотрите вначале моё видео, где я всё объясняю:
+https://rutube.ru/video/49b025540b265721ebc02c2539b3e92c/
+
+Описание Лагнеши:
+Лагнеша - это самая лучшая планета для человека. Там, где находится Лагнеша, там находится энергия человека.
+
+Атма-карака - главная кармическая задача:
+Планета с самым большим градусом, сопоставима по значению с Лагнешей, планета души. По атмакараке мы смотрим кармические задачи и таланты. Атмарака - показывает душу человека, его сокравенные желание, настоящую личность. Самая важная кармическая задача, для чего пришла душа.
+
+Дара-карака - указывает на партнёра по браку и бизнес партнёра.
+Дара-карака - это планета, показатель жены/мужа в натальной карте. Дара-карака является одной из 8-ми чара-карак (чара-караки могут показывать тех людей, которые связаны с нами по карме).
+
+Дара Карака.
+Заключая узы брака, мы чаще всего представляем себе нашего будущего партнера по браку близким к идеалу, но всегда ли наши ожидания оправданы? Понять это вам поможет Дара-карака в вашем гороскопе.
+
+Лунная карта.
+Вторая по важности - Чандра Лагна (или лунная карта). После 30-ти лет она включается примерно на 50%. На третьем месте стоит Сурья Лагна (или солнечная карта).
+Лунная карта активно включается после исполнения 30-ти лет человека или после его переезда.
+Лунная карта показывает нас, во-первых, во второй половине жизни, и показывает нас с точки зрения ума, эмоций, эмоционального интеллекта.
+
+Солнечная карта.
+Солнечной карте мы уделяем внимание на 10%. Она показывает наш дух, желания духа, души.
+
+Ретроградные планеты и задачи по ним:
+Ретроградная планета несёт дополнительную кармическую задачу. Причем, эту задачу вы не проработали с прошлой жизни. Ретроградные планеты показывают кармические связи. Соответственно, в том доме, где стоит ретроградная планета, и в том доме, которым она управляет, будут проблемы, будет кармическая задача, которую вы будете прорабатывать.
+Чем критична ретроградная планета? Они на самом деле добавляют много проблем. Но есть хорошая новость, что их можно проработать. Если в вашей карте есть ретроградные планеты, то нужно прорабатывать. Если нет - то вам повезло. Но, если у вас есть ретроградные планеты, и вы уже здесь, то уже хорошо, вас карма пустила в знания, и мы будем прорабатывать. Ретроградные планеты дают серьезные блоки.
+Ретроградная планета показывает во всех картах кармические задачи по тем домам (по тем сферам), в которых она стоит, которыми она управляет, и по знакам, в которых она стоит. В ретроградной планете её сила находится внутри и чтобы проработать эту планету, нужно усиленно работать. Её задача тянется с прошлой жизни. Чтобы проработать её, нужно достать её изнутри. Это как кокос, чтобы достать молоко, нужно очень много сил приложить.
+В дни недели, соответствующие вашей ретроградной планеты, нужно делать по ней упайи, читать мантры, медитировать на эту планету, просить благословения.
+Понедельник - день Луны.
+Вторник - день Марса.
+Среда - день Меркурия.
+Четверг - день Юпитера.
+Пятница - день Венеры.
+Суббота - день Сатурна.
+Воскресенье - день Солнца.
+В чем сложности ретроградных планет? Ретроградные планеты создают конкретные блоки, и людям с ретроградными планетами очень сложно, у них довольно не простой характер. Но мы можем достать потенциал ретроградной планеты.
+Если у вас есть одна ретроградная планета, то она блокирует у вас сферу, тот дом, где она стоит и два знака, которыми она управляет.
+Ретроградные планеты дают шанс изменить себя. Ретроградные планеты не причиняют открытого вреда, но они замедляют время получения тех или иных результатов и делают человека более сосредоточенным на себе. Такой человек как будто постоянно оглядывается назад.
+
+И напоследок. Даже, если есть какие-то негативные моменты в карте, никогда не стоит опускать руки, мы в силах изменить свою судьбу, если конечно мы этого хотим. Это не планеты с нами не дружат, это мы с ними не дружим. Все планеты и их влияние на нас мы можем улучшать это называется - Упаи. Для этого существуют различные практики.
+</script>
+
+    <script>
+      const state = {
+        data: null,
+        nodes: [],
+        selectedId: null,
+      };
+
+      const isHeading = (line) => {
+        const trimmed = String(line ?? "").trim();
+        if (!trimmed) return false;
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return false;
+        if (trimmed.length > 48) return false;
+        if (!/^[A-ZА-ЯЁ]/.test(trimmed)) return false;
+        if (!(trimmed.endsWith(":") || trimmed.endsWith("."))) return false;
+        const words = trimmed.split(/\s+/g).filter(Boolean);
+        if (words.length > 7) return false;
+        return true;
+      };
+
+      const slugify = (input) =>
+        String(input ?? "")
+          .toLowerCase()
+          .replace(/[^a-zа-яё0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 60) || "section";
+
+      const buildSections = (lines) => {
+        const cleanLines = Array.isArray(lines) ? lines.map((x) => String(x ?? "")) : [];
+        const sections = [];
+        let current = null;
+
+        for (let i = 0; i < cleanLines.length; i++) {
+          const line = cleanLines[i];
+          if (isHeading(line)) {
+            const title = line.trim().replace(/[:.]$/, "").trim();
+            current = { id: `sec-${slugify(title)}-${i}`, title, lines: [] };
+            sections.push(current);
+            continue;
+          }
+          if (!current) continue;
+          current.lines.push(line);
+        }
+
+        return sections;
+      };
+
+      const getNodeById = (id) => state.nodes.find((node) => node.id === id) ?? null;
+
+      const setSelected = (id) => {
+        const node = getNodeById(id);
+        if (!node) return;
+        state.selectedId = id;
+
+        document.querySelectorAll(".tree-btn").forEach((btn) => {
+          btn.classList.toggle("selected", btn.dataset.nodeId === id);
+        });
+
+        const titleEl = document.getElementById("page-title");
+        const metaEl = document.getElementById("page-meta");
+        const textEl = document.getElementById("page-text");
+
+        titleEl.textContent = node.title;
+        metaEl.textContent = state.data?.appName && state.data?.version ? `${state.data.appName} ${state.data.version}` : "";
+        textEl.textContent = node.text;
+      };
+
+      const renderTree = () => {
+        const tree = document.getElementById("tree");
+        tree.innerHTML = "";
+
+        const makeButton = (node) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "tree-btn";
+          btn.dataset.nodeId = node.id;
+          btn.textContent = node.title;
+          btn.addEventListener("click", () => setSelected(node.id));
+          return btn;
+        };
+
+        const rootNode = state.nodes.find((n) => n.parentId == null);
+        if (!rootNode) return;
+
+        const rootLi = document.createElement("li");
+        rootLi.className = "tree-item";
+        rootLi.appendChild(makeButton(rootNode));
+
+        const children = state.nodes.filter((n) => n.parentId === rootNode.id);
+        if (children.length) {
+          const ul = document.createElement("ul");
+          ul.className = "tree-children";
+          children.forEach((child) => {
+            const li = document.createElement("li");
+            li.className = "tree-item";
+            li.appendChild(makeButton(child));
+            ul.appendChild(li);
+          });
+          rootLi.appendChild(ul);
+        }
+
+        tree.appendChild(rootLi);
+      };
+
+      const applyFilter = () => {
+        const raw = document.getElementById("filter").value || "";
+        const query = raw.trim().toLowerCase();
+        const tree = document.getElementById("tree");
+        if (!tree) return;
+
+        const buttons = tree.querySelectorAll(".tree-btn");
+        if (!query) {
+          buttons.forEach((btn) => (btn.style.display = ""));
+          return;
+        }
+
+        buttons.forEach((btn) => {
+          const title = (btn.textContent || "").toLowerCase();
+          btn.style.display = title.includes(query) ? "" : "none";
+        });
+      };
+
+      const initTabs = () => {
+        const tabContents = document.getElementById("tab-contents");
+        const tabIndex = document.getElementById("tab-index");
+        const tree = document.getElementById("tree");
+        const filter = document.getElementById("filter");
+        const index = document.getElementById("index");
+
+        const setActive = (which) => {
+          const isContents = which === "contents";
+          tabContents.classList.toggle("active", isContents);
+          tabIndex.classList.toggle("active", !isContents);
+          tree.style.display = isContents ? "" : "none";
+          filter.style.display = isContents ? "" : "none";
+          index.style.display = isContents ? "none" : "";
+        };
+
+        tabContents.addEventListener("click", () => setActive("contents"));
+        tabIndex.addEventListener("click", () => setActive("index"));
+      };
+
+      const readEmbeddedLines = () => {
+        const el = document.getElementById("embedded-calculations");
+        const raw = String(el?.textContent ?? "");
+        if (!raw.trim()) return [];
+        return raw.replace(/\r\n/g, "\n").split("\n");
+      };
+
+      async function init() {
+        initTabs();
+        document.getElementById("filter").addEventListener("input", applyFilter);
+
+        let data = null;
+        try {
+          const api = window.helpAPI;
+          if (api?.getCalculations) {
+            data = await api.getCalculations();
+          }
+        } catch {
+          data = null;
+        }
+
+        state.data = data || {
+          appName: "Synastry",
+          version: "",
+          title: "О расчётах",
+          lines: readEmbeddedLines(),
+        };
+
+        const appName = state.data.appName || "Synastry";
+        const version = state.data.version || "";
+        const rootTitle = state.data.title || "О расчётах";
+        const lines = Array.isArray(state.data.lines) ? state.data.lines : [];
+
+        document.title = `${rootTitle} - ${appName}${version ? " " + version : ""}`;
+
+        const fullText = lines.join("\n");
+        const sections = buildSections(lines);
+
+        state.nodes = [
+          { id: "root", parentId: null, title: rootTitle, text: fullText },
+          ...sections.map((s) => ({
+            id: s.id,
+            parentId: "root",
+            title: s.title,
+            text: (Array.isArray(s.lines) ? s.lines : []).join("\n").trim(),
+          })),
+        ];
+
+        renderTree();
+        setSelected("root");
+      }
+
+      void init();
+    </script>
+  </body>
+</html>

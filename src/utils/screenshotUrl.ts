@@ -60,7 +60,6 @@ export function needsSupabaseResolution(raw: string | null | undefined): boolean
 
 export async function resolveSupabaseScreenshotUrl(
   raw: string | null | undefined,
-  _expiresInSeconds = 60 * 60 * 24,
 ): Promise<string | null> {
   if (!raw) return null;
   const pointer = parseSupabaseStoragePointer(raw);

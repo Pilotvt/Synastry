@@ -606,10 +606,10 @@ const UserProfilePage: React.FC = () => {
   const requestPurchaseDialog = useCallback(() => {
     try {
       const api = typeof window !== 'undefined' ? window.electronAPI?.license : undefined;
-      if (api?.purchase) {
-        void api.purchase();
-      } else if (api?.requestPrompt) {
+      if (api?.requestPrompt) {
         void api.requestPrompt();
+      } else if (api?.purchase) {
+        void api.purchase();
       }
     } catch (error) {
       console.warn('Не удалось открыть окно покупки лицензии', error);
@@ -1744,7 +1744,7 @@ const UserProfilePage: React.FC = () => {
                     <button
                       type="button"
                       onClick={requestPurchaseDialog}
-                      className={`${BUTTON_PRIMARY} px-4 py-1.5 text-sm`}
+                      className={`${BUTTON_SECONDARY} px-4 py-1.5 text-sm`}
                     >
                       Купить лицензию
                     </button>

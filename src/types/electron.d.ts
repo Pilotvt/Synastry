@@ -65,6 +65,9 @@ declare global {
       blocklist?: {
         open(): Promise<void>;
       };
+      ui?: {
+        showOfflineAccessDialog(): Promise<number>;
+      };
       moderation?: never;
     };
   }

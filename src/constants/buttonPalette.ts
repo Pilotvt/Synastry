@@ -1,5 +1,5 @@
 export const BUTTON_BASE =
-  "border rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-60 disabled:cursor-not-allowed";
+  "border rounded-lg transition-colors focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-60 disabled:cursor-not-allowed";
 
 export const BUTTON_SECONDARY =
   `${BUTTON_BASE} text-white bg-white/10 hover:bg-white/15 border-white/20`;

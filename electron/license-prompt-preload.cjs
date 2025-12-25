@@ -4,6 +4,7 @@ const api = {
   activate: (key) => ipcRenderer.invoke('license:activate', key),
   getStatus: () => ipcRenderer.invoke('license:get-status'),
   close: () => ipcRenderer.send('license-prompt:close'),
+  resizeToContent: (height) => ipcRenderer.send('license-prompt:resize', height),
   onStatus: (callback) => {
     if (typeof callback !== 'function') {
       return () => undefined;

@@ -6,10 +6,12 @@ import tzLookup from "tz-lookup";
 import { supabase } from "../lib/supabase";
 import { loadChartTextResources, type ChartTextResources } from "../lib/textResources";
 import NorthIndianChart from "../components/NorthIndianChart";
+import OfflineAccessDialog from "../components/OfflineAccessDialog";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 import { getTithiStatic, tithiOrdinalRu, tithiPakshaRu } from "../constants/tithi";
 import { getRussianCities } from "../utils/russianCitiesClient";
 import { requestNewChartReset } from "../utils/newChartRequest";
+import { useOfflineMode } from "../utils/offlineMode";
 import { norm, latinToRuName, ruToLat } from "../utils/transliterate";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://127.0.0.1:8000";
@@ -721,6 +723,8 @@ function matchPrefix(query: string, city: CitySuggestion): boolean {
 
 const AdditionalChartPage: React.FC = () => {
   const navigate = useNavigate();
+  const [offlineModeEnabled, setOfflineModeEnabled] = useOfflineMode();
+  const [offlineDialogOpen, setOfflineDialogOpen] = useState(false);
   const initialDraft = useMemo(() => readAdditionalDraft(), []);
 
   const openFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1727,7 +1731,7 @@ const AdditionalChartPage: React.FC = () => {
                     className={`px-3 py-1.5 text-sm font-normal whitespace-nowrap ${
                       active
                         ? `${BUTTON_PRIMARY} cursor-default`
-                        : "border border-black bg-[#f1d6ae] text-[#1f1309] transition-colors hover:bg-[#edd7aa]"
+                        : "border border-black bg-[#f1d6ae] text-[#1f1309] transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
                     }`}
                     style={{
                       marginLeft: idx === 0 ? 0 : -1,
@@ -1743,7 +1747,7 @@ const AdditionalChartPage: React.FC = () => {
             <div style={{ background: PAPER_BLOCK_BG, padding: "10px 12px", flex: "1 1 auto", minHeight: 220 }}>
               {rightPanelTab === "tithi" ? (
                 tithiLoading ? (
-                  <div style={{ fontSize: 14, color: "#4a3822" }}>Загрузка…</div>
+                  <div style={{ fontSize: 14, color: "#000" }}>Загрузка…</div>
                 ) : tithiError ? (
                   <div style={{ fontSize: 14, color: "#9b1c1c", whiteSpace: "pre-line" }}>{tithiError}</div>
                 ) : tithiInfo ? (
@@ -1787,10 +1791,10 @@ const AdditionalChartPage: React.FC = () => {
                     );
                   })()
                 ) : (
-                  <div style={{ fontSize: 14, color: "#4a3822" }}>Пока пусто.</div>
+                  <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
                 )
               ) : (
-                <div style={{ fontSize: 14, color: "#4a3822" }}>Пока пусто.</div>
+                <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
               )}
             </div>
           </div>
@@ -1860,7 +1864,29 @@ const AdditionalChartPage: React.FC = () => {
   const ascDescription =
     (chartTextResources?.ascSignDescriptions ?? EMPTY_CHART_TEXT_RESOURCES.ascSignDescriptions)[ascSignCodeForText] ?? "";
 
+  const openOfflineAccessDialog = useCallback(async () => {
+    const dialogFn = window.electronAPI?.ui?.showOfflineAccessDialog;
+    if (typeof dialogFn !== "function") {
+      setOfflineDialogOpen(true);
+      return;
+    }
+    try {
+      const response = await dialogFn();
+      if (response === 1) {
+        setOfflineModeEnabled(false);
+        navigate("/", { replace: true });
+      }
+    } catch (error) {
+      console.warn("Failed to show offline access dialog", error);
+      setOfflineDialogOpen(true);
+    }
+  }, [navigate, setOfflineModeEnabled]);
+
   const handleFullDetailsClick = useCallback(() => {
+    if (offlineModeEnabled) {
+      void openOfflineAccessDialog();
+      return;
+    }
     if (isLicensed) {
       setFullDetailsOpen((prev) => !prev);
       return;
@@ -1871,7 +1897,21 @@ const AdditionalChartPage: React.FC = () => {
     } catch (promptError) {
       console.warn("Failed to request license prompt from Additional full description CTA", promptError);
     }
-  }, [isLicensed]);
+  }, [isLicensed, offlineModeEnabled, openOfflineAccessDialog]);
+
+  const handleOfflineRegister = useCallback(() => {
+    setOfflineDialogOpen(false);
+    setOfflineModeEnabled(false);
+    navigate("/", { replace: true });
+  }, [navigate, setOfflineModeEnabled]);
+
+  const handleOfflineClose = useCallback(() => {
+    setOfflineDialogOpen(false);
+  }, []);
+
+  const handleOfflineRestrictedNav = useCallback(() => {
+    void openOfflineAccessDialog();
+  }, [openOfflineAccessDialog]);
 
   const lagneshaCode = ascSignCodeForText ? LAGNESHA_BY_ASC_SIGN[ascSignCodeForText] ?? "" : "";
   const lagneshaName = lagneshaCode ? PLANET_NAMES_RU[lagneshaCode] ?? lagneshaCode : "";
@@ -2058,6 +2098,7 @@ const AdditionalChartPage: React.FC = () => {
 
   return (
     <div className="additional-page min-h-screen bg-[#f5e4c3] text-[#2b1c0f]">
+      <OfflineAccessDialog open={offlineDialogOpen} onClose={handleOfflineClose} onRegister={handleOfflineRegister} />
       <style>{`
         .additional-page .north-indian-chart-title {
           color: #2b1c0f !important;
@@ -2100,35 +2141,45 @@ const AdditionalChartPage: React.FC = () => {
             <div className="flex flex-wrap gap-2 items-start justify-end">
               <button
                 type="button"
-                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
-                onClick={() => requestNewChartReset("additional")}
+                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
+                onClick={() => {
+                  if (offlineModeEnabled) return handleOfflineRestrictedNav();
+                  requestNewChartReset("additional");
+                }}
               >
                 Новая карта
               </button>
               <button
                 type="button"
-                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
-                onClick={() => navigate("/chart")}
+                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
+                onClick={() => {
+                  if (offlineModeEnabled) return handleOfflineRestrictedNav();
+                  navigate("/chart");
+                }}
               >
                 Натальная карта
               </button>
               <button
                 type="button"
-                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
-                onClick={() => navigate("/questionnaire")}
+                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
+                onClick={() => {
+                  if (offlineModeEnabled) return handleOfflineRestrictedNav();
+                  navigate("/questionnaire");
+                }}
               >
                 Изменить анкету
               </button>
               <button
                 type="button"
-                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
+                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
                 onClick={async () => {
+                  if (offlineModeEnabled) return handleOfflineRestrictedNav();
                   const { data: sessionData } = await supabase.auth.getSession();
                   const userId = sessionData?.session?.user?.id;
                   if (userId) {
                     navigate(`/user/${userId}`);
                   } else {
-                    navigate("/auth");
+                    navigate("/");
                   }
                 }}
               >
@@ -2136,8 +2187,11 @@ const AdditionalChartPage: React.FC = () => {
               </button>
               <button
                 type="button"
-                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
-                onClick={() => navigate("/sinastry")}
+                className="px-3 py-1 border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
+                onClick={() => {
+                  if (offlineModeEnabled) return handleOfflineRestrictedNav();
+                  navigate("/sinastry");
+                }}
               >
                 Синастрия
               </button>
@@ -2175,7 +2229,7 @@ const AdditionalChartPage: React.FC = () => {
           {CHART_VARIANT_OPTIONS.map((option) => {
             const isActive = option.value === chartVariant;
             const baseClasses = "px-3 py-2 text-left min-w-[160px] leading-tight";
-            const inactiveClasses = "border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]";
+            const inactiveClasses = "border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40";
             const activeClasses = `${BUTTON_PRIMARY} cursor-default`;
             return (
               <button
@@ -2193,7 +2247,7 @@ const AdditionalChartPage: React.FC = () => {
           })}
           <button
             type="button"
-            className="px-3 py-1.5 text-sm border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] disabled:opacity-60 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-sm border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40 disabled:opacity-60 disabled:cursor-not-allowed"
             onClick={handleSaveToFile}
             disabled={!chart || !meta}
           >
@@ -2201,7 +2255,7 @@ const AdditionalChartPage: React.FC = () => {
           </button>
           <button
             type="button"
-            className="px-3 py-1.5 text-sm border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]"
+            className="px-3 py-1.5 text-sm border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
             onClick={handleOpenFromFileClick}
           >
             Открыть файл
@@ -2477,7 +2531,7 @@ const AdditionalChartPage: React.FC = () => {
                       />{" "}
                       Принуд. DST +1ч
                     </label>
-                    <div style={{ fontSize: 12, color: "#4a3822" }}>
+                    <div style={{ fontSize: 12, color: "#000" }}>
                       DST выставляется автоматически по истории тайм-зоны. Снимите галочку, если в этот период переход не применялся.
                     </div>
                   </td>
@@ -2508,7 +2562,7 @@ const AdditionalChartPage: React.FC = () => {
           >
             <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
               <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{ascSectionTitle}</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "#4a3822", marginBottom: 6 }}>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "#000", marginBottom: 6 }}>
                 {ascSignNameForText}
                 {ascLongitudeTextForText
                   ? chartVariantConfig.longitudeLabel
@@ -2544,7 +2598,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Лагнеша</strong>
                 </div>
-                {lagneshaHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{lagneshaHeading}</div> : null}
+                {lagneshaHeading ? <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{lagneshaHeading}</div> : null}
                 {lagneshaBody ? <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{lagneshaBody}</div> : null}
               </div>
             ) : null}
@@ -2555,7 +2609,7 @@ const AdditionalChartPage: React.FC = () => {
                   <strong>Лагнеша в доме</strong>
                 </div>
                 {lagneshaHouseHeading ? (
-                  <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{lagneshaHouseHeading}</div>
+                  <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{lagneshaHouseHeading}</div>
                 ) : null}
                 {lagneshaHouseBody ? <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{lagneshaHouseBody}</div> : null}
               </div>
@@ -2566,7 +2620,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Атма-карака</strong>
                 </div>
-                <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>
+                <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>
                   {atmaKarakaHeading}
                   {atmaKarakaPercent !== null ? ` - ${atmaKarakaPercent.toFixed(2)}%` : ""}
                   {atmaKarakaArcLabel ? ` (${atmaKarakaArcLabel})` : ""}
@@ -2580,7 +2634,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Дара-карака</strong>
                 </div>
-                <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>
+                <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>
                   {daraKarakaHeading}
                   {daraKarakaPercent !== null ? ` - ${daraKarakaPercent.toFixed(2)}%` : ""}
                   {daraKarakaArcLabel ? ` (${daraKarakaArcLabel})` : ""}
@@ -2594,7 +2648,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Солнце</strong>
                 </div>
-                {sunHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{sunHouseHeading}</div> : null}
+                {sunHouseHeading ? <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{sunHouseHeading}</div> : null}
                 <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{sunHouseBody}</div>
               </div>
             ) : null}
@@ -2604,7 +2658,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Луна</strong>
                 </div>
-                {moonHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{moonHouseHeading}</div> : null}
+                {moonHouseHeading ? <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{moonHouseHeading}</div> : null}
                 <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{moonHouseBody}</div>
               </div>
             ) : null}
@@ -2614,7 +2668,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Юпитер</strong>
                 </div>
-                {jupiterHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{jupiterHouseHeading}</div> : null}
+                {jupiterHouseHeading ? <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{jupiterHouseHeading}</div> : null}
                 <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{jupiterHouseBody}</div>
               </div>
             ) : null}
@@ -2624,7 +2678,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Меркурий</strong>
                 </div>
-                {mercuryHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{mercuryHouseHeading}</div> : null}
+                {mercuryHouseHeading ? <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{mercuryHouseHeading}</div> : null}
                 <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{mercuryHouseBody}</div>
               </div>
             ) : null}
@@ -2634,7 +2688,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Венера</strong>
                 </div>
-                {venusHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{venusHouseHeading}</div> : null}
+                {venusHouseHeading ? <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{venusHouseHeading}</div> : null}
                 <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{venusHouseBody}</div>
               </div>
             ) : null}
@@ -2644,7 +2698,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Сатурн</strong>
                 </div>
-                {saturnHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{saturnHouseHeading}</div> : null}
+                {saturnHouseHeading ? <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{saturnHouseHeading}</div> : null}
                 <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{saturnHouseBody}</div>
               </div>
             ) : null}
@@ -2654,7 +2708,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Марс</strong>
                 </div>
-                {marsHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{marsHouseHeading}</div> : null}
+                {marsHouseHeading ? <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{marsHouseHeading}</div> : null}
                 <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{marsHouseBody}</div>
               </div>
             ) : null}
@@ -2664,7 +2718,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Раху</strong>
                 </div>
-                {rahuHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{rahuHouseHeading}</div> : null}
+                {rahuHouseHeading ? <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{rahuHouseHeading}</div> : null}
                 <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{rahuHouseBody}</div>
               </div>
             ) : null}
@@ -2674,7 +2728,7 @@ const AdditionalChartPage: React.FC = () => {
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Кету</strong>
                 </div>
-                {ketuHouseHeading ? <div style={{ fontSize: 16, color: "#4a3822", marginBottom: 6 }}>{ketuHouseHeading}</div> : null}
+                {ketuHouseHeading ? <div style={{ fontSize: 16, color: "#000", marginBottom: 6 }}>{ketuHouseHeading}</div> : null}
                 <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{ketuHouseBody}</div>
               </div>
             ) : null}

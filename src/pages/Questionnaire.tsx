@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { saveChart, type JsonValue } from "../lib/charts";
@@ -657,6 +657,10 @@ const Questionnaire: React.FC = () => {
   const [residenceCitiesLoading, setResidenceCitiesLoading] = useState(false);
   const residenceCountriesLoadedRef = useRef(false);
   const residenceCityCacheRef = useRef<Map<string, ResidenceCityOption[]>>(new Map());
+  const [residenceCountryOpen, setResidenceCountryOpen] = useState(false);
+  const [residenceCityOpen, setResidenceCityOpen] = useState(false);
+  const residenceCountryRef = useRef<HTMLDivElement | null>(null);
+  const residenceCityRef = useRef<HTMLDivElement | null>(null);
 
   const persistFieldToLocal = useCallback((field: keyof ProfileSnapshot, value: JsonValue) => {
     try {
@@ -812,15 +816,12 @@ const Questionnaire: React.FC = () => {
     };
   }, [residenceCountry]);
 
-  const handleResidenceCountryChange = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
-      const value = event.target.value;
-      setResidenceCountry(value);
-      persistFieldToLocal("residenceCountry", value);
-      void persistFieldToCloud("residenceCountry", value);
-    },
-    [persistFieldToLocal, persistFieldToCloud],
-  );
+  const applyResidenceCountry = useCallback((value: string) => {
+    setResidenceCountry(value);
+    persistFieldToLocal("residenceCountry", value);
+    void persistFieldToCloud("residenceCountry", value);
+    setResidenceCountryOpen(false);
+  }, [persistFieldToLocal, persistFieldToCloud]);
 
   const handleResidenceCityChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -834,6 +835,48 @@ const Questionnaire: React.FC = () => {
   const handleResidenceCityBlur = useCallback(() => {
     void persistFieldToCloud("residenceCityName", residenceCityName);
   }, [residenceCityName, persistFieldToCloud]);
+
+  const filteredResidenceCityOptions = useMemo(() => {
+    const query = residenceCityName.trim().toLowerCase();
+    const results: ResidenceCityOption[] = [];
+    if (!query) {
+      return residenceCityOptions.slice(0, 40);
+    }
+    for (const option of residenceCityOptions) {
+      const label = (option.nameRu || option.name).toLowerCase();
+      if (label.startsWith(query) || label.includes(query)) {
+        results.push(option);
+        if (results.length >= 40) break;
+      }
+    }
+    return results;
+  }, [residenceCityName, residenceCityOptions]);
+
+  useEffect(() => {
+    if (!residenceCountryOpen) return;
+    const onMouseDown = (event: MouseEvent) => {
+      const node = residenceCountryRef.current;
+      if (!node) return;
+      if (event.target instanceof Node && !node.contains(event.target)) {
+        setResidenceCountryOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [residenceCountryOpen]);
+
+  useEffect(() => {
+    if (!residenceCityOpen) return;
+    const onMouseDown = (event: MouseEvent) => {
+      const node = residenceCityRef.current;
+      if (!node) return;
+      if (event.target instanceof Node && !node.contains(event.target)) {
+        setResidenceCityOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [residenceCityOpen]);
 
   
   // Build a profile snapshot from current state.
@@ -1269,35 +1312,87 @@ const Questionnaire: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <span className="text-xs text-white/60">Страна</span>
-                  <select
-                    value={residenceCountry}
-                    onChange={handleResidenceCountryChange}
-                    className="mt-1 block w-full rounded px-2 py-1 bg-black/30 border border-white/10"
-                  >
-                    {residenceCountries.map((code) => (
-                      <option key={code} value={code}>
-                        {countryNameRU(code)} ({code})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative mt-1" ref={residenceCountryRef}>
+                    <button
+                      type="button"
+                      className="paper-input w-full rounded px-2 py-1 text-left"
+                      onClick={() => setResidenceCountryOpen((prev) => !prev)}
+                      aria-haspopup="listbox"
+                      aria-expanded={residenceCountryOpen}
+                    >
+                      {countryNameRU(residenceCountry)} ({residenceCountry})
+                    </button>
+                    {residenceCountryOpen ? (
+                      <div className="paper-menu absolute z-50 mt-1 w-full max-h-72 overflow-auto rounded shadow-lg">
+                        {residenceCountries.map((code) => {
+                          const selected = code === residenceCountry;
+                          return (
+                            <div
+                              key={code}
+                              role="option"
+                              aria-selected={selected}
+                              className="paper-menu-item"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => applyResidenceCountry(code)}
+                            >
+                              {countryNameRU(code)} ({code})
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
                 <div>
                   <span className="text-xs text-white/60">Город</span>
-                  <input
-                    list="residence-city-options"
-                    value={residenceCityName}
-                    onChange={handleResidenceCityChange}
-                    onBlur={handleResidenceCityBlur}
-                    placeholder="Начните ввод..."
-                    className="mt-1 block w-full rounded px-2 py-1 bg-black/30 border border-white/10"
-                  />
-                  <datalist id="residence-city-options">
-                    {residenceCityOptions.map((city) => (
-                      <option key={city.id} value={city.nameRu || city.name}>
-                        {city.nameRu || city.name}
-                      </option>
-                    ))}
-                  </datalist>
+                  <div className="relative mt-1" ref={residenceCityRef}>
+                    <input
+                      value={residenceCityName}
+                      onChange={(event) => {
+                        handleResidenceCityChange(event);
+                        setResidenceCityOpen(true);
+                      }}
+                      onFocus={() => setResidenceCityOpen(true)}
+                      onBlur={handleResidenceCityBlur}
+                      placeholder="Начните ввод..."
+                      className="paper-input block w-full rounded px-2 py-1"
+                    />
+                    {residenceCityOpen ? (
+                      <div className="paper-menu absolute z-50 mt-1 w-full max-h-72 overflow-auto rounded shadow-lg">
+                        {residenceCitiesLoading ? (
+                          <div className="paper-menu-item" aria-selected="false">
+                            Загрузка списка городов...
+                          </div>
+                        ) : filteredResidenceCityOptions.length ? (
+                          filteredResidenceCityOptions.map((city) => {
+                            const label = city.nameRu || city.name;
+                            const selected = label === residenceCityName;
+                            return (
+                              <div
+                                key={city.id}
+                                role="option"
+                                aria-selected={selected}
+                                className="paper-menu-item"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => {
+                                  setResidenceCityName(label);
+                                  persistFieldToLocal("residenceCityName", label);
+                                  void persistFieldToCloud("residenceCityName", label);
+                                  setResidenceCityOpen(false);
+                                }}
+                              >
+                                {label}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="paper-menu-item" aria-selected="false">
+                            Ничего не найдено
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                   {residenceCitiesLoading ? (
                     <div className="text-xs text-white/60 mt-1">Загрузка списка городов...</div>
                   ) : null}

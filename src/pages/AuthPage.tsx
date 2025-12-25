@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
+import { setOfflineMode, useOfflineMode } from "../utils/offlineMode";
 
 const AUTH_REDIRECT_URI = "synastry://auth-callback";
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
+  const [offlineModeEnabled] = useOfflineMode();
   const [mode, setMode] = useState<"signup" | "login">("signup");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
@@ -37,6 +39,7 @@ export default function AuthPage() {
 
   useEffect(() => {
     if (!session?.user) return;
+    if (offlineModeEnabled) setOfflineMode(false);
     let cancelled = false;
     (async () => {
       try {
@@ -57,7 +60,7 @@ export default function AuthPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [session?.user, navigate]);
+  }, [offlineModeEnabled, session?.user, navigate]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -133,6 +136,18 @@ export default function AuthPage() {
             disabled={mode === "login"}
           >
             Вход
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOfflineMode(true);
+              navigate("/chart/additional", { replace: true });
+            }}
+            className={`${BUTTON_SECONDARY} px-3 py-1 text-sm`}
+            disabled={Boolean(session?.user)}
+            title={session?.user ? "Офлайн режим доступен только без входа" : ""}
+          >
+            Офлайн режим
           </button>
         </div>
 

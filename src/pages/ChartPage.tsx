@@ -3039,32 +3039,20 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
             <div className="flex flex-wrap gap-2">
               {CHART_VARIANT_OPTIONS.map((option) => {
                 const isActive = option.value === chartVariant;
-                const isLockedVariant = !isLicensed && option.value !== "rashi";
                 const layoutClasses = "px-3 py-2 text-left min-w-[160px] leading-tight";
                 const inactiveClasses = "border border-[#7a643a] bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa]";
-                const lockedClasses = "border border-[#b5a888] bg-[#e6dcc5] text-[#b5a888] cursor-not-allowed";
                 const activeClasses = `${BUTTON_PRIMARY} cursor-default`;
-                const subtitleClasses = isLockedVariant
-                  ? "text-[#b5a888]"
-                  : isActive
-                    ? "text-white/80"
-                    : "text-black/60";
+                const subtitleClasses = isActive ? "text-white/80" : "text-black/60";
                 return (
                   <button
                     key={option.value}
                     type="button"
                     onClick={() => {
-                      if (isLockedVariant) {
-                          try { window.electronAPI?.license?.requestPrompt?.(); } catch (promptError) {
-                            console.warn('Failed to request license prompt from chart variant switch', promptError);
-                          }
-                        return;
-                      }
                       setChartVariant(option.value);
                       setFullDetailsUnlocked(isLicensed);
                     }}
-                    className={`${layoutClasses} ${isLockedVariant ? lockedClasses : isActive ? activeClasses : inactiveClasses}`}
-                    disabled={isActive && !isLockedVariant}
+                    className={`${layoutClasses} ${isActive ? activeClasses : inactiveClasses}`}
+                    disabled={isActive}
                     aria-pressed={isActive}
                   >
                     <div className="text-sm font-semibold">{option.title}</div>
@@ -3139,8 +3127,13 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
               {chartVariantConfig.description}
             </div>
           </div>
-          <div className="flex flex-col gap-10 min-[1200px]:flex-row min-[1200px]:items-start min-[1200px]:gap-16">
-            <div ref={chartContainerRef} className="w-full max-w-[600px] min-[1200px]:flex-none min-[1200px]:basis-[600px] min-[1200px]:max-w-[600px]">
+          <div className="overflow-x-auto pb-2">
+            <div className="flex flex-row flex-nowrap items-start gap-0 min-w-max">
+            <div
+              ref={chartContainerRef}
+              className="flex-none"
+              style={{ minWidth: 600, maxWidth: 600 }}
+            >
               <NorthIndianChart
                 title={chartVariantConfig.chartTitle}
                 houses={houses}
@@ -3149,7 +3142,8 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
               />
               {/* preview intentionally removed — screenshot is captured and stored but not shown here */}
             </div>
-            <div className="w-full max-w-[700px] min-[1200px]:flex-none min-[1200px]:basis-[700px] min-[1200px]:max-w-[700px] mx-auto">
+            <div className="flex-none self-stretch bg-[#fbe9c3]" style={{ width: 16 }} aria-hidden />
+            <div className="flex-none" style={{ minWidth: 650, maxWidth: 680 }}>
               <div className="text-base font-black uppercase tracking-wide text-white mb-2">
                 СОЗВЕЗДИЯ И ПЛАНЕТЫ (
                 <span className="normal-case font-semibold">↑-уча, ↓-нича, ○-карака, □-дигбала, ⌂-свой знак, ●-сожжёная, Ø-проигравшая, ☼-супер сильная</span>
@@ -3277,6 +3271,7 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
                   </table>
                 </div>
               </div>
+            </div>
             </div>
           </div>
           {/* Description boxes below chart/table */}

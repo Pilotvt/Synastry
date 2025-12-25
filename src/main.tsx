@@ -14,6 +14,7 @@ import AppBoundary from "./components/AppBoundary";
 import LastSeenHeartbeat from "./components/LastSeenHeartbeat";
 import NewChartResetGateway from "./components/NewChartResetGateway";
 import BlocklistBootstrapper from "./components/BlocklistBootstrapper";
+import OfflineModeEnforcer from "./components/OfflineModeEnforcer";
 const Questionnaire = React.lazy(() => import("./pages/Questionnaire"));
 const PhotoView = React.lazy(() => import("./pages/PhotoView"));
 const UserProfilePage = React.lazy(() => import("./pages/UserProfilePage"));
@@ -68,6 +69,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <AuthDeepLinkBridge />
         <LicenseIdentityBridge />
         <BlocklistBootstrapper />
+        <OfflineModeEnforcer />
         <AppBoundary>
         <LastSeenHeartbeat />
         <NewChartResetGateway />

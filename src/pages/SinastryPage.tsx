@@ -23,7 +23,7 @@ import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 import { needsSupabaseResolution, resolveSupabaseScreenshotUrl } from "../utils/screenshotUrl";
 // Removed legacy profileStorage usage
 
-const ENABLE_LICENSE_GATE = false; // Отключаем обязательный показ окна лицензии
+const ENABLE_LICENSE_GATE = true; // Показываем окно лицензии при отсутствии доступа
 
 type NameCaseForms = {
   nominative?: string;
@@ -1579,6 +1579,8 @@ const SinastryPage: React.FC = () => {
   const fromFileSession = isChartSessionFromFile();
   const fromFile = fromFileParam || fromFileSession;
   const fromFileRef = useRef(fromFile);
+  const hasLicenseAccess = !ENABLE_LICENSE_GATE || (licenseChecked && licenseAllowed);
+  const licenseGateActive = ENABLE_LICENSE_GATE && !hasLicenseAccess;
   useEffect(() => {
     if (fromFileParam) {
       fromFileRef.current = true;
@@ -1666,8 +1668,11 @@ const SinastryPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Во время триала/лицензии — грузим данные сразу.
-    // Если по какой-то причине статус недоступен (dev) — тоже грузим.
+    // Во время триала/лицензии - грузим данные сразу.
+    // Если по какой-то причине статус недоступен (dev) - тоже грузим.
+    if (!hasLicenseAccess) {
+      return;
+    }
     let isMounted = true;
 
     async function loadCurrentUser() {
@@ -1873,11 +1878,12 @@ const SinastryPage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [fromFile, fromFileParam, currentUserId]);
+  }, [hasLicenseAccess, fromFile, fromFileParam, currentUserId]);
 
   // If we navigated from ChartPage before its screenshot capture finished,
   // re-check localStorage shortly after mount to pick up the fresh screenshot.
   useEffect(() => {
+    if (!hasLicenseAccess) return;
     if (primaryState.screenshotUrl) return;
     const t = setTimeout(() => {
       try {
@@ -1895,10 +1901,11 @@ const SinastryPage: React.FC = () => {
       }
     }, 700);
     return () => clearTimeout(t);
-  }, [primaryState.screenshotUrl, currentUserId]);
+  }, [hasLicenseAccess, primaryState.screenshotUrl, currentUserId]);
 
   // Обновляем скриншот при изменении localStorage в другом окне/вкладке
   useEffect(() => {
+    if (!hasLicenseAccess) return;
     function handleStorage(ev: StorageEvent) {
       if (ev.key !== SAVED_CHART_KEY) return;
       try {
@@ -1913,12 +1920,17 @@ const SinastryPage: React.FC = () => {
     }
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
-  }, [licenseChecked, licenseAllowed, currentUserId]);
+  }, [hasLicenseAccess, currentUserId]);
 
   const handleFileUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
     setState: React.Dispatch<React.SetStateAction<ProfileState>>,
   ) => {
+    if (licenseGateActive) {
+      setErrorMessage("Доступ к странице синастрии доступен только при активной лицензии.");
+      event.target.value = "";
+      return;
+    }
     const file = event.target.files?.[0];
     if (!file) {
       return;
@@ -2025,37 +2037,60 @@ const SinastryPage: React.FC = () => {
     }
   };
 
-  const licenseGate = ENABLE_LICENSE_GATE
-    ? (
-      <div className="fixed inset-0 z-[1000] bg-white text-black flex items-center justify-center p-6" style={{ display: (!licenseChecked || !licenseAllowed) ? 'flex' : 'none' }}>
-        <div className="max-w-md text-center">
-          <h2 className="text-xl font-semibold mb-2">Требуется лицензия</h2>
-          <p className="text-sm mb-4">Доступ к странице синастрии доступен только при активной лицензии.</p>
-          {licenseStatus?.trial?.daysLeft !== undefined && (
-            <div className="text-xs text-gray-600 mb-2">Пробная версия: осталось {Math.max(0, licenseStatus.trial.daysLeft)} дн.{licenseStatus.trial.expiresAt ? ` · до ${licenseStatus.trial.expiresAt}` : ''}</div>
+  if (licenseGateActive) {
+    const formatLicenseDateTime = (value: unknown): string | null => {
+      const ts = parseTimestamp(value);
+      if (!ts) return null;
+      try {
+        const formatted = new Intl.DateTimeFormat('ru-RU', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).format(new Date(ts));
+        return formatted.replace(',', '').trim();
+      } catch {
+        const iso = new Date(ts).toISOString();
+        return iso.slice(0, 16).replace('T', ' ');
+      }
+    };
+
+    const trialUntil = licenseStatus?.trial?.expiresAt ? formatLicenseDateTime(licenseStatus.trial.expiresAt) : null;
+    const licenseUntil = licenseStatus?.licenseExpiresAt ? formatLicenseDateTime(licenseStatus.licenseExpiresAt) : null;
+
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4 py-10">
+        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-6 text-center shadow-lg backdrop-blur">
+          <h2 className="text-2xl font-semibold mb-2">{licenseChecked ? "Требуется лицензия" : "Проверяем лицензию..."}</h2>
+          <p className="text-sm text-white/70 mb-4">Доступ к странице синастрии доступен только при активной лицензии.</p>
+          {licenseChecked && licenseStatus?.trial?.daysLeft !== undefined && (
+            <div className="text-xs text-white/60 mb-2">Пробная версия: осталось {Math.max(0, licenseStatus.trial.daysLeft)} дн.{trialUntil ? ` · до ${trialUntil}` : ''}</div>
           )}
-          {licenseStatus?.licenseExpiresAt && (
-            <div className="text-xs text-gray-600 mb-2">Срок лицензии: до {licenseStatus.licenseExpiresAt}</div>
+          {licenseChecked && licenseUntil && (
+            <div className="text-xs text-white/60 mb-2">Срок лицензии: до {licenseUntil}</div>
           )}
-          <div className="flex items-center justify-center gap-2">
-            <button className="px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-sm" onClick={() => {
-              try {
-                window.electronAPI?.license?.requestPrompt?.();
-              } catch (error) {
-                console.warn('Не удалось открыть окно ввода лицензии', error);
-              }
-            }}>Ввести ключ</button>
-            <button className="px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-sm" onClick={() => { if (typeof window !== 'undefined') { window.location.href = 'mailto:pilot.vt@mail.ru'; } }}>Написать письмо</button>
-          </div>
+          {licenseChecked ? (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`} onClick={() => {
+                try {
+                  window.electronAPI?.license?.requestPrompt?.();
+                } catch (error) {
+                  console.warn('Не удалось открыть окно ввода лицензии', error);
+                }
+              }}>Ввести ключ</button>
+              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`} onClick={() => { if (typeof window !== 'undefined') { window.location.href = 'mailto:pilot.vt@mail.ru'; } }}>Написать письмо</button>
+              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`} onClick={() => navigate("/chart")}>Натальная карта</button>
+            </div>
+          ) : null}
         </div>
       </div>
-    )
-    : null;
+    );
+  }
 
   return (
     <>
       <div className="min-h-screen bg-slate-950 text-white px-4 pb-8 pt-3">
-      {licenseGate}
       <div className="max-w-[1450px] mx-auto">
         <header className="mb-6">
           <div className="flex justify-between items-center mb-4">
