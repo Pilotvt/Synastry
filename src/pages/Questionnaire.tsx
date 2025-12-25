@@ -836,7 +836,8 @@ const Questionnaire: React.FC = () => {
   }, [residenceCityName, persistFieldToCloud]);
 
   
-  // Build a profile snapshot from current state and localStorage fallback
+  // Build a profile snapshot from current state.
+  // IMPORTANT: empty strings are treated as an explicit "clear" (no fallback to old localStorage values).
   const getProfileSnapshot = useCallback((): ProfileSnapshot => {
     const ownerId = currentUserId ?? null;
     const stored = readProfileFromStorage<ProfileSnapshot | Record<string, JsonValue>>(STORAGE_KEY);
@@ -857,15 +858,15 @@ const Questionnaire: React.FC = () => {
       gender: resolvedGender,
       mainPhoto: resolvedMainPhoto,
       smallPhotos: resolvedSmallPhotos,
-      typeazh: typeazh || profileBase.typeazh || "",
-      familyStatus: familyStatus || profileBase.familyStatus || "",
-      about: about || profileBase.about || "",
-      interests: interests || profileBase.interests || "",
-      career: career || profileBase.career || "",
-      children: children || profileBase.children || "",
+      typeazh,
+      familyStatus,
+      about,
+      interests,
+      career,
+      children,
       ascSign: resolvedAscSign,
-      residenceCountry: residenceCountry || profileBase.residenceCountry,
-      residenceCityName: residenceCityName || profileBase.residenceCityName,
+      residenceCountry,
+      residenceCityName,
     };
   }, [currentUserId, gender, mainPhoto, smallPhotos, typeazh, familyStatus, about, interests, career, children, residenceCountry, residenceCityName, headerData]);
 

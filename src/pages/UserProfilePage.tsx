@@ -384,14 +384,8 @@ function mergeProfileSnapshots(
   const seen = new Set<object>();
   const assignStringField = (key: keyof UserProfile, value: unknown) => {
     if (typeof value !== 'string') return;
-    const trimmed = value.trim();
-    const current = result[key];
-    const currentString = typeof current === 'string' ? current : '';
-    if (trimmed) {
-      (result as Record<string, unknown>)[key] = value;
-    } else if (!currentString.trim()) {
-      (result as Record<string, unknown>)[key] = value;
-    }
+    // Variant A: empty string is an explicit "clear", so it must be able to override non-empty values.
+    (result as Record<string, unknown>)[key] = value;
   };
   const assignMainPhoto = (value: unknown) => {
     if (typeof value === 'string' && value.trim()) {

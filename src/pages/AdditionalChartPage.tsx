@@ -17,6 +17,7 @@ const DEBOUNCE_MS = 800;
 const ADDITIONAL_DRAFT_STORAGE_KEY = "synastry_additional_draft_v1";
 
 const PAPER_BLOCK_BG = "#f1d6ae";
+const BIRTH_FIELD_BG = "#f5e4c3";
 
 type AdditionalRightTabId = "tithi" | "vimshottari-dasha" | "nakshatra" | "panchanga" | "sade-sati";
 const ADDITIONAL_RIGHT_TABS: Array<{ id: AdditionalRightTabId; label: string }> = [
@@ -171,6 +172,54 @@ type BuildMeta = {
   manualDstMinutes: number;
   tzCorrectionMinutes: number;
 };
+
+function computeBuildMetaPreview({
+  parts,
+  ianaTz,
+  enableTzCorrection,
+  tzCorrectionHours,
+  dstManual,
+}: {
+  parts: BirthParts;
+  ianaTz: string;
+  enableTzCorrection: boolean;
+  tzCorrectionHours: number;
+  dstManual: boolean;
+}): BuildMeta | null {
+  try {
+    const local = moment.tz(
+      `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}T${pad2(parts.hour)}:${pad2(parts.minute)}`,
+      ianaTz,
+    );
+    if (!local.isValid()) return null;
+
+    const baseOffsetMinutes = local.utcOffset();
+    const autoDstMinutes = local.isDST() ? 60 : 0;
+    const tzCorrectionMinutes = enableTzCorrection ? (Number.isFinite(tzCorrectionHours) ? tzCorrectionHours * 60 : 0) : 0;
+    const manualDstMinutes = enableTzCorrection ? (dstManual ? 60 : 0) : 0;
+    const finalOffsetMinutes =
+      baseOffsetMinutes
+      + (enableTzCorrection ? tzCorrectionMinutes + (manualDstMinutes - autoDstMinutes) : 0);
+
+    // Shift the instant by delta minutes so the final UTC becomes correct for the requested correction.
+    const deltaMinutes = finalOffsetMinutes - baseOffsetMinutes;
+    const adjusted = local.clone().add(deltaMinutes, "minutes");
+    const datetimeIso = adjusted.format("YYYY-MM-DDTHH:mm:ssZ");
+
+    return {
+      ianaTz,
+      datetimeIso,
+      baseOffsetMinutes,
+      finalOffsetMinutes,
+      autoDstMinutes,
+      manualDstMinutes,
+      tzCorrectionMinutes: enableTzCorrection ? tzCorrectionMinutes : 0,
+    };
+  } catch (err) {
+    console.warn("Failed to build meta preview", err);
+    return null;
+  }
+}
 
 type TithiApiResponse = {
   tithi: number;
@@ -714,6 +763,7 @@ const AdditionalChartPage: React.FC = () => {
   const [tithiLoading, setTithiLoading] = useState(false);
   const [tithiError, setTithiError] = useState<string | null>(null);
   const tithiAbortRef = useRef<AbortController | null>(null);
+  const tithiDebounceRef = useRef<number | null>(null);
   const [debounceTimer, setDebounceTimer] = useState<number | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const blurTimerRef = useRef<number | null>(null);
@@ -869,43 +919,20 @@ const AdditionalChartPage: React.FC = () => {
 
   const recomputeMeta = useCallback(
     (parts: BirthParts): BuildMeta | null => {
-      try {
-        const local = moment.tz(
-          `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}T${pad2(parts.hour)}:${pad2(parts.minute)}`,
-          ianaTz,
-        );
-        if (!local.isValid()) return null;
-
-        const baseOffsetMinutes = local.utcOffset();
-        const autoDstMinutes = local.isDST() ? 60 : 0;
-        const tzCorrectionMinutes = enableTzCorrection ? (Number.isFinite(tzCorrectionHours) ? tzCorrectionHours * 60 : 0) : 0;
-        const manualDstMinutes = enableTzCorrection ? (dstManual ? 60 : 0) : 0;
-        const finalOffsetMinutes =
-          baseOffsetMinutes
-          + (enableTzCorrection ? tzCorrectionMinutes + (manualDstMinutes - autoDstMinutes) : 0);
-
-        // Shift the instant by delta minutes so the final UTC becomes correct for the requested correction.
-        const deltaMinutes = finalOffsetMinutes - baseOffsetMinutes;
-        const adjusted = local.clone().add(deltaMinutes, "minutes");
-        const datetimeIso = adjusted.format("YYYY-MM-DDTHH:mm:ssZ");
-
-        setAutoDst(autoDstMinutes > 0);
-        return {
-          ianaTz,
-          datetimeIso,
-          baseOffsetMinutes,
-          finalOffsetMinutes,
-          autoDstMinutes,
-          manualDstMinutes,
-          tzCorrectionMinutes: enableTzCorrection ? tzCorrectionMinutes : 0,
-        };
-      } catch (err) {
-        console.warn("Failed to build meta", err);
-        return null;
-      }
+      return computeBuildMetaPreview({ parts, ianaTz, enableTzCorrection, tzCorrectionHours, dstManual });
     },
     [ianaTz, enableTzCorrection, tzCorrectionHours, dstManual],
   );
+
+  const metaPreview = useMemo(
+    () => computeBuildMetaPreview({ parts: birthParts, ianaTz, enableTzCorrection, tzCorrectionHours, dstManual }),
+    [birthParts, dstManual, enableTzCorrection, ianaTz, tzCorrectionHours],
+  );
+
+  useEffect(() => {
+    if (!metaPreview) return;
+    setAutoDst(metaPreview.autoDstMinutes > 0);
+  }, [metaPreview?.autoDstMinutes]);
 
   const buildProfileSnapshot = useCallback(
     (parts: BirthParts): ProfileSnapshot => ({
@@ -979,50 +1006,57 @@ const AdditionalChartPage: React.FC = () => {
 
   useEffect(() => {
     if (rightPanelTab !== "tithi") return;
-    if (!meta?.datetimeIso) {
+    const datetimeIso = metaPreview?.datetimeIso ?? meta?.datetimeIso ?? null;
+    if (!datetimeIso) {
       setTithiInfo(null);
       setTithiLoading(false);
       setTithiError(null);
       return;
     }
 
+    if (tithiDebounceRef.current) {
+      clearTimeout(tithiDebounceRef.current);
+    }
     tithiAbortRef.current?.abort();
     const controller = new AbortController();
     tithiAbortRef.current = controller;
 
-    setTithiLoading(true);
-    setTithiError(null);
+    tithiDebounceRef.current = window.setTimeout(() => {
+      setTithiLoading(true);
+      setTithiError(null);
 
-    (async () => {
-      try {
-        const endpoint = `${API_BASE_URL.replace(/\/$/, "")}/api/tithi`;
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ datetime_iso: meta.datetimeIso }),
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          const txt = await res.text();
-          throw new Error(`Ошибка сервера: ${res.status} ${txt}`);
+      (async () => {
+        try {
+          const endpoint = `${API_BASE_URL.replace(/\/$/, "")}/api/tithi`;
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ datetime_iso: datetimeIso }),
+            signal: controller.signal,
+          });
+          if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(`Ошибка сервера: ${res.status} ${txt}`);
+          }
+          const json = (await res.json()) as TithiApiResponse;
+          if (controller.signal.aborted) return;
+          setTithiInfo(json);
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          const msg = err instanceof Error ? err.message : String(err);
+          setTithiError(msg);
+          setTithiInfo(null);
+        } finally {
+          if (!controller.signal.aborted) setTithiLoading(false);
         }
-        const json = (await res.json()) as TithiApiResponse;
-        if (controller.signal.aborted) return;
-        setTithiInfo(json);
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        setTithiError(msg);
-        setTithiInfo(null);
-      } finally {
-        if (!controller.signal.aborted) setTithiLoading(false);
-      }
-    })();
+      })();
+    }, 250);
 
     return () => {
+      if (tithiDebounceRef.current) clearTimeout(tithiDebounceRef.current);
       controller.abort();
     };
-  }, [meta?.datetimeIso, rightPanelTab]);
+  }, [meta?.datetimeIso, metaPreview?.datetimeIso, rightPanelTab]);
 
   const scheduleRebuild = useCallback(
     (nextParts: BirthParts) => {
@@ -1274,9 +1308,10 @@ const AdditionalChartPage: React.FC = () => {
 
   const ianaTzDisplay = useMemo(() => {
     if (!ianaTz) return "";
-    if (!meta) return ianaTz;
-    return `${ianaTz}, ${formatOffset(meta.finalOffsetMinutes)}`;
-  }, [ianaTz, meta]);
+    const finalOffsetMinutes = metaPreview?.finalOffsetMinutes ?? meta?.finalOffsetMinutes ?? null;
+    if (typeof finalOffsetMinutes !== "number" || !Number.isFinite(finalOffsetMinutes)) return ianaTz;
+    return `${ianaTz}, ${formatOffset(finalOffsetMinutes)}`;
+  }, [ianaTz, meta?.finalOffsetMinutes, metaPreview?.finalOffsetMinutes]);
 
   const handleSaveToFile = async () => {
     if (!chart || !meta) return;
@@ -2199,14 +2234,14 @@ const AdditionalChartPage: React.FC = () => {
                 <tr>
                   <td style={{ padding: "2px 4px" }}>
                     <input
-                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                      style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={personName}
                       onChange={(e) => setPersonName(e.target.value)}
                     />
                   </td>
                   <td style={{ padding: "2px 4px" }}>
                     <input
-                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                      style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                     />
@@ -2218,7 +2253,7 @@ const AdditionalChartPage: React.FC = () => {
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <input
                         type="number"
-                        style={{ width: 70, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                        style={{ width: 70, background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                         value={birthParts.year}
                         onChange={(e) => {
                           if (e.target.value === "") return;
@@ -2227,7 +2262,7 @@ const AdditionalChartPage: React.FC = () => {
                       />
                       <input
                         type="number"
-                        style={{ width: 46, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                        style={{ width: 46, background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                         value={pad2(birthParts.month)}
                         onChange={(e) => {
                           if (e.target.value === "") return;
@@ -2236,7 +2271,7 @@ const AdditionalChartPage: React.FC = () => {
                       />
                       <input
                         type="number"
-                        style={{ width: 46, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                        style={{ width: 46, background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                         value={pad2(birthParts.day)}
                         onChange={(e) => {
                           if (e.target.value === "") return;
@@ -2252,7 +2287,7 @@ const AdditionalChartPage: React.FC = () => {
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <input
                         type="number"
-                        style={{ width: 46, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                        style={{ width: 46, background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                         value={pad2(birthParts.hour)}
                         onChange={(e) => {
                           if (e.target.value === "") return;
@@ -2261,7 +2296,7 @@ const AdditionalChartPage: React.FC = () => {
                       />
                       <input
                         type="number"
-                        style={{ width: 46, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                        style={{ width: 46, background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                         value={pad2(birthParts.minute)}
                         onChange={(e) => {
                           if (e.target.value === "") return;
@@ -2287,7 +2322,7 @@ const AdditionalChartPage: React.FC = () => {
                   <td style={{ padding: "2px 4px" }}>Страна</td>
                   <td style={{ padding: "2px 4px" }}>
 	                    <select
-	                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+	                      style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
 	                      value={country}
 	                      onChange={(e) => {
 	                        const next = e.target.value;
@@ -2310,7 +2345,7 @@ const AdditionalChartPage: React.FC = () => {
                   <td style={{ padding: "2px 4px" }}>Город</td>
                   <td style={{ padding: "2px 4px", position: "relative" }}>
                     <input
-                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                      style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={cityQuery}
                       onChange={(e) => handleCityInput(e.target.value)}
                       onFocus={() => setSuggestionsOpen(true)}
@@ -2356,7 +2391,7 @@ const AdditionalChartPage: React.FC = () => {
                 <tr>
                   <td style={{ padding: "2px 4px" }}>
                     <input
-                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                      style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={lat}
                       onChange={(e) => {
                         const num = Number(e.target.value);
@@ -2369,7 +2404,7 @@ const AdditionalChartPage: React.FC = () => {
                   </td>
                   <td style={{ padding: "2px 4px" }}>
                     <input
-                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                      style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={lon}
                       onChange={(e) => {
                         const num = Number(e.target.value);
@@ -2385,7 +2420,7 @@ const AdditionalChartPage: React.FC = () => {
                   <td style={{ padding: "2px 4px" }}>IANA часовой пояс</td>
                   <td style={{ padding: "2px 4px" }}>
                     <input
-                      style={{ width: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+                      style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
                       value={ianaTzDisplay}
                       readOnly
                     />
@@ -2414,7 +2449,7 @@ const AdditionalChartPage: React.FC = () => {
 	                    <input
 	                      type="number"
 	                      inputMode="numeric"
-	                      style={{ width: 60, marginLeft: 8, background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "2px 4px" }}
+	                      style={{ width: 60, marginLeft: 8, background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
 	                      value={tzCorrectionHours}
 	                      onChange={(e) => {
                         const val = e.target.value;
