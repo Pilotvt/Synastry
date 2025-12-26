@@ -3143,8 +3143,8 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
             </div>
             <div className="flex-none self-stretch bg-[#fbe9c3]" style={{ width: 16 }} aria-hidden />
             <div className="flex-none" style={{ minWidth: 650, maxWidth: 680 }}>
-              <div className="text-base font-black uppercase tracking-wide text-white mb-2 flex items-center justify-center">
-                <span>СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>
+              <div className="text-base font-black tracking-wide text-white mb-2 flex items-center justify-center">
+                <span>Созвездия и планеты</span>
                 {" "}
                 <span className="relative inline-flex items-center select-none group" style={{ marginLeft: 6 }}>
                   <span

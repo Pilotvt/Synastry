@@ -1571,45 +1571,47 @@ const AdditionalChartPage: React.FC = () => {
 
     return (
       <div style={{ maxWidth: "1450px", width: "100%", margin: "16px 0 0" }}>
-        <div style={{ fontSize: tableFontSize, marginBottom: 6, color: "#1f1309" }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "nowrap" }}>
-            <div style={{ width: "fit-content", minWidth: 620, maxWidth: 650, textAlign: "center" }}>
-              <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>
-              {" "}
-              <span className="relative inline-flex items-center select-none group" style={{ marginLeft: 6 }}>
-                <span
-                  aria-label="Легенда"
-                  className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-black/60 bg-[#f1d6ae] text-[12px] leading-none text-black/80 cursor-help"
-                  style={{ position: "relative", top: -1 }}
-                >
-                  i
-                </span>
-                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 w-max max-w-[560px] -translate-x-1/2 whitespace-pre-line rounded border border-black bg-[#fff3d8] px-2 py-1 text-[14px] leading-[18px] text-black shadow-md opacity-0 transition-opacity group-hover:opacity-100">
-                  {"(↑-уча, ↓-нича, ○-карака, □-дигбала, ⌂-свой знак, ●-сожжёная,\nØ-проигравшая, ☼-супер сильная)"}
-                </span>
-              </span>
-            </div>
-            <div style={{ width: 560, minWidth: 510, maxWidth: 560, textAlign: "center" }}>
-              <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>ПАНЕЛЬ РАСЧЁТОВ</span>
-            </div>
-          </div>
-        </div>
         <div style={{ overflowX: "auto" }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "nowrap", minWidth: 1082 }}>
-            <div
-              ref={planetTableLeftBoxRef}
-              style={{
-                width: "fit-content",
-                minWidth: 620,
-                maxWidth: 700,
-                background: PAPER_BLOCK_BG,
-                border: "1px solid #000",
-                padding: "6px 8px",
-              }}
-            >
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: tableFontSize, color: "#000" }}>
-                <thead>
+          <div style={{ width: "fit-content" }}>
+            <div style={{ fontSize: tableFontSize, marginBottom: 6, color: "#1f1309" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "nowrap" }}>
+                <div style={{ width: "fit-content", minWidth: 650, maxWidth: 680, textAlign: "center" }}>
+                  <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>
+                  {" "}
+                  <span className="relative inline-flex items-center select-none group" style={{ marginLeft: 6 }}>
+                    <span
+                      aria-label="Легенда"
+                      className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-black/60 bg-[#f1d6ae] text-[12px] leading-none text-black/80 cursor-help"
+                      style={{ position: "relative", top: -1 }}
+                    >
+                      i
+                    </span>
+                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 w-max max-w-[560px] -translate-x-1/2 whitespace-pre-line rounded border border-black bg-[#fff3d8] px-2 py-1 text-[16px] leading-[18px] text-black shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+                      {"(↑-уча, ↓-нича, ○-карака, □-дигбала, ⌂-свой знак, ●-сожжёная,\nØ-проигравшая, ☼-супер сильная)"}
+                    </span>
+                  </span>
+                </div>
+                <div style={{ width: 610, minWidth: 480, maxWidth: 610, textAlign: "center" }}>
+                  <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>ПАНЕЛЬ РАСЧЁТОВ</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "nowrap" }}>
+              <div
+                ref={planetTableLeftBoxRef}
+                style={{
+                  width: "fit-content",
+                  minWidth: 650,
+                  maxWidth: 680,
+                  background: PAPER_BLOCK_BG,
+                  border: "1px solid #000",
+                  padding: "6px 8px",
+                }}
+              >
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: tableFontSize, color: "#000" }}>
+                  <thead>
                   <tr>
                     <th style={headerCellStyle}>Созвездие (код)</th>
                     <th style={headerCellStyle}>Lon start</th>
@@ -1727,54 +1729,54 @@ const AdditionalChartPage: React.FC = () => {
                     });
                   })}
                 </tbody>
-              </table>
+                  </table>
+                </div>
               </div>
-            </div>
 
-            <div
-              style={{
-                width: 550,
-                minWidth: 510,
-                maxWidth: 550,
-                background: PAPER_BLOCK_BG,
-                border: "1px solid #000",
-                display: "flex",
-                flexDirection: "column",
-                overflow: "hidden",
-                height: rightPanelHeightPx ? `${rightPanelHeightPx}px` : undefined,
-                minHeight: 0,
-              }}
-            >
-            <div style={{ display: "flex", flexWrap: "nowrap", borderBottom: "1px solid #000" }}>
-              {ADDITIONAL_RIGHT_TABS.map((tab, idx) => {
-                const active = tab.id === rightPanelTab;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setRightPanelTab(tab.id)}
-                    className={`px-3 py-1.5 text-sm font-normal whitespace-nowrap ${
-                      active
-                        ? `${BUTTON_PRIMARY} cursor-default`
-                        : "border border-black bg-[#f1d6ae] text-[#1f1309] transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
-                    }`}
-                    style={{
-                      marginLeft: idx === 0 ? 0 : -1,
-                    }}
-                    disabled={active}
-                    aria-pressed={active}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ background: PAPER_BLOCK_BG, padding: "10px 12px", flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
-              {rightPanelTab === "tithi" ? (
-                tithiLoading ? (
-                  <div style={{ fontSize: 14, color: "#000" }}>Загрузка…</div>
-                ) : tithiError ? (
-                  <div style={{ fontSize: 14, color: "#9b1c1c", whiteSpace: "pre-line" }}>{tithiError}</div>
+              <div
+                style={{
+                  width: 610,
+                  minWidth: 480,
+                  maxWidth: 610,
+                  background: PAPER_BLOCK_BG,
+                  border: "1px solid #000",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                  height: rightPanelHeightPx ? `${rightPanelHeightPx}px` : undefined,
+                  minHeight: 0,
+                }}
+              >
+              <div style={{ display: "flex", flexWrap: "nowrap", borderBottom: "1px solid #000" }}>
+                {ADDITIONAL_RIGHT_TABS.map((tab, idx) => {
+                  const active = tab.id === rightPanelTab;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setRightPanelTab(tab.id)}
+                      className={`px-3 py-1.5 text-sm font-normal whitespace-nowrap ${
+                        active
+                          ? `${BUTTON_PRIMARY} cursor-default`
+                          : "border border-black bg-[#f1d6ae] text-[#1f1309] transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
+                      }`}
+                      style={{
+                        marginLeft: idx === 0 ? 0 : -1,
+                      }}
+                      disabled={active}
+                      aria-pressed={active}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ background: PAPER_BLOCK_BG, padding: "10px 12px", flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
+                {rightPanelTab === "tithi" ? (
+                  tithiLoading ? (
+                    <div style={{ fontSize: 14, color: "#000" }}>Загрузка…</div>
+                  ) : tithiError ? (
+                    <div style={{ fontSize: 14, color: "#9b1c1c", whiteSpace: "pre-line" }}>{tithiError}</div>
                 ) : tithiInfo ? (
                   (() => {
                     const staticInfo = getTithiStatic(tithiInfo.tithi);
@@ -1870,11 +1872,12 @@ const AdditionalChartPage: React.FC = () => {
                 )
               ) : (
                 <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
-              )}
+                )}
+              </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
       </div>
     );
   }, [arcsForRender, chart, fullDetailsOpen, ianaTz, isLicensed, planetMarkers, planetsByArc, rightPanelTab, tithiError, tithiInfo, tithiLoading]);
@@ -2336,12 +2339,15 @@ const AdditionalChartPage: React.FC = () => {
             Открыть файл
           </button>
         </div>
-        <div className="text-sm" style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "6px 8px" }}>
+        <div
+          className="text-sm"
+          style={{ display: "inline-block", width: "fit-content", maxWidth: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "6px 8px" }}
+        >
           {chartVariantConfig.description}
         </div>
 
-	        <div className="flex flex-row gap-4 overflow-x-auto pb-4">
-	          <div style={{ minWidth: 620 }}>
+ 	        <div className="flex flex-row gap-4 overflow-x-auto pb-4 mt-[5px]">
+ 	          <div style={{ minWidth: 620 }}>
             <NorthIndianChart
               title={chartVariantConfig.chartTitle}
               houses={houses}
@@ -2351,7 +2357,7 @@ const AdditionalChartPage: React.FC = () => {
             {error ? <div className="text-red-700 mt-2">{error}</div> : null}
             {loading ? <div className="text-sm text-gray-700 mt-2">Выполняем расчёт...</div> : null}
 	          </div>
-          <div style={{ minWidth: 520, maxWidth: 620 }}>
+          <div style={{ minWidth: 520, maxWidth: 650 }}>
             <div className="birth-panel-title">ДАННЫЕ РОЖДЕНИЯ (локально)</div>
             <div className="birth-panel" style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
               <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
