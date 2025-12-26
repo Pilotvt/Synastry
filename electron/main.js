@@ -197,32 +197,6 @@ async function writeIdentityToDisk(identity) {
   }
 }
 
-function showAboutDialog(parent) {
-  const title = `О программе - ${APP_DISPLAY_NAME} ${APP_VERSION}`;
-  const detail = [
-    'Назначение: офлайн/десктоп-приложение для расчёта натальных карт, синастрии и мухурты.',
-    'В основе используются реальные звёздные созвездия (IAU) и положения планет, поэтому не требуется аянамша.',
-    '',
-    'Автор: Виталий Алексеев',
-    'Обучение Джйотиш и вопросы по программе:',
-    'Telegram: @PilotVT',
-    'Email: pilot.vt@mail.ru',
-    'Канал в Telegram: t.me/yasnosun — Веды. Астрология. Ясновидение. Сонник.',
-    'RUTUBE: https://rutube.ru/channel/24373966/ — Разум вселенной.',
-    'YouTube: https://www.youtube.com/@universe_mind_369 — Universe mind.',
-  ].join('\n');
-
-  dialog.showMessageBox(parent ?? null, {
-    type: 'info',
-    buttons: ['OK'],
-    defaultId: 0,
-    title,
-    message: APP_DISPLAY_NAME,
-    detail,
-    noLink: true,
-  });
-}
-
 function openCalculationsHelpWindow(parent) {
   if (calculationsHelpWindow && !calculationsHelpWindow.isDestroyed()) {
     calculationsHelpWindow.show();
@@ -235,7 +209,7 @@ function openCalculationsHelpWindow(parent) {
     height: 820,
     minWidth: 900,
     minHeight: 620,
-    title: `Справка - О расчётах`,
+    title: `Справка - Помощь`,
     icon: APP_ICON,
     autoHideMenuBar: true,
     parent: parent && !parent.isDestroyed() ? parent : undefined,
@@ -248,6 +222,30 @@ function openCalculationsHelpWindow(parent) {
   });
 
   popup.setMenu(null);
+  try {
+    popup.webContents.setWindowOpenHandler(({ url }) => {
+      try {
+        if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+          shell.openExternal(url).catch(() => {});
+        }
+      } catch {
+        // ignore external open errors
+      }
+      return { action: 'deny' };
+    });
+    popup.webContents.on('will-navigate', (event, url) => {
+      try {
+        if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+          event.preventDefault();
+          shell.openExternal(url).catch(() => {});
+        }
+      } catch {
+        // ignore external open errors
+      }
+    });
+  } catch {
+    // ignore webContents handler errors
+  }
   popup.loadFile(path.join(__dirname, 'help-calculations.html'));
   popup.on('closed', () => {
     if (calculationsHelpWindow === popup) {
@@ -835,11 +833,7 @@ function buildApplicationMenu() {
           },
         },
         {
-          label: 'О программе',
-          click: (_item, browserWindow) => showAboutDialog(browserWindow || BrowserWindow.getFocusedWindow()),
-        },
-        {
-          label: 'О расчётах',
+          label: 'Помощь',
           click: (_item, browserWindow) => showCalculationsDialog(browserWindow || BrowserWindow.getFocusedWindow()),
         },
       ],

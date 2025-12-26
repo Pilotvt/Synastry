@@ -338,8 +338,9 @@ const describeOnlineStatus = (
   }
   const recent = diff < HOUR_MS;
   const verb = gender === "female" ? "была" : "был";
+  const agoLabel = formatAgoLabel(diff);
   return {
-    label: `${verb} ${formatAgoLabel(diff)} назад`,
+    label: agoLabel === "давно" ? `${verb} ${agoLabel}` : `${verb} ${agoLabel} назад`,
     badgeClass: recent
       ? 'text-amber-50'
       : 'text-slate-200/80',

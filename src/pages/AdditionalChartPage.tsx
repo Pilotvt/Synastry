@@ -9,10 +9,13 @@ import NorthIndianChart from "../components/NorthIndianChart";
 import OfflineAccessDialog from "../components/OfflineAccessDialog";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 import { getTithiStatic, tithiOrdinalRu, tithiPakshaRu } from "../constants/tithi";
+import { NAKSHATRA_LECTURES_RU } from "../data/nakshatraLecturesRu";
 import { getRussianCities } from "../utils/russianCitiesClient";
+import { formatArcMin, nakshatraFromLonJ2000 } from "../utils/nakshatraJ2000";
 import { requestNewChartReset } from "../utils/newChartRequest";
 import { useOfflineMode } from "../utils/offlineMode";
 import { norm, latinToRuName, ruToLat } from "../utils/transliterate";
+import { countryNameRU } from "../utils/countryNameRU";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://127.0.0.1:8000";
 const DEBOUNCE_MS = 800;
@@ -29,30 +32,6 @@ const ADDITIONAL_RIGHT_TABS: Array<{ id: AdditionalRightTabId; label: string }> 
   { id: "panchanga", label: "Панчанга" },
   { id: "sade-sati", label: "Саде-Сати" },
 ];
-
-const COUNTRY_RU_NAMES: Record<string, string> = {
-  RU: "Россия",
-  UA: "Украина",
-  BY: "Беларусь",
-  KZ: "Казахстан",
-  US: "США",
-  CA: "Канада",
-  GB: "Великобритания",
-  DE: "Германия",
-  FR: "Франция",
-  IT: "Италия",
-  ES: "Испания",
-  PT: "Португалия",
-  PL: "Польша",
-  TR: "Турция",
-  CN: "Китай",
-  IN: "Индия",
-};
-
-function countryNameRU(code: string) {
-  const upper = (code || "").toUpperCase();
-  return COUNTRY_RU_NAMES[upper] || upper;
-}
 
 function publicAssetUrl(relativePath: string) {
   if (typeof window === "undefined") return relativePath;
@@ -775,6 +754,8 @@ const AdditionalChartPage: React.FC = () => {
   const buildAbortRef = useRef<AbortController | null>(null);
   const buildSeqRef = useRef(0);
   const buildChartRef = useRef<((parts: BirthParts) => Promise<void> | void) | null>(null);
+  const planetTableLeftBoxRef = useRef<HTMLDivElement | null>(null);
+  const [rightPanelHeightPx, setRightPanelHeightPx] = useState<number | null>(null);
 
   const suggestions = useMemo(() => {
     if (!cityQuery) return cities.slice(0, 20);
@@ -933,10 +914,10 @@ const AdditionalChartPage: React.FC = () => {
     [birthParts, dstManual, enableTzCorrection, ianaTz, tzCorrectionHours],
   );
 
+  const autoDstMinutes = metaPreview?.autoDstMinutes ?? 0;
   useEffect(() => {
-    if (!metaPreview) return;
-    setAutoDst(metaPreview.autoDstMinutes > 0);
-  }, [metaPreview?.autoDstMinutes]);
+    setAutoDst(autoDstMinutes > 0);
+  }, [autoDstMinutes]);
 
   const buildProfileSnapshot = useCallback(
     (parts: BirthParts): ProfileSnapshot => ({
@@ -1280,7 +1261,12 @@ const AdditionalChartPage: React.FC = () => {
     scheduleRebuild(next);
   };
 
-  const handleCitySelect = (city: CitySuggestion) => {
+  const birthPartsRef = useRef(birthParts);
+  useEffect(() => {
+    birthPartsRef.current = birthParts;
+  }, [birthParts]);
+
+  const handleCitySelect = useCallback((city: CitySuggestion) => {
     setSelectedCity(city);
     setCityQuery(city.nameRu || city.name);
     setLat(city.lat);
@@ -1293,8 +1279,8 @@ const AdditionalChartPage: React.FC = () => {
     }
     setAutoApplyCity(false);
     setSuggestionsOpen(false);
-    scheduleRebuild(normalizeParts(birthParts));
-  };
+    scheduleRebuild(normalizeParts(birthPartsRef.current));
+  }, [scheduleRebuild]);
 
   const handleCityInput = (value: string) => {
     setCityQuery(value);
@@ -1308,7 +1294,7 @@ const AdditionalChartPage: React.FC = () => {
     const query = normalizeCityQuery(cityQuery);
     const exact = cities.find((c) => c.nameRuNorm === query || c.nameNorm === query);
     if (exact) handleCitySelect(exact);
-  }, [autoApplyCity, cityQuery, cities]);
+  }, [autoApplyCity, cityQuery, cities, handleCitySelect]);
 
   const ianaTzDisplay = useMemo(() => {
     if (!ianaTz) return "";
@@ -1374,6 +1360,28 @@ const AdditionalChartPage: React.FC = () => {
   }, [chart, variantShift]);
 
   const arcsForRender = useMemo(() => (Array.isArray(chart?.constellation_arcs) ? chart.constellation_arcs : []), [chart]);
+
+  useEffect(() => {
+    const leftEl = planetTableLeftBoxRef.current;
+    if (!leftEl) return;
+
+    const update = () => {
+      const next = Math.round(leftEl.getBoundingClientRect().height);
+      if (!Number.isFinite(next) || next <= 0) return;
+      setRightPanelHeightPx(next);
+    };
+
+    update();
+
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => update());
+    ro?.observe(leftEl);
+    window.addEventListener("resize", update);
+
+    return () => {
+      window.removeEventListener("resize", update);
+      ro?.disconnect();
+    };
+  }, [chart, arcsForRender.length]);
 
   const planetsByArc = useMemo(() => {
     const map = new Map<string, ChartResponse["planets"]>();
@@ -1564,22 +1572,36 @@ const AdditionalChartPage: React.FC = () => {
     return (
       <div style={{ maxWidth: "1450px", width: "100%", margin: "16px 0 0" }}>
         <div style={{ fontSize: tableFontSize, marginBottom: 6, color: "#1f1309" }}>
-          <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>{" "}
-          <span style={{ fontWeight: 400 }}>
-            (
-            {"↑-уча, ↓-нича, ○-карака, □-дигбала, ⌂-свой знак, ●-сожжёная,"}
-            <br />
-            {"Ø-проигравшая, ☼-супер сильная"}
-            )
-          </span>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "nowrap" }}>
+            <div style={{ width: "fit-content", minWidth: 620, maxWidth: 650, textAlign: "center" }}>
+              <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>
+              {" "}
+              <span className="relative inline-flex items-center select-none group" style={{ marginLeft: 6 }}>
+                <span
+                  aria-label="Легенда"
+                  className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-black/60 bg-[#f1d6ae] text-[12px] leading-none text-black/80 cursor-help"
+                  style={{ position: "relative", top: -1 }}
+                >
+                  i
+                </span>
+                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 w-max max-w-[560px] -translate-x-1/2 whitespace-pre-line rounded border border-black bg-[#fff3d8] px-2 py-1 text-[14px] leading-[18px] text-black shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+                  {"(↑-уча, ↓-нича, ○-карака, □-дигбала, ⌂-свой знак, ●-сожжёная,\nØ-проигравшая, ☼-супер сильная)"}
+                </span>
+              </span>
+            </div>
+            <div style={{ width: 560, minWidth: 510, maxWidth: 560, textAlign: "center" }}>
+              <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>ПАНЕЛЬ РАСЧЁТОВ</span>
+            </div>
+          </div>
         </div>
         <div style={{ overflowX: "auto" }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "stretch", flexWrap: "nowrap", minWidth: 1082 }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "nowrap", minWidth: 1082 }}>
             <div
+              ref={planetTableLeftBoxRef}
               style={{
                 width: "fit-content",
-                minWidth: 650,
-                maxWidth: 680,
+                minWidth: 620,
+                maxWidth: 700,
                 background: PAPER_BLOCK_BG,
                 border: "1px solid #000",
                 padding: "6px 8px",
@@ -1711,16 +1733,19 @@ const AdditionalChartPage: React.FC = () => {
 
             <div
               style={{
-                width: 520,
-                minWidth: 480,
-                maxWidth: 520,
+                width: 550,
+                minWidth: 510,
+                maxWidth: 550,
                 background: PAPER_BLOCK_BG,
                 border: "1px solid #000",
                 display: "flex",
                 flexDirection: "column",
+                overflow: "hidden",
+                height: rightPanelHeightPx ? `${rightPanelHeightPx}px` : undefined,
+                minHeight: 0,
               }}
             >
-            <div style={{ display: "flex", flexWrap: "nowrap", borderBottom: "1px solid #000", overflowX: "auto" }}>
+            <div style={{ display: "flex", flexWrap: "nowrap", borderBottom: "1px solid #000" }}>
               {ADDITIONAL_RIGHT_TABS.map((tab, idx) => {
                 const active = tab.id === rightPanelTab;
                 return (
@@ -1744,7 +1769,7 @@ const AdditionalChartPage: React.FC = () => {
                 );
               })}
             </div>
-            <div style={{ background: PAPER_BLOCK_BG, padding: "10px 12px", flex: "1 1 auto", minHeight: 220 }}>
+            <div style={{ background: PAPER_BLOCK_BG, padding: "10px 12px", flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
               {rightPanelTab === "tithi" ? (
                 tithiLoading ? (
                   <div style={{ fontSize: 14, color: "#000" }}>Загрузка…</div>
@@ -1793,6 +1818,56 @@ const AdditionalChartPage: React.FC = () => {
                 ) : (
                   <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
                 )
+              ) : rightPanelTab === "nakshatra" ? (
+                chart ? (
+                  (() => {
+                    const moonLon = moonPlanet?.lon_sidereal ?? null;
+                    const moonInfo = typeof moonLon === "number" && Number.isFinite(moonLon) ? nakshatraFromLonJ2000(moonLon) : null;
+
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ fontSize: 14, color: "#000" }}>
+                          Накшатра по Луне, на эклиптике J2000:
+                        </div>
+
+                        {moonInfo ? (
+                          <div style={{ border: "1px solid #000", background: "#f5e4c3", padding: "8px 10px" }}>
+                            <div style={{ fontSize: 16, color: "#000" }}>
+                              <strong>{moonInfo.name}</strong> №{moonInfo.index + 1}, пада {moonInfo.pada}
+                            </div>
+                            <div style={{ fontSize: 14, color: "#000", marginTop: 4 }}>
+                              Управитель: {moonInfo.lord} · Происхождение: {moonInfo.origin} · Тип: {moonInfo.nature}
+                            </div>
+                            <div style={{ fontSize: 14, color: "#000", marginTop: 8 }}>
+                              Луна λ(J2000): {typeof moonLon === "number" ? formatDegreesWithoutSeconds(moonLon) : "-"}
+                            </div>
+                            <div style={{ fontSize: 14, color: "#000", marginTop: 4 }}>
+                              Диапазон накшатры λ(J2000): {formatArcMin(moonInfo.startArcMin)} – {formatArcMin(moonInfo.endArcMin)}
+                            </div>
+                            <div style={{ fontSize: 16, fontWeight: 700, marginTop: 10, color: "#000" }}>
+                              Описание накшатры: {moonInfo.name}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 16,
+                                color: "#000",
+                                whiteSpace: "pre-line",
+                                lineHeight: "18px",
+                                marginTop: 6,
+                              }}
+                            >
+                              {NAKSHATRA_LECTURES_RU[moonInfo.name] ?? ""}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
+                        )}
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
+                )
               ) : (
                 <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
               )}
@@ -1802,7 +1877,7 @@ const AdditionalChartPage: React.FC = () => {
       </div>
       </div>
     );
-  }, [arcsForRender, chart, ianaTz, planetMarkers, planetsByArc, rightPanelTab, tithiError, tithiInfo, tithiLoading]);
+  }, [arcsForRender, chart, fullDetailsOpen, ianaTz, isLicensed, planetMarkers, planetsByArc, rightPanelTab, tithiError, tithiInfo, tithiLoading]);
 
   const headerLines = useMemo(() => {
     const cityLabel = selectedCity?.nameRu || selectedCity?.name || cityQuery || "-";
@@ -2276,7 +2351,7 @@ const AdditionalChartPage: React.FC = () => {
             {error ? <div className="text-red-700 mt-2">{error}</div> : null}
             {loading ? <div className="text-sm text-gray-700 mt-2">Выполняем расчёт...</div> : null}
 	          </div>
-          <div style={{ minWidth: 520, maxWidth: 560 }}>
+          <div style={{ minWidth: 520, maxWidth: 620 }}>
             <div className="birth-panel-title">ДАННЫЕ РОЖДЕНИЯ (локально)</div>
             <div className="birth-panel" style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
               <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>

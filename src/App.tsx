@@ -15,23 +15,11 @@ import {
   LAST_SAVED_CHART_FINGERPRINT_KEY,
 } from "./constants/storageKeys";
 import { BUTTON_SECONDARY } from "./constants/buttonPalette";
+import { PAPER_INPUT_STYLE, PAPER_SURFACE_STYLE } from "./constants/paperStyles";
+import { countryNameRU } from "./utils/countryNameRU";
 
 const SUPPORT_EMAIL = "pilot.vt@mail.ru";
 const SUPPORT_TELEGRAM = "@PilotVT";
-
-const PAPER_SURFACE_STYLE: Record<string, string> = {
-  backgroundColor: "rgba(255, 255, 255, 0.92)",
-  backgroundImage: "var(--paper-texture-image)",
-  backgroundSize: "var(--paper-texture-size)",
-  backgroundRepeat: "repeat",
-  border: "1px solid rgba(120, 80, 40, 0.35)",
-  color: "#2b1c0f",
-};
-
-const PAPER_INPUT_STYLE: Record<string, string> = {
-  ...PAPER_SURFACE_STYLE,
-  boxShadow: "inset 0 1px 1px rgba(0, 0, 0, 0.05)",
-};
 
 type CityWorld = {
   id: string;
@@ -225,19 +213,6 @@ function clampLat(value: number) {
 
 function clampLon(value: number) {
   return Math.max(-180, Math.min(180, value));
-}
-
-const regionNames = new Intl.DisplayNames(["ru"], { type: "region" });
-
-function countryNameRU(code: string) {
-  const c = String(code || "").toUpperCase();
-  // Guard against invalid codes that crash Intl.DisplayNames.of
-  if (!/^[A-Z]{2,3}$/.test(c)) return c || "—";
-  try {
-    return regionNames.of(c) ?? c;
-  } catch {
-    return c;
-  }
 }
 
 function pad2(n: number) {

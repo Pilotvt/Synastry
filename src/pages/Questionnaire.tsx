@@ -22,6 +22,8 @@ import {
 import { hardResetAllData } from "../utils/hardReset";
 import { requestNewChartReset } from "../utils/newChartRequest";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
+import { PAPER_INPUT_STYLE, PAPER_SURFACE_STYLE } from "../constants/paperStyles";
+import { countryNameRU } from "../utils/countryNameRU";
 
 type ProfileSnapshot = {
   personName?: string;
@@ -128,30 +130,6 @@ function publicAssetUrl(relativePath: string) {
   }
 }
 
-const COUNTRY_RU_NAMES: Record<string, string> = {
-  RU: "Россия",
-  UA: "Украина",
-  BY: "Беларусь",
-  KZ: "Казахстан",
-  US: "США",
-  CN: "Китай",
-  IN: "Индия",
-  GB: "Великобритания",
-  DE: "Германия",
-  FR: "Франция",
-  IT: "Италия",
-  ES: "Испания",
-  PT: "Португалия",
-  PL: "Польша",
-  TR: "Турция",
-  // fallback handled below
-};
-
-function countryNameRU(code: string) {
-  const upper = (code || "").toUpperCase();
-  return COUNTRY_RU_NAMES[upper] || upper;
-}
-
 type CitiesIndexFile = {
   countries: Array<{ country: string; count: number }>;
 };
@@ -226,6 +204,7 @@ function extractChartPayloadForExport(raw: unknown): {
   chart: Record<string, unknown> | null;
   meta: Record<string, unknown> | null;
   screenshot: string | null;
+  screenshotHash: string | null;
   profile: ProfileSnapshot | null;
 } {
   if (!isRecord(raw)) {
@@ -233,6 +212,7 @@ function extractChartPayloadForExport(raw: unknown): {
       chart: null,
       meta: null,
       screenshot: null,
+      screenshotHash: null,
       profile: null,
     };
   }
@@ -263,14 +243,25 @@ function extractChartPayloadForExport(raw: unknown): {
   ];
   const screenshot = screenshotCandidates.find((value): value is string => typeof value === "string" && value.length > 0) ?? null;
 
+  const screenshotHashCandidates: Array<string | null> = [
+    typeof root.screenshotHash === "string" ? (root.screenshotHash as string) : null,
+    chartContainer && typeof chartContainer["screenshotHash"] === "string" ? (chartContainer["screenshotHash"] as string) : null,
+    chart && typeof chart["screenshotHash"] === "string" ? (chart["screenshotHash"] as string) : null,
+  ];
+  const screenshotHash = screenshotHashCandidates.find((value): value is string => typeof value === "string" && value.length > 0) ?? null;
+
   if (chart && screenshot) {
     chart["screenshotUrl"] = screenshot;
+  }
+  if (chart && screenshotHash) {
+    chart["screenshotHash"] = screenshotHash;
   }
 
   return {
     chart,
     meta,
     screenshot,
+    screenshotHash,
     profile: profileCandidate,
   };
 }
@@ -658,6 +649,7 @@ const Questionnaire: React.FC = () => {
   const residenceCountriesLoadedRef = useRef(false);
   const residenceCityCacheRef = useRef<Map<string, ResidenceCityOption[]>>(new Map());
   const [residenceCountryOpen, setResidenceCountryOpen] = useState(false);
+  const [residenceCountryFilter, setResidenceCountryFilter] = useState("");
   const [residenceCityOpen, setResidenceCityOpen] = useState(false);
   const residenceCountryRef = useRef<HTMLDivElement | null>(null);
   const residenceCityRef = useRef<HTMLDivElement | null>(null);
@@ -820,6 +812,7 @@ const Questionnaire: React.FC = () => {
     setResidenceCountry(value);
     persistFieldToLocal("residenceCountry", value);
     void persistFieldToCloud("residenceCountry", value);
+    setResidenceCountryFilter("");
     setResidenceCountryOpen(false);
   }, [persistFieldToLocal, persistFieldToCloud]);
 
@@ -843,8 +836,9 @@ const Questionnaire: React.FC = () => {
       return residenceCityOptions.slice(0, 40);
     }
     for (const option of residenceCityOptions) {
-      const label = (option.nameRu || option.name).toLowerCase();
-      if (label.startsWith(query) || label.includes(query)) {
+      const ruLabel = (option.nameRu || "").toLowerCase();
+      const enLabel = option.name.toLowerCase();
+      if ((ruLabel && ruLabel.startsWith(query)) || enLabel.startsWith(query)) {
         results.push(option);
         if (results.length >= 40) break;
       }
@@ -852,8 +846,18 @@ const Questionnaire: React.FC = () => {
     return results;
   }, [residenceCityName, residenceCityOptions]);
 
+  const filteredResidenceCountries = useMemo(() => {
+    const query = residenceCountryFilter.trim().toLowerCase();
+    if (!query) return residenceCountries;
+    return residenceCountries.filter((code) => {
+      const label = `${countryNameRU(code)} ${code}`.toLowerCase();
+      return label.includes(query);
+    });
+  }, [residenceCountries, residenceCountryFilter]);
+
   useEffect(() => {
     if (!residenceCountryOpen) return;
+    setResidenceCountryFilter("");
     const onMouseDown = (event: MouseEvent) => {
       const node = residenceCountryRef.current;
       if (!node) return;
@@ -1186,7 +1190,7 @@ const Questionnaire: React.FC = () => {
 
               const parsedChart = readSavedChartSource(currentUserId ?? undefined);
 
-              const { chart: exportChart, meta: exportMeta, screenshot, profile: fallbackProfile } =
+              const { chart: exportChart, meta: exportMeta, screenshot, screenshotHash, profile: fallbackProfile } =
                 extractChartPayloadForExport(parsedChart);
 
               if (!snapshot && fallbackProfile) {
@@ -1197,7 +1201,8 @@ const Questionnaire: React.FC = () => {
               if (snapshot) payload.profile = snapshot;
               if (exportChart) payload.chart = exportChart;
               if (exportMeta) payload.meta = exportMeta;
-              if (!exportChart && screenshot) payload.screenshot = screenshot;
+              if (screenshot) payload.screenshot = screenshot;
+              if (screenshot && screenshotHash) payload.screenshotHash = screenshotHash;
               if (!payload.profile && fallbackProfile) payload.profile = fallbackProfile;
               if (Object.keys(payload).length === 0) {
                 payload.profile = snapshot ?? fallbackProfile ?? {};
@@ -1315,7 +1320,8 @@ const Questionnaire: React.FC = () => {
                   <div className="relative mt-1" ref={residenceCountryRef}>
                     <button
                       type="button"
-                      className="paper-input w-full rounded px-2 py-1 text-left"
+                      className="w-full rounded-lg px-3 py-2 outline-none text-left"
+                      style={PAPER_INPUT_STYLE}
                       onClick={() => setResidenceCountryOpen((prev) => !prev)}
                       aria-haspopup="listbox"
                       aria-expanded={residenceCountryOpen}
@@ -1323,22 +1329,46 @@ const Questionnaire: React.FC = () => {
                       {countryNameRU(residenceCountry)} ({residenceCountry})
                     </button>
                     {residenceCountryOpen ? (
-                      <div className="paper-menu absolute z-50 mt-1 w-full max-h-72 overflow-auto rounded shadow-lg">
-                        {residenceCountries.map((code) => {
-                          const selected = code === residenceCountry;
-                          return (
-                            <div
+                      <div
+                        className="absolute left-0 right-0 top-full z-[120] mt-1 rounded-xl shadow-lg"
+                        style={{ ...PAPER_SURFACE_STYLE, maxHeight: "320px", overflow: "hidden" }}
+                      >
+                        <div className="p-2">
+                          <input
+                            type="text"
+                            value={residenceCountryFilter}
+                            onChange={(event) => setResidenceCountryFilter(event.target.value)}
+                            placeholder="Поиск страны..."
+                            className="w-full rounded-lg px-3 py-2 outline-none placeholder:text-black/40"
+                            style={PAPER_INPUT_STYLE}
+                            autoComplete="off"
+                          />
+                        </div>
+                        <ul
+                          className="text-sm"
+                          style={{
+                            listStyle: "none",
+                            margin: 0,
+                            padding: 0,
+                            maxHeight: "260px",
+                            overflowY: "auto",
+                          }}
+                        >
+                          {filteredResidenceCountries.map((code) => (
+                            <li
                               key={code}
                               role="option"
-                              aria-selected={selected}
-                              className="paper-menu-item"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => applyResidenceCountry(code)}
+                              aria-selected={code === residenceCountry}
+                              className="px-3 py-2 cursor-pointer hover:bg-black/5"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                applyResidenceCountry(code);
+                              }}
                             >
                               {countryNameRU(code)} ({code})
-                            </div>
-                          );
-                        })}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     ) : null}
                   </div>
@@ -1353,44 +1383,61 @@ const Questionnaire: React.FC = () => {
                         setResidenceCityOpen(true);
                       }}
                       onFocus={() => setResidenceCityOpen(true)}
-                      onBlur={handleResidenceCityBlur}
+                      onBlur={() => {
+                        handleResidenceCityBlur();
+                        setTimeout(() => setResidenceCityOpen(false), 150);
+                      }}
                       placeholder="Начните ввод..."
-                      className="paper-input block w-full rounded px-2 py-1"
+                      className="w-full rounded-lg px-3 py-2 outline-none placeholder:text-black/40"
+                      style={PAPER_INPUT_STYLE}
                     />
                     {residenceCityOpen ? (
-                      <div className="paper-menu absolute z-50 mt-1 w-full max-h-72 overflow-auto rounded shadow-lg">
+                      <ul
+                        className="absolute left-0 right-0 top-full z-[120] mt-1 rounded-xl shadow-lg text-sm"
+                        style={{
+                          ...PAPER_SURFACE_STYLE,
+                          listStyle: "none",
+                          margin: 0,
+                          padding: 0,
+                          maxHeight: "260px",
+                          overflowY: "auto",
+                        }}
+                      >
                         {residenceCitiesLoading ? (
-                          <div className="paper-menu-item" aria-selected="false">
+                          <li className="px-3 py-2" aria-selected="false">
                             Загрузка списка городов...
-                          </div>
+                          </li>
                         ) : filteredResidenceCityOptions.length ? (
                           filteredResidenceCityOptions.map((city) => {
                             const label = city.nameRu || city.name;
                             const selected = label === residenceCityName;
                             return (
-                              <div
+                              <li
                                 key={city.id}
                                 role="option"
                                 aria-selected={selected}
-                                className="paper-menu-item"
-                                onMouseDown={(event) => event.preventDefault()}
-                                onClick={() => {
+                                className="px-3 py-2 cursor-pointer hover:bg-black/5"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
                                   setResidenceCityName(label);
                                   persistFieldToLocal("residenceCityName", label);
                                   void persistFieldToCloud("residenceCityName", label);
                                   setResidenceCityOpen(false);
                                 }}
                               >
-                                {label}
-                              </div>
+                                <span className="font-medium text-sm">{city.nameRu || city.name}</span>
+                                {residenceCountry !== "RU" && city.nameRu && city.nameRu !== city.name ? (
+                                  <span className="ml-1 text-xs text-black/60">({city.name})</span>
+                                ) : null}
+                              </li>
                             );
                           })
                         ) : (
-                          <div className="paper-menu-item" aria-selected="false">
+                          <li className="px-3 py-2" aria-selected="false">
                             Ничего не найдено
-                          </div>
+                          </li>
                         )}
-                      </div>
+                      </ul>
                     ) : null}
                   </div>
                   {residenceCitiesLoading ? (

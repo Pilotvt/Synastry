@@ -28,10 +28,13 @@ const resolveAppMeta = () => {
 };
 
 const readCalculationsContent = () => {
-  const contentPath = path.join(__dirname, 'help-calculations-content.txt');
-  const text = readTextSafe(contentPath);
-  const lines = text.split(/\r?\n/);
-  return { text, lines };
+  const htmlPath = path.join(__dirname, 'help-calculations.html');
+  const html = readTextSafe(htmlPath);
+  const match = html.match(/<script\s+id="embedded-calculations"[^>]*>([\s\S]*?)<\/script>/i);
+  const text = match ? String(match[1] ?? '') : '';
+  const normalized = text.replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n');
+  const lines = normalized.split(/\\n/);
+  return { text: normalized, lines };
 };
 
 contextBridge.exposeInMainWorld('helpAPI', {
@@ -40,7 +43,7 @@ contextBridge.exposeInMainWorld('helpAPI', {
     const { lines } = readCalculationsContent();
     return {
       ...meta,
-      title: 'О расчётах',
+      title: 'Помощь',
       lines,
     };
   },

@@ -3035,7 +3035,6 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
             </div>
           </header>
           <div className="w-full mb-4">
-            <div className="text-sm text-white/70 mb-2">Тип карты</div>
             <div className="flex flex-wrap gap-2">
               {CHART_VARIANT_OPTIONS.map((option) => {
                 const isActive = option.value === chartVariant;
@@ -3123,11 +3122,11 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
                 </div>
               )}
             </div>
-            <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/70">
+            <div className="mt-3 inline-block w-fit max-w-full rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/70">
               {chartVariantConfig.description}
             </div>
           </div>
-          <div className="overflow-x-auto pb-2">
+          <div className="overflow-x-auto pb-2 mt-[5px]">
             <div className="flex flex-row flex-nowrap items-start gap-0 min-w-max">
             <div
               ref={chartContainerRef}
@@ -3144,10 +3143,21 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
             </div>
             <div className="flex-none self-stretch bg-[#fbe9c3]" style={{ width: 16 }} aria-hidden />
             <div className="flex-none" style={{ minWidth: 650, maxWidth: 680 }}>
-              <div className="text-base font-black uppercase tracking-wide text-white mb-2">
-                СОЗВЕЗДИЯ И ПЛАНЕТЫ (
-                <span className="normal-case font-semibold">↑-уча, ↓-нича, ○-карака, □-дигбала, ⌂-свой знак, ●-сожжёная, Ø-проигравшая, ☼-супер сильная</span>
-                )
+              <div className="text-base font-black uppercase tracking-wide text-white mb-2 flex items-center justify-center">
+                <span>СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>
+                {" "}
+                <span className="relative inline-flex items-center select-none group" style={{ marginLeft: 6 }}>
+                  <span
+                    aria-label="Легенда"
+                    className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-white/60 bg-white/10 text-[12px] leading-none text-white/80 cursor-help"
+                    style={{ position: "relative", top: -1 }}
+                  >
+                    i
+                  </span>
+                  <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 w-max max-w-[560px] -translate-x-1/2 whitespace-pre-line rounded border border-black bg-[#fff3d8] px-2 py-1 text-[14px] leading-[18px] text-black shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+                    {"(↑-уча, ↓-нича, ○-карака, □-дигбала, ⌂-свой знак, ●-сожжёная,\nØ-проигравшая, ☼-супер сильная)"}
+                  </span>
+                </span>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4 min-[1200px]:p-6">
                 <div className="overflow-x-auto text-sm text-white/80">
