@@ -145,6 +145,8 @@ export type NakshatraJ2000Result = {
   nature: NakshatraNatureRu;
   startArcMin: number;
   endArcMin: number;
+  posInSegmentArcMin: number; // 0..NAKSHATRA_SEGMENT_ARCMIN
+  progress: number; // 0..1
   pada: 1 | 2 | 3 | 4;
   padaStartArcMin: number;
   padaEndArcMin: number;
@@ -176,6 +178,7 @@ export function nakshatraFromLonJ2000(lonDegreesJ2000: number): NakshatraJ2000Re
   const endArcMin = normArcMin(startArcMin + NAKSHATRA_SEGMENT_ARCMIN);
 
   const posInSegment = relMin - index * NAKSHATRA_SEGMENT_ARCMIN;
+  const progress = posInSegment / NAKSHATRA_SEGMENT_ARCMIN;
   const padaIndex = Math.max(0, Math.min(3, Math.floor(posInSegment / NAKSHATRA_PADA_ARCMIN)));
   const pada = (padaIndex + 1) as 1 | 2 | 3 | 4;
   const padaStartArcMin = normArcMin(startArcMin + padaIndex * NAKSHATRA_PADA_ARCMIN);
@@ -189,6 +192,8 @@ export function nakshatraFromLonJ2000(lonDegreesJ2000: number): NakshatraJ2000Re
     nature: NAKSHATRA_NATURE_RU[name],
     startArcMin,
     endArcMin,
+    posInSegmentArcMin: posInSegment,
+    progress,
     pada,
     padaStartArcMin,
     padaEndArcMin,

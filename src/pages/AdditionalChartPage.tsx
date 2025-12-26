@@ -16,6 +16,15 @@ import { requestNewChartReset } from "../utils/newChartRequest";
 import { useOfflineMode } from "../utils/offlineMode";
 import { norm, latinToRuName, ruToLat } from "../utils/transliterate";
 import { countryNameRU } from "../utils/countryNameRU";
+import {
+  DAY_MS,
+  VIMSHOTTARI_YEAR_DAYS,
+  findPeriodIndexContaining,
+  vimshottariMahaSlicesFrom,
+  vimshottariPlanetFromNakshatraLord,
+  vimshottariSubSlices,
+  type VimshottariPlanetCode,
+} from "../utils/vimshottari";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://127.0.0.1:8000";
 const DEBOUNCE_MS = 800;
@@ -212,6 +221,7 @@ type TithiApiResponse = {
 };
 
 type ChartVariant = "rashi" | "chandra" | "surya";
+type VimshottariDepth = 1 | 2 | 3 | 4 | 5;
 
 const CHART_VARIANT_OPTIONS: Array<{ value: ChartVariant; title: string; subtitle: string }> = [
   { value: "rashi", title: "Rashi", subtitle: "Карта восходящего знака" },
@@ -649,6 +659,24 @@ function formatLocalTime(parts: BirthParts, tz: string): string {
   }
 }
 
+function formatUtcMsInTz(ms: number, tz: string): string {
+  try {
+    return moment.utc(ms).tz(tz).format("YYYY-MM-DD HH:mm");
+  } catch {
+    return "-";
+  }
+}
+
+function isoUtcFromMs(ms: number): string {
+  return moment.utc(ms).format("YYYY-MM-DDTHH:mm:ssZ");
+}
+
+function signCodeLabel(signCode: string): string {
+  const info = SIGN_INFO[signCode] ?? null;
+  if (!info) return signCode || "-";
+  return `${info.index} ${info.ru}`;
+}
+
 const PLANET_NAMES_RU: Record<string, string> = {
   Su: "Солнце",
   Mo: "Луна",
@@ -659,6 +687,18 @@ const PLANET_NAMES_RU: Record<string, string> = {
   Sa: "Сатурн",
   Ra: "Раху",
   Ke: "Кету",
+};
+
+const PLANET_SHORT_RU: Record<string, string> = {
+  Su: "Сл",
+  Mo: "Лн",
+  Me: "Ме",
+  Ve: "Вн",
+  Ma: "Ма",
+  Ju: "Юп",
+  Sa: "Са",
+  Ra: "Ра",
+  Ke: "Ке",
 };
 
 function degStr(value: number): string {
@@ -736,6 +776,15 @@ const AdditionalChartPage: React.FC = () => {
   const [autoDst, setAutoDst] = useState(() => Boolean(initialDraft?.meta?.autoDstMinutes && initialDraft.meta.autoDstMinutes > 0));
   const [autoApplyCity, setAutoApplyCity] = useState(() => !(initialDraft?.selectedCity));
   const [chartVariant, setChartVariant] = useState<ChartVariant>(() => initialDraft?.chartVariant ?? "rashi");
+  const [transitsEnabled, setTransitsEnabled] = useState(false);
+  const [transitChart, setTransitChart] = useState<ChartResponse | null>(null);
+  const [transitLoading, setTransitLoading] = useState(false);
+  const [transitError, setTransitError] = useState<string | null>(null);
+  const transitAbortRef = useRef<AbortController | null>(null);
+  const transitSeqRef = useRef(0);
+  const [transitTargetMsUtc, setTransitTargetMsUtc] = useState<number | null>(null);
+  const [vimshottariDepth, setVimshottariDepth] = useState<VimshottariDepth>(1);
+  const [vimshottariFocusMsUtc, setVimshottariFocusMsUtc] = useState<number | null>(null);
   const [chartTextResources, setChartTextResources] = useState<ChartTextResources | null>(null);
   const [licenseStatus, setLicenseStatus] = useState<ElectronLicenseStatus | null>(null);
   const isLicensed = Boolean(licenseStatus?.licensed);
@@ -762,6 +811,16 @@ const AdditionalChartPage: React.FC = () => {
     const filtered = cities.filter((c) => matchPrefix(cityQuery, c));
     return filtered.slice(0, 20);
   }, [cities, cityQuery]);
+
+  useEffect(() => {
+    if (rightPanelTab !== "vimshottari-dasha") return;
+    setVimshottariDepth(1);
+  }, [rightPanelTab]);
+
+  const transitRefMode = useMemo<"moon" | "lagna">(() => {
+    if (!transitsEnabled) return "moon";
+    return chartVariant === "rashi" ? "lagna" : "moon";
+  }, [chartVariant, transitsEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1042,6 +1101,66 @@ const AdditionalChartPage: React.FC = () => {
       controller.abort();
     };
   }, [meta?.datetimeIso, metaPreview?.datetimeIso, rightPanelTab]);
+
+  useEffect(() => {
+    const ms = meta?.datetimeIso ? moment.parseZone(meta.datetimeIso).valueOf() : null;
+    if (!ms || !Number.isFinite(ms)) return;
+    setVimshottariFocusMsUtc(ms);
+    setTransitTargetMsUtc((prev) => prev ?? ms);
+  }, [meta?.datetimeIso]);
+
+  useEffect(() => {
+    if (!transitsEnabled) return;
+    const ms = transitTargetMsUtc ?? vimshottariFocusMsUtc ?? null;
+    if (!ms || !Number.isFinite(ms)) {
+      setTransitChart(null);
+      setTransitLoading(false);
+      setTransitError(null);
+      return;
+    }
+    const seq = ++transitSeqRef.current;
+    transitAbortRef.current?.abort();
+    const controller = new AbortController();
+    transitAbortRef.current = controller;
+
+    const payload: ChartRequestPayload = {
+      datetime_iso: isoUtcFromMs(ms),
+      latitude: lat,
+      longitude: lon,
+      elevation_m: 0,
+      house_system: "W",
+    };
+    setTransitLoading(true);
+    setTransitError(null);
+    (async () => {
+      try {
+        const endpoint = `${API_BASE_URL.replace(/\/$/, "")}/api/chart`;
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(`Ошибка сервера: ${res.status} ${txt}`);
+        }
+        const json = (await res.json()) as ChartResponse;
+        if (controller.signal.aborted || seq !== transitSeqRef.current) return;
+        setTransitChart(json);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        setTransitError(msg);
+        setTransitChart(null);
+      } finally {
+        if (seq === transitSeqRef.current) {
+          setTransitLoading(false);
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [lat, lon, transitTargetMsUtc, transitsEnabled, vimshottariFocusMsUtc]);
 
   const scheduleRebuild = useCallback(
     (nextParts: BirthParts) => {
@@ -1359,6 +1478,68 @@ const AdditionalChartPage: React.FC = () => {
     return rotated;
   }, [chart, variantShift]);
 
+  const transitHouses = useMemo(() => {
+    if (!transitsEnabled) return null;
+    if (!chart) return null;
+    const shift =
+      transitRefMode === "lagna"
+        ? 0
+        : (() => {
+            const moonNatalHouse = chart.planets.find((p) => p.name === "Mo")?.house ?? null;
+            if (typeof moonNatalHouse !== "number" || !Number.isFinite(moonNatalHouse)) return null;
+            return (moonNatalHouse - 1 + 12) % 12;
+          })();
+    if (typeof shift !== "number") return null;
+
+    const signToNatalHouse = new Map<string, number>();
+    if (Array.isArray(chart.houses)) {
+      chart.houses.forEach((h) => {
+        if (h?.sign && typeof h.house === "number") signToNatalHouse.set(h.sign, h.house);
+      });
+    }
+
+    const baseHouses = Array.isArray(chart.houses) ? chart.houses : [];
+    const rotatedBase = baseHouses
+      .map((h) => {
+        const rotatedHouse = rotateHouseNumber(h.house ?? null, shift) ?? h.house ?? 0;
+        const signInfo = SIGN_INFO[h.sign] ?? { index: 0, ru: h.sign, en: h.sign };
+        return {
+          houseNumber: rotatedHouse,
+          sign: h.sign,
+          signIndex: signInfo.index || null,
+          signLabel: signInfo.ru,
+          planetLabels: [] as string[],
+          aspectLabels: [] as string[],
+        };
+      })
+      .filter((h) => h.houseNumber >= 1 && h.houseNumber <= 12);
+    rotatedBase.sort((a, b) => a.houseNumber - b.houseNumber);
+
+    if (!transitChart?.planets) return rotatedBase;
+
+    const planetsByHouse = new Map<number, string[]>();
+    transitChart.planets.forEach((p) => {
+      const natalHouse = signToNatalHouse.get(p.sign);
+      if (!natalHouse) return;
+      const rotatedHouse = rotateHouseNumber(natalHouse, shift);
+      if (!rotatedHouse) return;
+      const label = p.is_retrograde ? `${p.name} R` : p.name;
+      const arr = planetsByHouse.get(rotatedHouse) ?? [];
+      arr.push(label);
+      planetsByHouse.set(rotatedHouse, arr);
+    });
+    for (const [houseNumber, labels] of planetsByHouse.entries()) {
+      labels.sort();
+      planetsByHouse.set(houseNumber, labels);
+    }
+
+    rotatedBase.forEach((h) => {
+      h.planetLabels = planetsByHouse.get(h.houseNumber) ?? [];
+    });
+
+    return rotatedBase;
+  }, [chart, transitChart, transitRefMode, transitsEnabled]);
+
   const arcsForRender = useMemo(() => (Array.isArray(chart?.constellation_arcs) ? chart.constellation_arcs : []), [chart]);
 
   useEffect(() => {
@@ -1548,6 +1729,27 @@ const AdditionalChartPage: React.FC = () => {
     return markers;
   }, [chart, variantShift]);
 
+  const openTransitsAtMsUtc = useCallback((msUtc: number) => {
+    if (!Number.isFinite(msUtc)) return;
+    setVimshottariFocusMsUtc(msUtc);
+    setTransitTargetMsUtc(msUtc);
+    setTransitsEnabled((prev) => {
+      if (!prev) setChartVariant("chandra");
+      return true;
+    });
+  }, []);
+
+  const openTransitsAtPeriodEndMsUtc = useCallback((endMsUtc: number) => {
+    if (!Number.isFinite(endMsUtc)) return;
+    // Для подсветки периода остаёмся "внутри" текущего, но транзиты считаем на точный конец.
+    setVimshottariFocusMsUtc(Math.max(0, endMsUtc - 1000));
+    setTransitTargetMsUtc(endMsUtc);
+    setTransitsEnabled((prev) => {
+      if (!prev) setChartVariant("chandra");
+      return true;
+    });
+  }, []);
+
   const planetTable = useMemo(() => {
     if (!chart) return null;
     const iauNameByCode = new Map<string, string>();
@@ -1581,7 +1783,7 @@ const AdditionalChartPage: React.FC = () => {
                   <span className="relative inline-flex items-center select-none group" style={{ marginLeft: 6 }}>
                     <span
                       aria-label="Легенда"
-                      className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-black/60 bg-[#f1d6ae] text-[12px] leading-none text-black/80 cursor-help"
+                      className="inline-flex h-[16px] w-[16px] items-center justify-center rounded-full border border-black/60 bg-[#f1d6ae] text-[13px] leading-[16px] text-black/80 cursor-help"
                       style={{ position: "relative", top: -1 }}
                     >
                       i
@@ -1820,6 +2022,182 @@ const AdditionalChartPage: React.FC = () => {
                 ) : (
                   <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
                 )
+              ) : rightPanelTab === "vimshottari-dasha" ? (
+                chart && meta && typeof moonPlanet?.lon_sidereal === "number" && Number.isFinite(moonPlanet.lon_sidereal) ? (
+                  (() => {
+                    const birthMsUtc = moment.parseZone(meta.datetimeIso).valueOf();
+                    const windowStartMsUtc = birthMsUtc;
+                    const windowEndMsUtc = birthMsUtc + 120 * VIMSHOTTARI_YEAR_DAYS * DAY_MS;
+                    const focusMsUtcRaw = vimshottariFocusMsUtc ?? birthMsUtc;
+                    const focusMsUtc = Math.min(Math.max(focusMsUtcRaw, windowStartMsUtc), windowEndMsUtc - 1);
+                    const moonLon = moonPlanet.lon_sidereal;
+                    const moonInfo = nakshatraFromLonJ2000(moonLon);
+                    const startLord = vimshottariPlanetFromNakshatraLord(moonInfo.lord);
+
+                    type Period = {
+                      lord: VimshottariPlanetCode;
+                      startMs: number;
+                      endMs: number;
+                      path: VimshottariPlanetCode[];
+                    };
+
+                    const overlapsLifeWindow = (p: { startMs: number; endMs: number }) =>
+                      p.endMs > windowStartMsUtc && p.startMs < windowEndMsUtc;
+
+                    const makePeriods = (
+                      startMs: number,
+                      slices: Array<{ lord: VimshottariPlanetCode; durationMs: number }>,
+                      prefix: VimshottariPlanetCode[],
+                    ): Period[] => {
+                      let t = startMs;
+                      return slices.map((s) => {
+                        const p: Period = { lord: s.lord, startMs: t, endMs: t + s.durationMs, path: [...prefix, s.lord] };
+                        t = p.endMs;
+                        return p;
+                      });
+                    };
+
+                    const expand = (parents: Period[]): Period[] => {
+                      const out: Period[] = [];
+                      for (const parent of parents) {
+                        const slices = vimshottariSubSlices(parent.lord, parent.endMs - parent.startMs);
+                        const children = makePeriods(parent.startMs, slices, parent.path);
+                        for (const child of children) out.push(child);
+                      }
+                      return out;
+                    };
+
+                    // В традиции текущая Маха-даша началась ДО рождения (мы в ней на доле `moonInfo.progress`).
+                    // Для UX мы не показываем периоды "до рождения": окно всегда [рождение .. рождение+120 лет].
+                    const mahaFullMs = vimshottariMahaSlicesFrom(startLord, VIMSHOTTARI_YEAR_DAYS)[0]?.durationMs ?? 0;
+                    const mahaStartMsUtc = birthMsUtc - mahaFullMs * moonInfo.progress;
+
+                    // Генерируем Маха-даши вперёд от старта текущей, пока не перекроем окно жизни.
+                    const cycleSlices = vimshottariMahaSlicesFrom(startLord, VIMSHOTTARI_YEAR_DAYS); // 9 лордов, старт с текущего
+                    const mahaPeriodsAll: Period[] = [];
+                    let cursor = mahaStartMsUtc;
+                    while (cursor < windowEndMsUtc) {
+                      for (const s of cycleSlices) {
+                        const p: Period = { lord: s.lord, startMs: cursor, endMs: cursor + s.durationMs, path: [s.lord] };
+                        mahaPeriodsAll.push(p);
+                        cursor = p.endMs;
+                        if (cursor >= windowEndMsUtc) break;
+                      }
+                    }
+
+                    let listPeriods: Period[] = mahaPeriodsAll.filter(overlapsLifeWindow);
+                    for (let level = 2 as VimshottariDepth; level <= vimshottariDepth; level = (level + 1) as VimshottariDepth) {
+                      listPeriods = expand(listPeriods).filter(overlapsLifeWindow);
+                    }
+
+                    const activeIdx = findPeriodIndexContaining(listPeriods, focusMsUtc);
+                    const activePeriod = listPeriods[activeIdx] ?? null;
+                    const activePath = activePeriod?.path?.map((p) => PLANET_SHORT_RU[p] ?? p).join("/") ?? "-";
+
+                    const selectDepth = (
+                      <select
+                        value={vimshottariDepth}
+                        onChange={(e) => setVimshottariDepth(Number(e.target.value) as VimshottariDepth)}
+                        style={{ border: "1px solid #000", background: "#fff3d8", padding: "2px 6px" }}
+                      >
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    );
+
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ fontSize: 14, color: "#000" }}>
+                          Вимшотари (по Луне, накшатры J2000):
+                        </div>
+                        <div style={{ border: "1px solid #000", background: "#f5e4c3", padding: "8px 10px" }}>
+                          <div style={{ fontSize: 16, color: "#000" }}>
+                            Активно: <strong>{activePath}</strong>
+                          </div>
+                          <div style={{ fontSize: 14, color: "#000", marginTop: 4 }}>
+                            Момент: {formatUtcMsInTz(transitsEnabled ? (transitTargetMsUtc ?? focusMsUtc) : focusMsUtc, ianaTz)} ({ianaTz})
+                          </div>
+                          <div style={{ fontSize: 14, color: "#000", marginTop: 4 }}>
+                            Накшатра Луны: {moonInfo.name} (упр. {moonInfo.lord}), прогресс {Math.round(moonInfo.progress * 1000) / 10}%
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                            <div style={{ fontSize: 14, color: "#000" }}>Уровень:</div>
+                            {selectDepth}
+                          </div>
+                        </div>
+
+                        <div style={{ border: "1px solid #000", background: "#f5e4c3", padding: "8px 10px" }}>
+                          <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
+                            <thead>
+                              <tr>
+                                <th style={{ textAlign: "left", padding: "4px 4px", borderBottom: "1px solid #000" }}>Период</th>
+                                <th style={{ textAlign: "left", padding: "4px 4px", borderBottom: "1px solid #000" }}>Начало</th>
+                                <th style={{ textAlign: "left", padding: "4px 4px", borderBottom: "1px solid #000" }}>Конец</th>
+                                <th style={{ textAlign: "left", padding: "4px 4px", borderBottom: "1px solid #000" }}>Транзиты</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {listPeriods.map((p, idx) => {
+                                const isActive = idx === activeIdx;
+                                const pathStr = p.path.map((x) => PLANET_SHORT_RU[x] ?? x).join("/");
+                                const displayStartMsUtc = Math.max(p.startMs, windowStartMsUtc);
+                                const displayEndMsUtc = Math.min(p.endMs, windowEndMsUtc);
+                                const startLocal = formatUtcMsInTz(displayStartMsUtc, ianaTz);
+                                const endLocal = formatUtcMsInTz(displayEndMsUtc, ianaTz);
+                                return (
+                                  <tr
+                                    key={`${vimshottariDepth}:${p.path.join("-")}:${p.startMs}`}
+                                    onClick={() => openTransitsAtMsUtc(displayStartMsUtc)}
+                                    style={{
+                                      cursor: "pointer",
+                                      background: isActive ? "rgba(0,0,0,0.08)" : "transparent",
+                                    }}
+                                  >
+                                    <td style={{ padding: "4px 4px", borderBottom: "1px solid rgba(0,0,0,0.25)" }} title={p.path.map((x) => PLANET_NAMES_RU[x] ?? x).join(" / ")}>
+                                      {pathStr}
+                                    </td>
+                                    <td style={{ padding: "4px 4px", borderBottom: "1px solid rgba(0,0,0,0.25)", whiteSpace: "nowrap" }}>{startLocal}</td>
+                                    <td style={{ padding: "4px 4px", borderBottom: "1px solid rgba(0,0,0,0.25)", whiteSpace: "nowrap" }}>{endLocal}</td>
+                                    <td style={{ padding: "4px 4px", borderBottom: "1px solid rgba(0,0,0,0.25)", whiteSpace: "nowrap" }}>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openTransitsAtMsUtc(displayStartMsUtc);
+                                        }}
+                                        className="mr-2 border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
+                                      >
+                                        начало
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openTransitsAtPeriodEndMsUtc(displayEndMsUtc);
+                                        }}
+                                        className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
+                                      >
+                                        конец
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          <div style={{ fontSize: 12, color: "#000", marginTop: 8 }}>
+                            Клик по строке включает «Транзиты» и ставит время на начало периода.
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
+                )
               ) : rightPanelTab === "nakshatra" ? (
                 chart ? (
                   (() => {
@@ -1880,7 +2258,26 @@ const AdditionalChartPage: React.FC = () => {
         </div>
       </div>
     );
-  }, [arcsForRender, chart, fullDetailsOpen, ianaTz, isLicensed, planetMarkers, planetsByArc, rightPanelTab, tithiError, tithiInfo, tithiLoading]);
+  }, [
+    arcsForRender,
+    chart,
+    ianaTz,
+    meta,
+    moonPlanet?.lon_sidereal,
+    openTransitsAtPeriodEndMsUtc,
+    openTransitsAtMsUtc,
+    planetMarkers,
+    planetsByArc,
+    rightPanelHeightPx,
+    rightPanelTab,
+    tithiError,
+    tithiInfo,
+    tithiLoading,
+    transitTargetMsUtc,
+    transitsEnabled,
+    vimshottariDepth,
+    vimshottariFocusMsUtc,
+  ]);
 
   const headerLines = useMemo(() => {
     const cityLabel = selectedCity?.nameRu || selectedCity?.name || cityQuery || "-";
@@ -2325,6 +2722,33 @@ const AdditionalChartPage: React.FC = () => {
           })}
           <button
             type="button"
+            onClick={() => {
+              setTransitsEnabled((prev) => {
+                const next = !prev;
+                if (next) {
+                  const ms = vimshottariFocusMsUtc ?? transitTargetMsUtc ?? (meta?.datetimeIso ? moment.parseZone(meta.datetimeIso).valueOf() : null);
+                  if (ms && Number.isFinite(ms)) setTransitTargetMsUtc(ms);
+                }
+                return next;
+              });
+            }}
+            className={`px-3 py-2 text-left min-w-[160px] leading-tight ${
+              transitsEnabled
+                ? `${BUTTON_PRIMARY} cursor-default`
+                : "border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
+            }`}
+            style={transitsEnabled ? { background: "#813939f2" } : undefined}
+            aria-pressed={transitsEnabled}
+          >
+            <div className="text-sm font-semibold">
+              {transitsEnabled ? (transitRefMode === "lagna" ? "Транзиты по лагне" : "Транзиты по Луне") : "Транзиты"}
+            </div>
+            <div className={`text-xs ${transitsEnabled ? "text-white/80" : "text-black/60"}`}>
+              {transitsEnabled ? "режим" : "включить"}
+            </div>
+          </button>
+          <button
+            type="button"
             className="px-3 py-1.5 text-sm border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40 disabled:opacity-60 disabled:cursor-not-allowed"
             onClick={handleSaveToFile}
             disabled={!chart || !meta}
@@ -2346,20 +2770,62 @@ const AdditionalChartPage: React.FC = () => {
           {chartVariantConfig.description}
         </div>
 
- 	        <div className="flex flex-row gap-4 overflow-x-auto pb-4 mt-[5px]">
+ 	          <div className="flex flex-row gap-4 overflow-x-auto pb-4 mt-[5px]">
  	          <div style={{ minWidth: 620 }}>
             <NorthIndianChart
-              title={chartVariantConfig.chartTitle}
-              houses={houses}
+              title={
+                transitsEnabled
+                  ? transitRefMode === "lagna"
+                    ? "ТРАНЗИТЫ ПО ЛАГНЕ"
+                    : "ТРАНЗИТЫ ПО ЛУНЕ"
+                  : chartVariantConfig.chartTitle
+              }
+              houses={transitsEnabled ? (transitHouses ?? []) : houses}
               centered={false}
               className="w-full"
             />
+            {transitsEnabled ? (
+              <div
+                className="text-sm mt-2"
+                style={{ display: "inline-block", width: "fit-content", maxWidth: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "6px 8px" }}
+              >
+                <div style={{ color: "#000" }}>
+                  Транзиты на:{" "}
+                  {typeof (transitTargetMsUtc ?? vimshottariFocusMsUtc) === "number"
+                    ? `${formatUtcMsInTz((transitTargetMsUtc ?? vimshottariFocusMsUtc) as number, ianaTz)} (${ianaTz})`
+                    : "-"}
+                </div>
+                <div style={{ marginTop: 2, color: "#000" }}>
+                  {(() => {
+                    const lagnaSign = chart?.houses?.find((h) => h.house === 1)?.sign ?? "";
+                    const moonHouseNum = chart?.planets?.find((p) => p.name === "Mo")?.house ?? null;
+                    const moonHouseSign =
+                      typeof moonHouseNum === "number" ? chart?.houses?.find((h) => h.house === moonHouseNum)?.sign ?? "" : "";
+                    const refLabel =
+                      transitRefMode === "lagna"
+                        ? lagnaSign
+                          ? signCodeLabel(lagnaSign)
+                          : "-"
+                        : moonHouseSign
+                          ? signCodeLabel(moonHouseSign)
+                          : "-";
+                    const refName = transitRefMode === "lagna" ? "Лагна" : "Луна";
+                    return `Опора: ${refName} при рождении (${refLabel})`;
+                  })()}
+                </div>
+                {transitLoading ? <div style={{ marginTop: 6, color: "#444" }}>Загрузка транзитов…</div> : null}
+                {transitError ? <div style={{ marginTop: 6, color: "#9b1c1c", whiteSpace: "pre-line" }}>{transitError}</div> : null}
+                {!transitLoading && !transitError && !transitHouses ? (
+                  <div style={{ marginTop: 6, color: "#444" }}>Транзиты пока не рассчитаны.</div>
+                ) : null}
+              </div>
+            ) : null}
             {error ? <div className="text-red-700 mt-2">{error}</div> : null}
             {loading ? <div className="text-sm text-gray-700 mt-2">Выполняем расчёт...</div> : null}
 	          </div>
-          <div style={{ minWidth: 520, maxWidth: 650 }}>
-            <div className="birth-panel-title">ДАННЫЕ РОЖДЕНИЯ (локально)</div>
-            <div className="birth-panel" style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
+            <div style={{ minWidth: 520, maxWidth: 650 }}>
+              <div className="birth-panel-title">ДАННЫЕ РОЖДЕНИЯ (локально)</div>
+            <div className="birth-panel" style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px", color: "#000" }}>
               <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
                 <tbody>
                 <tr>

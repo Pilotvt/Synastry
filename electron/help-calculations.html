@@ -183,7 +183,7 @@
 *Назначение:* - офлайн/десктоп-приложение для расчёта натальных карт, синастрии и мухурты.
 В основе используются реальные звёздные созвездия (IAU) и положения планет, поэтому не требуется аянамша.
 
-<*Как выполняются расчёты в Synastry*> (для астрологов)
+<*Как выполняются расчёты в Synastry*>
 Synastry считает карту не по «равным знакам» 12×30° и не через вычитание аянамши. В основе — астрономические положения планет и реальные границы созвездий.
 
 *Эклиптика J2000 и «истинные созвездия» IAU:*
@@ -225,8 +225,8 @@ Synastry считает карту не по «равным знакам» 12×3
 Карта асцендента.
 *Восходящий знак* - это созвездие, которое взошло над горизонтом, на Востоке, в момент рождения, именно от этого созвездия и будет строится расчёт.
 
-*Если вы не очень понимаете почему вдруг вы были всю жизнь одним знаком, а теперь оказались другим, пожалуйста посмотрите вначале моё видео, где я всё объясняю -
-https://rutube.ru/video/49b025540b265721ebc02c2539b3e92c/*
+*Если вы не очень понимаете почему вдруг вы были всю жизнь одним знаком, а теперь оказались другим, пожалуйста посмотрите вначале моё видео, где я всё объясняю* -
+https://rutube.ru/video/49b025540b265721ebc02c2539b3e92c/
 
 <*Лунная карта*>
 Вторая по важности - Чандра Лагна (или Лунная карта). После 30-ти лет она включается примерно на 50%. На третьем месте стоит Сурья Лагна (или солнечная карта).
@@ -268,8 +268,8 @@ https://rutube.ru/video/49b025540b265721ebc02c2539b3e92c/*
 Если у вас есть одна ретроградная планета, то она блокирует у вас сферу, тот дом, где она стоит и два знака, которыми она управляет.
 Ретроградные планеты дают шанс изменить себя. Ретроградные планеты не причиняют открытого вреда, но они замедляют время получения тех или иных результатов и делают человека более сосредоточенным на себе. Такой человек как будто постоянно оглядывается назад.
 
-**Если есть какие-то негативные моменты в карте - 1е - учитывайте гуну человека; 2е - никогда не стоит опускать руки, мы в силах изменить свою судьбу, если конечно мы этого хотим. 
-Это не планеты с нами не дружат, это мы с ними не дружим. Все планеты и их влияние на нас мы можем улучшать это называется - Упаи. Для этого существуют различные практики.**
+*Если есть какие-то негативные моменты в карте - 1е - учитывайте гуну человека; 2е - никогда не стоит опускать руки, мы в силах изменить свою судьбу, если конечно мы этого хотим. 
+Это не планеты с нами не дружат, это мы с ними не дружим. Все планеты и их влияние на нас мы можем улучшать это называется - Упаи. Для этого существуют различные практики.*
 
 <*Автор и обратная связь*>
 Автор Алексеев Виталий Константинович - пилот, ведический астролог, ясновидящий, основатель школы Бодхисаттва.
@@ -289,16 +289,38 @@ YouTube: https://www.youtube.com/@universe_mind_369 — Universe mind.
         selectedId: null,
       };
 
-      const isHeading = (line) => {
+      const normalizeSectionTitle = (value) => {
+        const raw = String(value ?? "").trim();
+        // Allow authors to write markers like <*Заголовок:*> or <<*Заголовок*>>.
+        const withoutStars = raw.replace(/^\*+/, "").replace(/\*+$/, "").trim();
+        return withoutStars.replace(/[:.]$/, "").trim();
+      };
+
+      const parseSectionMarker = (line) => {
         const trimmed = String(line ?? "").trim();
-        if (!trimmed) return false;
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return false;
-        if (trimmed.length > 48) return false;
-        if (!/^[A-ZА-ЯЁ]/.test(trimmed)) return false;
-        if (!(trimmed.endsWith(":") || trimmed.endsWith("."))) return false;
-        const words = trimmed.split(/\s+/g).filter(Boolean);
-        if (words.length > 7) return false;
-        return true;
+        if (!trimmed) return null;
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return null;
+
+        // Multi-line section header on its own line:
+        //   <Заголовок>
+        //   <<Заголовок>>
+        let match = trimmed.match(/^<<([^<>]+)>>$/);
+        if (match) return { kind: "start", title: normalizeSectionTitle(match[1]) };
+        match = trimmed.match(/^<([^<>]+)>$/);
+        if (match) return { kind: "start", title: normalizeSectionTitle(match[1]) };
+
+        // Single-line section:
+        //   <<Заголовок>текст справа>
+        match = trimmed.match(/^<<([^<>]+)>([\s\S]*)>$/);
+        if (match) {
+          return {
+            kind: "inline",
+            title: normalizeSectionTitle(match[1]),
+            body: String(match[2] ?? "").trim(),
+          };
+        }
+
+        return null;
       };
 
       const escapeHtml = (value) =>
@@ -328,8 +350,6 @@ YouTube: https://www.youtube.com/@universe_mind_369 — Universe mind.
         out = out.replace(/\*\*([^*][^]*?)\*\*/g, "<strong>$1</strong>");
         // Single-star bold: *text*
         out = out.replace(/\*([^*\s][^]*?[^*\s])\*/g, "<strong>$1</strong>");
-        // Legacy highlight marker: <text> (becomes &lt;text&gt; after escaping)
-        out = out.replace(/&lt;([^]*?)&gt;/g, "<strong>$1</strong>");
         return out;
       };
 
@@ -338,7 +358,6 @@ YouTube: https://www.youtube.com/@universe_mind_369 — Universe mind.
         const lines = raw.split("\n");
         return lines
           .map((line) => {
-            const trimmed = line.trim();
             const escaped = escapeHtml(line);
             let out = applyInlineBold(escaped);
             return linkify(out);
@@ -357,19 +376,37 @@ YouTube: https://www.youtube.com/@universe_mind_369 — Universe mind.
         const cleanLines = Array.isArray(lines) ? lines.map((x) => String(x ?? "")) : [];
         const sections = [];
         let current = null;
+        let markerIndex = 0;
+
+        const flush = () => {
+          if (!current) return;
+          sections.push(current);
+          current = null;
+        };
 
         for (let i = 0; i < cleanLines.length; i++) {
           const line = cleanLines[i];
-          if (isHeading(line)) {
-            const title = line.trim().replace(/[:.]$/, "").trim();
-            current = { id: `sec-${slugify(title)}-${i}`, title, lines: [] };
-            sections.push(current);
+          const marker = parseSectionMarker(line);
+          if (marker?.kind === "start") {
+            flush();
+            markerIndex += 1;
+            const title = marker.title || `Раздел ${markerIndex}`;
+            current = { id: `sec-${slugify(title)}-${markerIndex}`, title, lines: [] };
+            continue;
+          }
+          if (marker?.kind === "inline") {
+            flush();
+            markerIndex += 1;
+            const title = marker.title || `Раздел ${markerIndex}`;
+            const body = marker.body || "";
+            sections.push({ id: `sec-${slugify(title)}-${markerIndex}`, title, lines: [body] });
             continue;
           }
           if (!current) continue;
           current.lines.push(line);
         }
 
+        flush();
         return sections;
       };
 
@@ -523,7 +560,8 @@ YouTube: https://www.youtube.com/@universe_mind_369 — Universe mind.
         ];
 
         renderTree();
-        setSelected("root");
+        const firstChild = state.nodes.find((n) => n.parentId === "root");
+        setSelected(firstChild?.id ?? "root");
       }
 
       void init();

@@ -3144,17 +3144,17 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
             <div className="flex-none self-stretch bg-[#fbe9c3]" style={{ width: 16 }} aria-hidden />
             <div className="flex-none" style={{ minWidth: 650, maxWidth: 680 }}>
               <div className="text-base font-black tracking-wide text-white mb-2 flex items-center justify-center">
-                <span>Созвездия и планеты</span>
+                <span className="uppercase">СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>
                 {" "}
                 <span className="relative inline-flex items-center select-none group" style={{ marginLeft: 6 }}>
                   <span
                     aria-label="Легенда"
-                    className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-white/60 bg-white/10 text-[12px] leading-none text-white/80 cursor-help"
+                    className="inline-flex h-[16px] w-[16px] items-center justify-center rounded-full border border-white/60 bg-white/10 text-[13px] leading-[16px] text-white/80 cursor-help"
                     style={{ position: "relative", top: -1 }}
                   >
                     i
                   </span>
-                  <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 w-max max-w-[560px] -translate-x-1/2 whitespace-pre-line rounded border border-black bg-[#fff3d8] px-2 py-1 text-[14px] leading-[18px] text-black shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+                  <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 w-max max-w-[560px] -translate-x-1/2 whitespace-pre-line rounded border border-black bg-[#fff3d8] px-2 py-1 text-[16px] leading-[18px] text-black shadow-md opacity-0 transition-opacity group-hover:opacity-100">
                     {"(↑-уча, ↓-нича, ○-карака, □-дигбала, ⌂-свой знак, ●-сожжёная,\nØ-проигравшая, ☼-супер сильная)"}
                   </span>
                 </span>
