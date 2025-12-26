@@ -5,12 +5,15 @@ from .schemas import (
     ChartRequest,
     ChartResponse,
     ImageModerationResponse,
+    SadeSatiRequest,
+    SadeSatiResponse,
     TextModerationRequest,
     TextModerationResponse,
     TithiRequest,
     TithiResponse,
 )
 from .jyotish import compute_chart
+from .sade_sati import compute_sade_sati
 from .tithi import compute_tithi
 from .moderation.image import analyze_image
 from .moderation.text import analyze_text
@@ -34,6 +37,11 @@ def chart_endpoint(data: ChartRequest):
 @app.post("/api/tithi", response_model=TithiResponse)
 def tithi_endpoint(data: TithiRequest) -> TithiResponse:
     return TithiResponse(**compute_tithi(data.datetime_iso).__dict__)
+
+
+@app.post("/api/sade-sati", response_model=SadeSatiResponse)
+def sade_sati_endpoint(data: SadeSatiRequest) -> SadeSatiResponse:
+    return compute_sade_sati(data)
 
 
 @app.post("/api/moderation/text", response_model=TextModerationResponse)

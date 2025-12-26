@@ -220,6 +220,20 @@ type TithiApiResponse = {
   illumination: number;
 };
 
+type SadeSatiMode = "after-birth" | "around-moment";
+type SadeSatiApiSegment = { start_utc: string; end_utc: string };
+type SadeSatiApiPeriod = { start_utc: string; end_utc: string; duration_days: number; segments: SadeSatiApiSegment[] };
+type SadeSatiApiResponse = {
+  moon_lon_deg: number;
+  half_width_deg: number;
+  start_boundary_lon_deg: number;
+  end_boundary_lon_deg: number;
+  reference_utc: string;
+  periods: SadeSatiApiPeriod[];
+  selected_index: number;
+  inside_selected: boolean;
+};
+
 type ChartVariant = "rashi" | "chandra" | "surya";
 type VimshottariDepth = 1 | 2 | 3 | 4 | 5;
 
@@ -358,6 +372,18 @@ const DIGBALA_HOUSES: Record<string, readonly number[]> = {
   Sa: [7],
   Ma: [10],
   Su: [10],
+};
+
+const VEDIC_ASPECT_OFFSETS: Record<string, readonly number[]> = {
+  Su: [6], // 7th
+  Mo: [6], // 7th
+  Me: [6], // 7th
+  Ve: [6], // 7th
+  Ma: [3, 6, 7], // 4th, 7th, 8th
+  Ju: [4, 6, 8], // 5th, 7th, 9th
+  Sa: [2, 6, 9], // 3rd, 7th, 10th
+  Ra: [4, 6, 8], // как в backend
+  Ke: [6], // как в backend
 };
 
 const OWN_SIGN_SIGNS: Record<string, readonly string[]> = {
@@ -726,6 +752,9 @@ function formatArcDegree(value: number): string {
   return `${deg}\u00B0 ${minutes.toString().padStart(2, "0")}'`;
 }
 
+const DE421_START_UTC_MS = moment.utc("1899-07-29T00:00:00Z").valueOf();
+const DE421_END_UTC_MS = moment.utc("2053-10-09T23:59:59Z").valueOf();
+
 function normalizeCityQuery(value: string): string {
   return norm(value || "");
 }
@@ -796,6 +825,13 @@ const AdditionalChartPage: React.FC = () => {
   const [tithiError, setTithiError] = useState<string | null>(null);
   const tithiAbortRef = useRef<AbortController | null>(null);
   const tithiDebounceRef = useRef<number | null>(null);
+  const [sadeSatiMode, setSadeSatiMode] = useState<SadeSatiMode>("after-birth");
+  const [sadeSatiInfo, setSadeSatiInfo] = useState<SadeSatiApiResponse | null>(null);
+  const [sadeSatiDisplayIndex, setSadeSatiDisplayIndex] = useState(0);
+  const [sadeSatiLoading, setSadeSatiLoading] = useState(false);
+  const [sadeSatiError, setSadeSatiError] = useState<string | null>(null);
+  const sadeSatiAbortRef = useRef<AbortController | null>(null);
+  const sadeSatiDebounceRef = useRef<number | null>(null);
   const [debounceTimer, setDebounceTimer] = useState<number | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const blurTimerRef = useRef<number | null>(null);
@@ -817,9 +853,11 @@ const AdditionalChartPage: React.FC = () => {
     setVimshottariDepth(1);
   }, [rightPanelTab]);
 
-  const transitRefMode = useMemo<"moon" | "lagna">(() => {
+  const transitRefMode = useMemo<"moon" | "lagna" | "surya">(() => {
     if (!transitsEnabled) return "moon";
-    return chartVariant === "rashi" ? "lagna" : "moon";
+    if (chartVariant === "rashi") return "lagna";
+    if (chartVariant === "surya") return "surya";
+    return "moon";
   }, [chartVariant, transitsEnabled]);
 
   useEffect(() => {
@@ -1101,6 +1139,96 @@ const AdditionalChartPage: React.FC = () => {
       controller.abort();
     };
   }, [meta?.datetimeIso, metaPreview?.datetimeIso, rightPanelTab]);
+
+  useEffect(() => {
+    if (rightPanelTab !== "sade-sati") return;
+
+    const moonLon = chart?.planets?.find((planet) => planet.name === "Mo")?.lon_sidereal ?? null;
+    if (typeof moonLon !== "number" || !Number.isFinite(moonLon)) {
+      setSadeSatiInfo(null);
+      setSadeSatiLoading(false);
+      setSadeSatiError("Нет данных по Луне: сначала постройте карту.");
+      return;
+    }
+
+    const birthIso = metaPreview?.datetimeIso ?? meta?.datetimeIso ?? null;
+    const birthMs = birthIso ? moment.parseZone(birthIso).valueOf() : null;
+    const momentMs = transitTargetMsUtc ?? vimshottariFocusMsUtc ?? birthMs ?? null;
+
+    const referenceIso =
+      sadeSatiMode === "around-moment"
+        ? momentMs && Number.isFinite(momentMs)
+          ? isoUtcFromMs(momentMs)
+          : birthIso
+        : birthIso;
+
+    if (!referenceIso) {
+      setSadeSatiInfo(null);
+      setSadeSatiLoading(false);
+      setSadeSatiError("Нет даты/времени: сначала заполните данные рождения.");
+      return;
+    }
+
+    const referenceMsUtc = moment.parseZone(referenceIso).valueOf();
+    const maxBackYears = referenceMsUtc && Number.isFinite(referenceMsUtc) ? Math.max(0, (referenceMsUtc - DE421_START_UTC_MS) / (365.2425 * DAY_MS)) : 0;
+    const maxForwardYears = referenceMsUtc && Number.isFinite(referenceMsUtc) ? Math.max(0, (DE421_END_UTC_MS - referenceMsUtc) / (365.2425 * DAY_MS)) : 0;
+
+    const wantedBackYears = sadeSatiMode === "around-moment" ? 60 : 0;
+    const wantedForwardYears = sadeSatiMode === "around-moment" ? 60 : 120;
+
+    const yearsBack = Math.min(wantedBackYears, maxBackYears);
+    const yearsForward = Math.min(wantedForwardYears, maxForwardYears);
+
+    if (sadeSatiDebounceRef.current) clearTimeout(sadeSatiDebounceRef.current);
+    sadeSatiAbortRef.current?.abort();
+    const controller = new AbortController();
+    sadeSatiAbortRef.current = controller;
+
+    sadeSatiDebounceRef.current = window.setTimeout(() => {
+      setSadeSatiLoading(true);
+      setSadeSatiError(null);
+
+      (async () => {
+        try {
+          const endpoint = `${API_BASE_URL.replace(/\/$/, "")}/api/sade-sati`;
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              moon_lon_deg: ((moonLon % 360) + 360) % 360,
+              reference_datetime_iso: referenceIso,
+              years_back: yearsBack,
+              years_forward: yearsForward,
+              step_days: 10,
+              merge_gap_days: 200,
+              half_width_deg: 45,
+            }),
+            signal: controller.signal,
+          });
+          if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(`Ошибка сервера: ${res.status} ${txt}`);
+          }
+          const json = (await res.json()) as SadeSatiApiResponse;
+          if (controller.signal.aborted) return;
+          setSadeSatiInfo(json);
+          setSadeSatiDisplayIndex(Math.max(0, Math.min((json.periods?.length ?? 1) - 1, json.selected_index ?? 0)));
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          const msg = err instanceof Error ? err.message : String(err);
+          setSadeSatiError(msg);
+          setSadeSatiInfo(null);
+        } finally {
+          if (!controller.signal.aborted) setSadeSatiLoading(false);
+        }
+      })();
+    }, 250);
+
+    return () => {
+      if (sadeSatiDebounceRef.current) clearTimeout(sadeSatiDebounceRef.current);
+      controller.abort();
+    };
+  }, [chart, meta?.datetimeIso, metaPreview?.datetimeIso, rightPanelTab, sadeSatiMode, transitTargetMsUtc, vimshottariFocusMsUtc]);
 
   useEffect(() => {
     const ms = meta?.datetimeIso ? moment.parseZone(meta.datetimeIso).valueOf() : null;
@@ -1439,6 +1567,35 @@ const AdditionalChartPage: React.FC = () => {
   const sunPlanet = useMemo(() => chart?.planets?.find((planet) => planet.name === "Su") ?? null, [chart]);
   const moonPlanet = useMemo(() => chart?.planets?.find((planet) => planet.name === "Mo") ?? null, [chart]);
 
+  const transitsPanelInfo = useMemo(() => {
+    if (!transitsEnabled) return null;
+    const ms = transitTargetMsUtc ?? vimshottariFocusMsUtc ?? null;
+    const when =
+      typeof ms === "number" && Number.isFinite(ms) ? `${formatUtcMsInTz(ms, ianaTz)} (${ianaTz})` : "-";
+
+    const lagnaSign = chart?.houses?.find((h) => h.house === 1)?.sign ?? "";
+    const moonHouseNum = chart?.planets?.find((p) => p.name === "Mo")?.house ?? null;
+    const moonHouseSign =
+      typeof moonHouseNum === "number" ? chart?.houses?.find((h) => h.house === moonHouseNum)?.sign ?? "" : "";
+    const sunHouseNum = chart?.planets?.find((p) => p.name === "Su")?.house ?? null;
+    const sunHouseSign = typeof sunHouseNum === "number" ? chart?.houses?.find((h) => h.house === sunHouseNum)?.sign ?? "" : "";
+
+    const refLabel = (() => {
+      if (transitRefMode === "lagna") return lagnaSign ? signCodeLabel(lagnaSign) : "-";
+      if (transitRefMode === "surya") return sunHouseSign ? signCodeLabel(sunHouseSign) : "-";
+      return moonHouseSign ? signCodeLabel(moonHouseSign) : "-";
+    })();
+    const refName = transitRefMode === "lagna" ? "Лагна" : transitRefMode === "surya" ? "Сурья-лагна" : "Луна";
+    const modeText =
+      transitRefMode === "lagna"
+        ? "Транзиты по лагне в карте рождения"
+        : transitRefMode === "surya"
+          ? "Транзиты по Сурья-лагне в карте рождения"
+          : "Транзиты по дому Луны в карте рождения";
+
+    return { when, refLabel, refName, modeText };
+  }, [chart, ianaTz, transitRefMode, transitTargetMsUtc, transitsEnabled, vimshottariFocusMsUtc]);
+
   const variantShift = useMemo(() => {
     const sunBaseHouse = sunPlanet?.house ?? null;
     const moonBaseHouse = moonPlanet?.house ?? null;
@@ -1484,11 +1641,17 @@ const AdditionalChartPage: React.FC = () => {
     const shift =
       transitRefMode === "lagna"
         ? 0
-        : (() => {
-            const moonNatalHouse = chart.planets.find((p) => p.name === "Mo")?.house ?? null;
-            if (typeof moonNatalHouse !== "number" || !Number.isFinite(moonNatalHouse)) return null;
-            return (moonNatalHouse - 1 + 12) % 12;
-          })();
+        : transitRefMode === "surya"
+          ? (() => {
+              const sunNatalHouse = chart.planets.find((p) => p.name === "Su")?.house ?? null;
+              if (typeof sunNatalHouse !== "number" || !Number.isFinite(sunNatalHouse)) return null;
+              return (sunNatalHouse - 1 + 12) % 12;
+            })()
+          : (() => {
+              const moonNatalHouse = chart.planets.find((p) => p.name === "Mo")?.house ?? null;
+              if (typeof moonNatalHouse !== "number" || !Number.isFinite(moonNatalHouse)) return null;
+              return (moonNatalHouse - 1 + 12) % 12;
+            })();
     if (typeof shift !== "number") return null;
 
     const signToNatalHouse = new Map<string, number>();
@@ -1533,8 +1696,28 @@ const AdditionalChartPage: React.FC = () => {
       planetsByHouse.set(houseNumber, labels);
     }
 
+    const aspectsByHouse = new Map<number, string[]>();
+    transitChart.planets.forEach((p) => {
+      const natalHouse = signToNatalHouse.get(p.sign);
+      if (!natalHouse) return;
+      const fromHouse = rotateHouseNumber(natalHouse, shift);
+      if (!fromHouse) return;
+      const offsets = VEDIC_ASPECT_OFFSETS[p.name] ?? VEDIC_ASPECT_OFFSETS.Su;
+      offsets.forEach((offset) => {
+        const targetHouse = ((fromHouse - 1 + offset) % 12) + 1;
+        const arr = aspectsByHouse.get(targetHouse) ?? [];
+        arr.push(p.name);
+        aspectsByHouse.set(targetHouse, arr);
+      });
+    });
+    for (const [houseNumber, labels] of aspectsByHouse.entries()) {
+      labels.sort();
+      aspectsByHouse.set(houseNumber, labels);
+    }
+
     rotatedBase.forEach((h) => {
       h.planetLabels = planetsByHouse.get(h.houseNumber) ?? [];
+      h.aspectLabels = aspectsByHouse.get(h.houseNumber) ?? [];
     });
 
     return rotatedBase;
@@ -2249,7 +2432,224 @@ const AdditionalChartPage: React.FC = () => {
                   <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
                 )
               ) : (
-                <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
+                rightPanelTab === "sade-sati" ? (
+                  (() => {
+                    const moonLon = moonPlanet?.lon_sidereal ?? null;
+                    const normalizeLon = (deg: number) => ((deg % 360) + 360) % 360;
+                    const inArc = (lon: number, start: number, end: number) => {
+                      const l = normalizeLon(lon);
+                      const s = normalizeLon(start);
+                      const e = normalizeLon(end);
+                      if (s <= e) return l >= s && l < e;
+                      return l >= s || l < e;
+                    };
+                    const arcAtLon = (lon: number) => arcsForRender.find((arc) => inArc(lon, arc.lon_start_deg, arc.lon_end_deg)) ?? null;
+                    const formatLonWithArc = (lon: number | null) => {
+                      if (typeof lon !== "number" || !Number.isFinite(lon)) return "-";
+                      const lonText = formatDegreesWithoutSeconds(lon);
+                      const arc = arcAtLon(lon);
+                      const arcText = arc ? `${arc.iau_name_ru} (${arc.iau_code})` : "";
+                      return arcText ? `${arcText} · λ(J2000): ${lonText}` : `λ(J2000): ${lonText}`;
+                    };
+
+                    const derivedStartBoundary = typeof moonLon === "number" ? normalizeLon(moonLon - 45) : null;
+                    const derivedEndBoundary = typeof moonLon === "number" ? normalizeLon(moonLon + 45) : null;
+
+                    const startBoundaryLon = sadeSatiInfo?.start_boundary_lon_deg ?? derivedStartBoundary;
+                    const endBoundaryLon = sadeSatiInfo?.end_boundary_lon_deg ?? derivedEndBoundary;
+
+                    const moonLonText = formatLonWithArc(moonLon);
+                    const startBoundaryText = formatLonWithArc(startBoundaryLon ?? null);
+                    const endBoundaryText = formatLonWithArc(endBoundaryLon ?? null);
+
+                    const periods = sadeSatiInfo?.periods ?? [];
+                    const p = periods[sadeSatiDisplayIndex] ?? null;
+                    const startLocal = p ? moment.parseZone(p.start_utc).tz(ianaTz).format("DD.MM.YYYY HH:mm") : "-";
+                    const endLocal = p ? moment.parseZone(p.end_utc).tz(ianaTz).format("DD.MM.YYYY HH:mm") : "-";
+                    const durationYears = p ? p.duration_days / 365.2425 : null;
+                    const birthMsUtc = meta?.datetimeIso ? moment.parseZone(meta.datetimeIso).valueOf() : null;
+                    const momentMsUtc = transitTargetMsUtc ?? vimshottariFocusMsUtc ?? birthMsUtc ?? null;
+                    const momentSource = transitsEnabled
+                      ? "Транзиты"
+                      : transitTargetMsUtc
+                        ? "Выбранный момент"
+                        : vimshottariFocusMsUtc
+                          ? "Фокус (клик по периодам)"
+                          : "Рождение";
+                    const momentLabel =
+                      momentMsUtc && Number.isFinite(momentMsUtc) ? moment.utc(momentMsUtc).tz(ianaTz).format("DD.MM.YYYY HH:mm") : "-";
+
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => setSadeSatiMode("after-birth")}
+                            className={`px-2 py-1 text-sm ${sadeSatiMode === "after-birth" ? BUTTON_PRIMARY : "border border-black bg-[#fff3d8] hover:bg-[#ffedd0]"}`}
+                            disabled={sadeSatiMode === "after-birth"}
+                          >
+                            после рождения
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSadeSatiMode("around-moment")}
+                            className={`px-2 py-1 text-sm ${sadeSatiMode === "around-moment" ? BUTTON_PRIMARY : "border border-black bg-[#fff3d8] hover:bg-[#ffedd0]"}`}
+                            disabled={sadeSatiMode === "around-moment"}
+                          >
+                            к моменту
+                          </button>
+                        </div>
+
+                        <div style={{ fontSize: 14, color: "#000" }}>
+                          Точный расчёт Саде-Сати: Сатурн (λ J2000) в окне ±45° от натальной Луны.
+                        </div>
+                        {sadeSatiMode === "around-moment" ? (
+                          <div style={{ fontSize: 13, color: "#000" }}>
+                            Момент: <strong>{momentLabel}</strong> ({momentSource})
+                            {birthMsUtc && Number.isFinite(birthMsUtc) ? (
+                              <button
+                                type="button"
+                                className="ml-2 border border-black bg-[#fff3d8] px-2 py-1 text-xs hover:bg-[#ffedd0]"
+                                onClick={() => {
+                                  setTransitTargetMsUtc(birthMsUtc);
+                                  setVimshottariFocusMsUtc(birthMsUtc);
+                                }}
+                              >
+                                к рождению
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <div style={{ border: "1px solid #000", background: "#f5e4c3", padding: "8px 10px" }}>
+                          <div style={{ fontSize: 14, color: "#000" }}>
+                            Луна при рождении: <strong>{moonLonText}</strong>
+                          </div>
+                          <div style={{ fontSize: 14, color: "#000", marginTop: 4 }}>
+                            Граница входа (Луна − 45°): <strong>{startBoundaryText}</strong>
+                          </div>
+                          <div style={{ fontSize: 14, color: "#000", marginTop: 4 }}>
+                            Граница выхода (Луна + 45°): <strong>{endBoundaryText}</strong>
+                          </div>
+                        </div>
+
+                        {sadeSatiLoading ? (
+                          <div style={{ fontSize: 14, color: "#000" }}>Расчёт…</div>
+                        ) : sadeSatiError ? (
+                          <div style={{ fontSize: 14, color: "#9b1c1c", whiteSpace: "pre-line" }}>{sadeSatiError}</div>
+                        ) : !p ? (
+                          <div style={{ fontSize: 14, color: "#000" }}>Периодов в заданном диапазоне не найдено.</div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                              <div style={{ fontSize: 14, color: "#000" }}>
+                                Период: <strong>{startLocal}</strong> — <strong>{endLocal}</strong>
+                                {typeof durationYears === "number" ? ` (\u2248 ${durationYears.toFixed(2)} лет)` : ""}
+                              </div>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                <button
+                                  type="button"
+                                  className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0] disabled:opacity-60"
+                                  disabled={sadeSatiDisplayIndex <= 0}
+                                  onClick={() => setSadeSatiDisplayIndex((idx) => Math.max(0, idx - 1))}
+                                >
+                                  ←
+                                </button>
+                                <div style={{ fontSize: 12, color: "#000" }}>
+                                  {periods.length ? `${sadeSatiDisplayIndex + 1}/${periods.length}` : "—"}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0] disabled:opacity-60"
+                                  disabled={sadeSatiDisplayIndex >= periods.length - 1}
+                                  onClick={() => setSadeSatiDisplayIndex((idx) => Math.min(periods.length - 1, idx + 1))}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
+                                onClick={() => openTransitsAtMsUtc(moment.parseZone(p.start_utc).valueOf())}
+                              >
+                                транзиты на начало
+                              </button>
+                              <button
+                                type="button"
+                                className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
+                                onClick={() => openTransitsAtPeriodEndMsUtc(moment.parseZone(p.end_utc).valueOf())}
+                              >
+                                транзиты на конец
+                              </button>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: "#000", marginBottom: 6 }}>Отрезки (ретроградность)</div>
+                              <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff3d8", border: "1px solid #000" }}>
+                                <thead>
+                                  <tr>
+                                    <th style={{ borderBottom: "1px solid #000", padding: "6px 8px", textAlign: "left", fontSize: 13 }}>№</th>
+                                    <th style={{ borderBottom: "1px solid #000", padding: "6px 8px", textAlign: "left", fontSize: 13 }}>Начало</th>
+                                    <th style={{ borderBottom: "1px solid #000", padding: "6px 8px", textAlign: "left", fontSize: 13 }}>Конец</th>
+                                    <th style={{ borderBottom: "1px solid #000", padding: "6px 8px", textAlign: "left", fontSize: 13 }}>Проверка</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(p.segments ?? []).map((seg, idx) => {
+                                    const sMs = moment.parseZone(seg.start_utc).valueOf();
+                                    const eMs = moment.parseZone(seg.end_utc).valueOf();
+                                    const sLocal = moment.parseZone(seg.start_utc).tz(ianaTz).format("DD.MM.YYYY HH:mm");
+                                    const eLocal = moment.parseZone(seg.end_utc).tz(ianaTz).format("DD.MM.YYYY HH:mm");
+                                    return (
+                                      <tr
+                                        key={`${seg.start_utc}-${idx}`}
+                                        onClick={() => openTransitsAtMsUtc(sMs)}
+                                        style={{ cursor: "pointer" }}
+                                      >
+                                        <td style={{ borderTop: "1px solid #000", padding: "6px 8px", fontSize: 13 }}>{idx + 1}</td>
+                                        <td style={{ borderTop: "1px solid #000", padding: "6px 8px", fontSize: 13 }}>{sLocal}</td>
+                                        <td style={{ borderTop: "1px solid #000", padding: "6px 8px", fontSize: 13 }}>{eLocal}</td>
+                                        <td style={{ borderTop: "1px solid #000", padding: "6px 8px", fontSize: 13, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                          <button
+                                            type="button"
+                                            onClick={(ev) => {
+                                              ev.stopPropagation();
+                                              openTransitsAtMsUtc(sMs);
+                                            }}
+                                            className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
+                                          >
+                                            начало
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(ev) => {
+                                              ev.stopPropagation();
+                                              openTransitsAtPeriodEndMsUtc(eMs);
+                                            }}
+                                            className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
+                                          >
+                                            конец
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                              <div style={{ fontSize: 12, color: "#000", marginTop: 8 }}>
+                                Клик по строке включает «Транзиты» и ставит время на начало отрезка.
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
+                )
                 )}
               </div>
               </div>
@@ -2270,6 +2670,11 @@ const AdditionalChartPage: React.FC = () => {
     planetsByArc,
     rightPanelHeightPx,
     rightPanelTab,
+    sadeSatiDisplayIndex,
+    sadeSatiError,
+    sadeSatiInfo,
+    sadeSatiLoading,
+    sadeSatiMode,
     tithiError,
     tithiInfo,
     tithiLoading,
@@ -2741,7 +3146,13 @@ const AdditionalChartPage: React.FC = () => {
             aria-pressed={transitsEnabled}
           >
             <div className="text-sm font-semibold">
-              {transitsEnabled ? (transitRefMode === "lagna" ? "Транзиты по лагне" : "Транзиты по Луне") : "Транзиты"}
+              {transitsEnabled
+                ? transitRefMode === "lagna"
+                  ? "Транзиты по лагне"
+                  : transitRefMode === "surya"
+                    ? "Транзиты по Сурья-лагне"
+                    : "Транзиты по Луне"
+                : "Транзиты"}
             </div>
             <div className={`text-xs ${transitsEnabled ? "text-white/80" : "text-black/60"}`}>
               {transitsEnabled ? "режим" : "включить"}
@@ -2767,61 +3178,51 @@ const AdditionalChartPage: React.FC = () => {
           className="text-sm"
           style={{ display: "inline-block", width: "fit-content", maxWidth: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "6px 8px" }}
         >
-          {chartVariantConfig.description}
+          {transitsEnabled ? (
+            <div style={{ color: "#000" }}>
+              {`${transitsPanelInfo?.modeText ?? ""}; Транзиты на: ${transitsPanelInfo?.when ?? "-"}; Опора: ${transitsPanelInfo?.refName ?? "-"} при рождении (${transitsPanelInfo?.refLabel ?? "-"})`}
+            </div>
+          ) : (
+            chartVariantConfig.description
+          )}
         </div>
 
  	          <div className="flex flex-row gap-4 overflow-x-auto pb-4 mt-[5px]">
- 	          <div style={{ minWidth: 620 }}>
-            <NorthIndianChart
-              title={
-                transitsEnabled
-                  ? transitRefMode === "lagna"
-                    ? "ТРАНЗИТЫ ПО ЛАГНЕ"
-                    : "ТРАНЗИТЫ ПО ЛУНЕ"
-                  : chartVariantConfig.chartTitle
-              }
-              houses={transitsEnabled ? (transitHouses ?? []) : houses}
-              centered={false}
-              className="w-full"
-            />
-            {transitsEnabled ? (
-              <div
-                className="text-sm mt-2"
-                style={{ display: "inline-block", width: "fit-content", maxWidth: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "6px 8px" }}
-              >
-                <div style={{ color: "#000" }}>
-                  Транзиты на:{" "}
-                  {typeof (transitTargetMsUtc ?? vimshottariFocusMsUtc) === "number"
-                    ? `${formatUtcMsInTz((transitTargetMsUtc ?? vimshottariFocusMsUtc) as number, ianaTz)} (${ianaTz})`
-                    : "-"}
+ 	          <div style={{ minWidth: 620, position: "relative" }}>
+              <NorthIndianChart
+                title={
+                  transitsEnabled
+                    ? transitRefMode === "lagna"
+                      ? "ТРАНЗИТЫ ПО ЛАГНЕ"
+                      : transitRefMode === "surya"
+                        ? "ТРАНЗИТЫ ПО СУРЬЯ-ЛАГНЕ"
+                      : "ТРАНЗИТЫ ПО ЛУНЕ"
+                    : chartVariantConfig.chartTitle
+                }
+                houses={transitsEnabled ? (transitHouses ?? []) : houses}
+                centered={false}
+                className="w-full"
+              />
+              {loading || (transitsEnabled && transitLoading) ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    transform: "translate(-50%, -50%)",
+                    background: "#fff",
+                    border: "1px solid #000",
+                    padding: "6px 10px",
+                    fontSize: 14,
+                    color: "#000",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+                  }}
+                >
+                  {transitsEnabled && transitLoading ? "Загрузка транзитов…" : "Выполняем расчёт…"}
                 </div>
-                <div style={{ marginTop: 2, color: "#000" }}>
-                  {(() => {
-                    const lagnaSign = chart?.houses?.find((h) => h.house === 1)?.sign ?? "";
-                    const moonHouseNum = chart?.planets?.find((p) => p.name === "Mo")?.house ?? null;
-                    const moonHouseSign =
-                      typeof moonHouseNum === "number" ? chart?.houses?.find((h) => h.house === moonHouseNum)?.sign ?? "" : "";
-                    const refLabel =
-                      transitRefMode === "lagna"
-                        ? lagnaSign
-                          ? signCodeLabel(lagnaSign)
-                          : "-"
-                        : moonHouseSign
-                          ? signCodeLabel(moonHouseSign)
-                          : "-";
-                    const refName = transitRefMode === "lagna" ? "Лагна" : "Луна";
-                    return `Опора: ${refName} при рождении (${refLabel})`;
-                  })()}
-                </div>
-                {transitLoading ? <div style={{ marginTop: 6, color: "#444" }}>Загрузка транзитов…</div> : null}
-                {transitError ? <div style={{ marginTop: 6, color: "#9b1c1c", whiteSpace: "pre-line" }}>{transitError}</div> : null}
-                {!transitLoading && !transitError && !transitHouses ? (
-                  <div style={{ marginTop: 6, color: "#444" }}>Транзиты пока не рассчитаны.</div>
-                ) : null}
-              </div>
-            ) : null}
-            {error ? <div className="text-red-700 mt-2">{error}</div> : null}
-            {loading ? <div className="text-sm text-gray-700 mt-2">Выполняем расчёт...</div> : null}
+              ) : null}
+              {error ? <div className="text-red-700 mt-2">{error}</div> : null}
+              {transitsEnabled && transitError ? <div className="text-red-700 mt-2">{transitError}</div> : null}
 	          </div>
             <div style={{ minWidth: 520, maxWidth: 650 }}>
               <div className="birth-panel-title">ДАННЫЕ РОЖДЕНИЯ (локально)</div>
