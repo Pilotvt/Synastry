@@ -124,7 +124,7 @@ class SadeSatiRequest(BaseModel):
     years_back: float = Field(default=0.0, ge=0.0, le=200.0)
     years_forward: float = Field(default=70.0, ge=0.0, le=200.0)
     step_days: float = Field(default=5.0, ge=0.25, le=30.0)
-    merge_gap_days: float = Field(default=200.0, ge=0.0, le=1000.0)
+    merge_gap_days: float = Field(default=800.0, ge=0.0, le=2000.0)
     half_width_deg: float = Field(default=45.0, ge=1.0, le=90.0, description="Полуширина окна Саде-Сати (по лекции 45°)")
 
 

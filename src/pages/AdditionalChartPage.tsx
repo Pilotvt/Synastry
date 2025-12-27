@@ -220,7 +220,6 @@ type TithiApiResponse = {
   illumination: number;
 };
 
-type SadeSatiMode = "after-birth" | "around-moment";
 type SadeSatiApiSegment = { start_utc: string; end_utc: string };
 type SadeSatiApiPeriod = { start_utc: string; end_utc: string; duration_days: number; segments: SadeSatiApiSegment[] };
 type SadeSatiApiResponse = {
@@ -825,13 +824,13 @@ const AdditionalChartPage: React.FC = () => {
   const [tithiError, setTithiError] = useState<string | null>(null);
   const tithiAbortRef = useRef<AbortController | null>(null);
   const tithiDebounceRef = useRef<number | null>(null);
-  const [sadeSatiMode, setSadeSatiMode] = useState<SadeSatiMode>("after-birth");
   const [sadeSatiInfo, setSadeSatiInfo] = useState<SadeSatiApiResponse | null>(null);
   const [sadeSatiDisplayIndex, setSadeSatiDisplayIndex] = useState(0);
   const [sadeSatiLoading, setSadeSatiLoading] = useState(false);
   const [sadeSatiError, setSadeSatiError] = useState<string | null>(null);
   const sadeSatiAbortRef = useRef<AbortController | null>(null);
   const sadeSatiDebounceRef = useRef<number | null>(null);
+  const sadeSatiDatasetKeyRef = useRef<string>("");
   const [debounceTimer, setDebounceTimer] = useState<number | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const blurTimerRef = useRef<number | null>(null);
@@ -1152,15 +1151,7 @@ const AdditionalChartPage: React.FC = () => {
     }
 
     const birthIso = metaPreview?.datetimeIso ?? meta?.datetimeIso ?? null;
-    const birthMs = birthIso ? moment.parseZone(birthIso).valueOf() : null;
-    const momentMs = transitTargetMsUtc ?? vimshottariFocusMsUtc ?? birthMs ?? null;
-
-    const referenceIso =
-      sadeSatiMode === "around-moment"
-        ? momentMs && Number.isFinite(momentMs)
-          ? isoUtcFromMs(momentMs)
-          : birthIso
-        : birthIso;
+    const referenceIso = birthIso;
 
     if (!referenceIso) {
       setSadeSatiInfo(null);
@@ -1170,11 +1161,16 @@ const AdditionalChartPage: React.FC = () => {
     }
 
     const referenceMsUtc = moment.parseZone(referenceIso).valueOf();
+    const datasetKey = `${referenceIso}::${((moonLon % 360) + 360) % 360}`;
+    const autoSelect = sadeSatiDatasetKeyRef.current !== datasetKey;
+    if (autoSelect) {
+      sadeSatiDatasetKeyRef.current = datasetKey;
+    }
     const maxBackYears = referenceMsUtc && Number.isFinite(referenceMsUtc) ? Math.max(0, (referenceMsUtc - DE421_START_UTC_MS) / (365.2425 * DAY_MS)) : 0;
     const maxForwardYears = referenceMsUtc && Number.isFinite(referenceMsUtc) ? Math.max(0, (DE421_END_UTC_MS - referenceMsUtc) / (365.2425 * DAY_MS)) : 0;
 
-    const wantedBackYears = sadeSatiMode === "around-moment" ? 60 : 0;
-    const wantedForwardYears = sadeSatiMode === "around-moment" ? 60 : 120;
+    const wantedBackYears = 0;
+    const wantedForwardYears = 120;
 
     const yearsBack = Math.min(wantedBackYears, maxBackYears);
     const yearsForward = Math.min(wantedForwardYears, maxForwardYears);
@@ -1200,7 +1196,7 @@ const AdditionalChartPage: React.FC = () => {
               years_back: yearsBack,
               years_forward: yearsForward,
               step_days: 10,
-              merge_gap_days: 200,
+              merge_gap_days: 800,
               half_width_deg: 45,
             }),
             signal: controller.signal,
@@ -1212,7 +1208,29 @@ const AdditionalChartPage: React.FC = () => {
           const json = (await res.json()) as SadeSatiApiResponse;
           if (controller.signal.aborted) return;
           setSadeSatiInfo(json);
-          setSadeSatiDisplayIndex(Math.max(0, Math.min((json.periods?.length ?? 1) - 1, json.selected_index ?? 0)));
+          setSadeSatiDisplayIndex((prev) => {
+            const count = json.periods?.length ?? 0;
+            if (count <= 0) return 0;
+
+            const nowMsUtc = Date.now();
+            const autoIndex = (() => {
+              for (let i = 0; i < count; i++) {
+                const p = json.periods[i];
+                const s = moment.parseZone(p.start_utc).valueOf();
+                const e = moment.parseZone(p.end_utc).valueOf();
+                if (Number.isFinite(s) && Number.isFinite(e) && s <= nowMsUtc && nowMsUtc <= e) return i;
+              }
+              for (let i = 0; i < count; i++) {
+                const s = moment.parseZone(json.periods[i].start_utc).valueOf();
+                if (Number.isFinite(s) && s > nowMsUtc) return i;
+              }
+              return count - 1;
+            })();
+
+            if (autoSelect) return autoIndex;
+            if (prev >= 0 && prev < count) return prev;
+            return Math.max(0, Math.min(count - 1, autoIndex));
+          });
         } catch (err) {
           if (controller.signal.aborted) return;
           const msg = err instanceof Error ? err.message : String(err);
@@ -1228,7 +1246,7 @@ const AdditionalChartPage: React.FC = () => {
       if (sadeSatiDebounceRef.current) clearTimeout(sadeSatiDebounceRef.current);
       controller.abort();
     };
-  }, [chart, meta?.datetimeIso, metaPreview?.datetimeIso, rightPanelTab, sadeSatiMode, transitTargetMsUtc, vimshottariFocusMsUtc]);
+  }, [chart, meta?.datetimeIso, metaPreview?.datetimeIso, rightPanelTab]);
 
   useEffect(() => {
     const ms = meta?.datetimeIso ? moment.parseZone(meta.datetimeIso).valueOf() : null;
@@ -1724,6 +1742,7 @@ const AdditionalChartPage: React.FC = () => {
   }, [chart, transitChart, transitRefMode, transitsEnabled]);
 
   const arcsForRender = useMemo(() => (Array.isArray(chart?.constellation_arcs) ? chart.constellation_arcs : []), [chart]);
+  const planetTableChart = transitsEnabled ? (transitChart ?? chart) : chart;
 
   useEffect(() => {
     const leftEl = planetTableLeftBoxRef.current;
@@ -1749,7 +1768,7 @@ const AdditionalChartPage: React.FC = () => {
 
   const planetsByArc = useMemo(() => {
     const map = new Map<string, ChartResponse["planets"]>();
-    if (!chart) return map;
+    if (!planetTableChart) return map;
     const arcs = arcsForRender;
     arcs.forEach((a) => map.set(a.iau_code, []));
 
@@ -1761,8 +1780,8 @@ const AdditionalChartPage: React.FC = () => {
       return l >= s || l < e;
     };
 
-    if (Array.isArray(chart.planets)) {
-      chart.planets.forEach((p) => {
+    if (Array.isArray(planetTableChart.planets)) {
+      planetTableChart.planets.forEach((p) => {
         const code = p.iau_constellation || "";
         if (code && map.has(code)) {
           map.get(code)!.push(p);
@@ -1784,13 +1803,13 @@ const AdditionalChartPage: React.FC = () => {
       map.set(k, arr);
     }
     return map;
-  }, [arcsForRender, chart]);
+  }, [arcsForRender, planetTableChart]);
 
   const planetMarkers = useMemo(() => {
     const markers = new Map<string, string[]>();
-    if (!chart?.planets) return markers;
+    if (!planetTableChart?.planets) return markers;
 
-    chart.planets.forEach((planet) => {
+    planetTableChart.planets.forEach((planet) => {
       const symbols: string[] = [];
       const sign = planet.sign;
       const rotatedHouse = rotateHouseNumber(planet.house ?? null, variantShift);
@@ -1822,11 +1841,11 @@ const AdditionalChartPage: React.FC = () => {
       }
     };
 
-    const sun = chart.planets.find((p) => p.name === "Su") || null;
+    const sun = planetTableChart.planets.find((p) => p.name === "Su") || null;
     if (sun) {
       const sunRotatedHouse = rotateHouseNumber(sun.house ?? null, variantShift);
       const sunDeg = ((sun.lon_sidereal % 30) + 30) % 30;
-      chart.planets.forEach((p) => {
+      planetTableChart.planets.forEach((p) => {
         if (p.name === "Su" || p.name === "Mo" || p.name === "Ra" || p.name === "Ke") return;
         const prh = rotateHouseNumber(p.house ?? null, variantShift);
         if (!prh || !sunRotatedHouse || prh !== sunRotatedHouse) return;
@@ -1856,7 +1875,7 @@ const AdditionalChartPage: React.FC = () => {
     }
 
     const groupsByHouse = new Map<number, { name: string; deg: number }[]>();
-    chart.planets.forEach((p) => {
+    planetTableChart.planets.forEach((p) => {
       if (p.name === "Su" || p.name === "Mo" || p.name === "Ra" || p.name === "Ke") return;
       const prh = rotateHouseNumber(p.house ?? null, variantShift);
       if (!prh) return;
@@ -1910,7 +1929,7 @@ const AdditionalChartPage: React.FC = () => {
     }
 
     return markers;
-  }, [chart, variantShift]);
+  }, [planetTableChart, variantShift]);
 
   const openTransitsAtMsUtc = useCallback((msUtc: number) => {
     if (!Number.isFinite(msUtc)) return;
@@ -1934,7 +1953,7 @@ const AdditionalChartPage: React.FC = () => {
   }, []);
 
   const planetTable = useMemo(() => {
-    if (!chart) return null;
+    if (!planetTableChart) return null;
     const iauNameByCode = new Map<string, string>();
     arcsForRender.forEach((a) => iauNameByCode.set(a.iau_code, a.iau_name_ru));
 
@@ -1962,6 +1981,9 @@ const AdditionalChartPage: React.FC = () => {
               <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "nowrap" }}>
                 <div style={{ width: "fit-content", minWidth: 650, maxWidth: 680, textAlign: "center" }}>
                   <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>
+                  {transitsEnabled ? (
+                    <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: "#5b1111" }}>(РЕЖИМ ТРАНЗИТОВ)</span>
+                  ) : null}
                   {" "}
                   <span className="relative inline-flex items-center select-none group" style={{ marginLeft: 6 }}>
                     <span
@@ -2026,10 +2048,10 @@ const AdditionalChartPage: React.FC = () => {
                       );
                     }
 
-                    return planets.map((p, idx) => {
-                      const iauCode = p.iau_constellation || arc.iau_code || "";
-                      const iauNameRu = iauNameByCode.get(iauCode) || "";
-                      const markersForPlanet = planetMarkers.get(p.name) ?? [];
+                      return planets.map((p, idx) => {
+                        const iauCode = p.iau_constellation || arc.iau_code || "";
+                        const iauNameRu = iauNameByCode.get(iauCode) || "";
+                        const markersForPlanet = planetMarkers.get(p.name) ?? [];
                       const strength = p.house_strength ?? 0;
                       const strengthPercent = Math.round(strength * 100);
                       const strengthColor = (() => {
@@ -2467,59 +2489,12 @@ const AdditionalChartPage: React.FC = () => {
                     const startLocal = p ? moment.parseZone(p.start_utc).tz(ianaTz).format("DD.MM.YYYY HH:mm") : "-";
                     const endLocal = p ? moment.parseZone(p.end_utc).tz(ianaTz).format("DD.MM.YYYY HH:mm") : "-";
                     const durationYears = p ? p.duration_days / 365.2425 : null;
-                    const birthMsUtc = meta?.datetimeIso ? moment.parseZone(meta.datetimeIso).valueOf() : null;
-                    const momentMsUtc = transitTargetMsUtc ?? vimshottariFocusMsUtc ?? birthMsUtc ?? null;
-                    const momentSource = transitsEnabled
-                      ? "Транзиты"
-                      : transitTargetMsUtc
-                        ? "Выбранный момент"
-                        : vimshottariFocusMsUtc
-                          ? "Фокус (клик по периодам)"
-                          : "Рождение";
-                    const momentLabel =
-                      momentMsUtc && Number.isFinite(momentMsUtc) ? moment.utc(momentMsUtc).tz(ianaTz).format("DD.MM.YYYY HH:mm") : "-";
 
                     return (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            onClick={() => setSadeSatiMode("after-birth")}
-                            className={`px-2 py-1 text-sm ${sadeSatiMode === "after-birth" ? BUTTON_PRIMARY : "border border-black bg-[#fff3d8] hover:bg-[#ffedd0]"}`}
-                            disabled={sadeSatiMode === "after-birth"}
-                          >
-                            после рождения
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSadeSatiMode("around-moment")}
-                            className={`px-2 py-1 text-sm ${sadeSatiMode === "around-moment" ? BUTTON_PRIMARY : "border border-black bg-[#fff3d8] hover:bg-[#ffedd0]"}`}
-                            disabled={sadeSatiMode === "around-moment"}
-                          >
-                            к моменту
-                          </button>
-                        </div>
-
                         <div style={{ fontSize: 14, color: "#000" }}>
                           Точный расчёт Саде-Сати: Сатурн (λ J2000) в окне ±45° от натальной Луны.
                         </div>
-                        {sadeSatiMode === "around-moment" ? (
-                          <div style={{ fontSize: 13, color: "#000" }}>
-                            Момент: <strong>{momentLabel}</strong> ({momentSource})
-                            {birthMsUtc && Number.isFinite(birthMsUtc) ? (
-                              <button
-                                type="button"
-                                className="ml-2 border border-black bg-[#fff3d8] px-2 py-1 text-xs hover:bg-[#ffedd0]"
-                                onClick={() => {
-                                  setTransitTargetMsUtc(birthMsUtc);
-                                  setVimshottariFocusMsUtc(birthMsUtc);
-                                }}
-                              >
-                                к рождению
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
                         <div style={{ border: "1px solid #000", background: "#f5e4c3", padding: "8px 10px" }}>
                           <div style={{ fontSize: 14, color: "#000" }}>
                             Луна при рождении: <strong>{moonLonText}</strong>
@@ -2568,23 +2543,6 @@ const AdditionalChartPage: React.FC = () => {
                               </div>
                             </div>
 
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              <button
-                                type="button"
-                                className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
-                                onClick={() => openTransitsAtMsUtc(moment.parseZone(p.start_utc).valueOf())}
-                              >
-                                транзиты на начало
-                              </button>
-                              <button
-                                type="button"
-                                className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
-                                onClick={() => openTransitsAtPeriodEndMsUtc(moment.parseZone(p.end_utc).valueOf())}
-                              >
-                                транзиты на конец
-                              </button>
-                            </div>
-
                             <div>
                               <div style={{ fontSize: 14, fontWeight: 700, color: "#000", marginBottom: 6 }}>Отрезки (ретроградность)</div>
                               <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff3d8", border: "1px solid #000" }}>
@@ -2593,7 +2551,6 @@ const AdditionalChartPage: React.FC = () => {
                                     <th style={{ borderBottom: "1px solid #000", padding: "6px 8px", textAlign: "left", fontSize: 13 }}>№</th>
                                     <th style={{ borderBottom: "1px solid #000", padding: "6px 8px", textAlign: "left", fontSize: 13 }}>Начало</th>
                                     <th style={{ borderBottom: "1px solid #000", padding: "6px 8px", textAlign: "left", fontSize: 13 }}>Конец</th>
-                                    <th style={{ borderBottom: "1px solid #000", padding: "6px 8px", textAlign: "left", fontSize: 13 }}>Проверка</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -2605,32 +2562,25 @@ const AdditionalChartPage: React.FC = () => {
                                     return (
                                       <tr
                                         key={`${seg.start_utc}-${idx}`}
-                                        onClick={() => openTransitsAtMsUtc(sMs)}
-                                        style={{ cursor: "pointer" }}
+                                        style={{ cursor: "default" }}
                                       >
                                         <td style={{ borderTop: "1px solid #000", padding: "6px 8px", fontSize: 13 }}>{idx + 1}</td>
-                                        <td style={{ borderTop: "1px solid #000", padding: "6px 8px", fontSize: 13 }}>{sLocal}</td>
-                                        <td style={{ borderTop: "1px solid #000", padding: "6px 8px", fontSize: 13 }}>{eLocal}</td>
-                                        <td style={{ borderTop: "1px solid #000", padding: "6px 8px", fontSize: 13, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                        <td style={{ borderTop: "1px solid #000", padding: "6px 8px", fontSize: 13 }}>
                                           <button
                                             type="button"
-                                            onClick={(ev) => {
-                                              ev.stopPropagation();
-                                              openTransitsAtMsUtc(sMs);
-                                            }}
-                                            className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
+                                            onClick={() => openTransitsAtMsUtc(sMs)}
+                                            className="underline text-black hover:text-black/80"
                                           >
-                                            начало
+                                            {sLocal}
                                           </button>
+                                        </td>
+                                        <td style={{ borderTop: "1px solid #000", padding: "6px 8px", fontSize: 13 }}>
                                           <button
                                             type="button"
-                                            onClick={(ev) => {
-                                              ev.stopPropagation();
-                                              openTransitsAtPeriodEndMsUtc(eMs);
-                                            }}
-                                            className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
+                                            onClick={() => openTransitsAtPeriodEndMsUtc(eMs)}
+                                            className="underline text-black hover:text-black/80"
                                           >
-                                            конец
+                                            {eLocal}
                                           </button>
                                         </td>
                                       </tr>
@@ -2639,7 +2589,7 @@ const AdditionalChartPage: React.FC = () => {
                                 </tbody>
                               </table>
                               <div style={{ fontSize: 12, color: "#000", marginTop: 8 }}>
-                                Клик по строке включает «Транзиты» и ставит время на начало отрезка.
+                                Нажмите на дату, чтобы открыть «Транзиты» на начало или конец отрезка.
                               </div>
                             </div>
                           </div>
@@ -2667,6 +2617,7 @@ const AdditionalChartPage: React.FC = () => {
     openTransitsAtPeriodEndMsUtc,
     openTransitsAtMsUtc,
     planetMarkers,
+    planetTableChart,
     planetsByArc,
     rightPanelHeightPx,
     rightPanelTab,
@@ -2674,12 +2625,13 @@ const AdditionalChartPage: React.FC = () => {
     sadeSatiError,
     sadeSatiInfo,
     sadeSatiLoading,
-    sadeSatiMode,
     tithiError,
     tithiInfo,
     tithiLoading,
     transitTargetMsUtc,
     transitsEnabled,
+    transitChart,
+    transitLoading,
     vimshottariDepth,
     vimshottariFocusMsUtc,
   ]);
