@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict
 
 import astropy.units as u
@@ -21,7 +22,7 @@ _PLANET_NAMES = {
     "Moon": "moon",
     "Mercury": "mercury",
     "Venus": "venus",
-    "Mars": "mars",
+    "Mars": "mars barycenter",
     "Jupiter": "jupiter barycenter",
     "Saturn": "saturn barycenter",
     "Uranus": "uranus barycenter",
@@ -35,6 +36,13 @@ def load_ephemeris(data_dir: str | None = None):
         resolved_dir = str(get_resource_root())
     if resolved_dir:
         loader = Loader(resolved_dir)
+        for filename in ("de440s.bsp", "de421.bsp"):
+            try:
+                candidate = Path(resolved_dir) / filename
+                if candidate.exists():
+                    return loader(filename)
+            except Exception:
+                continue
         return loader("de421.bsp")
     return skyfield_load("de421.bsp")
 

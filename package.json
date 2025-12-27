@@ -110,6 +110,10 @@
         "to": "de421.bsp"
       },
       {
+        "from": "de440s.bsp",
+        "to": "de440s.bsp"
+      },
+      {
         "from": "app/nudenet",
         "to": "nudenet"
       }

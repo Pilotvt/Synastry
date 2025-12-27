@@ -9,7 +9,7 @@ from skyfield.api import load as skyfield_load
 from skyfield.errors import EphemerisRangeError
 from iau_constellations.planets.ephemeris import load_ephemeris
 
-from .resource_paths import RESOURCE_ROOT
+from .resource_paths import RESOURCE_ROOT, ephemeris_path
 from .schemas import SadeSatiPeriod, SadeSatiRequest, SadeSatiResponse, SadeSatiSegment
 
 _EPH = None
@@ -17,9 +17,7 @@ _TS = None
 _EARTH = None
 _SATURN = None
 
-# de421.bsp validity window (Skyfield range). Keep in sync with bundled ephemeris.
-DE421_START_UTC = datetime(1899, 7, 29, tzinfo=timezone.utc)
-DE421_END_UTC = datetime(2053, 10, 9, 23, 59, 59, tzinfo=timezone.utc)
+_EPHEMERIS_RANGE_UTC: tuple[datetime, datetime] | None = None
 
 
 def _parse_datetime_iso(value: str) -> datetime:
@@ -45,6 +43,41 @@ def _get_eph():
     if _EPH is None:
         _EPH = load_ephemeris(str(RESOURCE_ROOT))
     return _EPH
+
+
+def _get_ephemeris_valid_range_utc() -> tuple[datetime, datetime]:
+    global _EPHEMERIS_RANGE_UTC
+    if _EPHEMERIS_RANGE_UTC is not None:
+        return _EPHEMERIS_RANGE_UTC
+
+    path = ephemeris_path()
+    start = datetime(1900, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2050, 1, 1, tzinfo=timezone.utc)
+
+    try:
+        from jplephem.spk import SPK  # type: ignore
+
+        spk = SPK.open(str(path))
+        try:
+            segments = list(getattr(spk, "segments", []) or [])
+            if segments:
+                start_jd = min(float(seg.start_jd) for seg in segments)
+                end_jd = max(float(seg.end_jd) for seg in segments)
+
+                ts = skyfield_load.timescale()
+                start = ts.tdb(jd=start_jd).utc_datetime().astimezone(timezone.utc)
+                end = ts.tdb(jd=end_jd).utc_datetime().astimezone(timezone.utc)
+        finally:
+            try:
+                spk.close()
+            except Exception:
+                pass
+    except Exception:
+        # Keep conservative defaults on failure.
+        pass
+
+    _EPHEMERIS_RANGE_UTC = (start, end)
+    return _EPHEMERIS_RANGE_UTC
 
 
 def _saturn_lon_j2000(dt_utc: datetime) -> float:
@@ -135,8 +168,9 @@ def compute_sade_sati(payload: SadeSatiRequest) -> SadeSatiResponse:
     merge_gap_days = max(0.0, float(payload.merge_gap_days))
 
     # Clamp scan window to ephemeris validity range to avoid 500 errors.
-    scan_start = max(scan_start, DE421_START_UTC)
-    scan_end = min(scan_end, DE421_END_UTC)
+    ephe_start, ephe_end = _get_ephemeris_valid_range_utc()
+    scan_start = max(scan_start, ephe_start)
+    scan_end = min(scan_end, ephe_end)
     if scan_end <= scan_start:
         start_boundary_lon = _normalize360(moon_lon - half_width_deg)
         end_boundary_lon = _normalize360(moon_lon + half_width_deg)

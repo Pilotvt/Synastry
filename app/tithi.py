@@ -6,13 +6,13 @@ from math import cos, floor, radians
 
 from skyfield.api import Loader, load as skyfield_load
 
-from .resource_paths import get_resource_root, resource_path
+from .resource_paths import ephemeris_path, get_resource_root
 
 _RESOURCE_ROOT_STR = str(get_resource_root())
-_DE421_PATH = resource_path("de421.bsp")
+_EPH_PATH = ephemeris_path()
 
 _loader = Loader(_RESOURCE_ROOT_STR)
-_eph = _loader(str(_DE421_PATH))
+_eph = _loader(str(_EPH_PATH))
 _ts = skyfield_load.timescale()
 
 _earth = _eph["earth"]
@@ -176,4 +176,3 @@ def compute_tithi(datetime_iso: str) -> TithiInfo:
         phase_angle_deg=float(phase_angle_deg),
         illumination=illumination,
     )
-

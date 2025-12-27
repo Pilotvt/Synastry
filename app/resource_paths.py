@@ -38,3 +38,12 @@ def resource_path(*parts: str) -> Path:
         if candidate.exists():
             return candidate
     return _CANDIDATE_ROOTS[0].joinpath(*parts)
+
+
+def ephemeris_path() -> Path:
+    """Return preferred JPL ephemeris file path (prefers extended-range kernels when available)."""
+    for filename in ("de440s.bsp", "de421.bsp"):
+        path = resource_path(filename)
+        if path.exists():
+            return path
+    return resource_path("de421.bsp")

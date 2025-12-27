@@ -7,6 +7,7 @@ import { supabase } from "../lib/supabase";
 import { loadChartTextResources, type ChartTextResources } from "../lib/textResources";
 import NorthIndianChart from "../components/NorthIndianChart";
 import OfflineAccessDialog from "../components/OfflineAccessDialog";
+import CalendarTab from "../components/CalendarTab";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 import { getTithiStatic, tithiOrdinalRu, tithiPakshaRu } from "../constants/tithi";
 import { NAKSHATRA_LECTURES_RU } from "../data/nakshatraLecturesRu";
@@ -38,8 +39,8 @@ const ADDITIONAL_RIGHT_TABS: Array<{ id: AdditionalRightTabId; label: string }> 
   { id: "tithi", label: "Титхи" },
   { id: "vimshottari-dasha", label: "Вимшотари даши" },
   { id: "nakshatra", label: "Накшатра" },
-  { id: "panchanga", label: "Панчанга" },
   { id: "sade-sati", label: "Саде-Сати" },
+  { id: "panchanga", label: "Календарь" },
 ];
 
 function publicAssetUrl(relativePath: string) {
@@ -1974,12 +1975,12 @@ const AdditionalChartPage: React.FC = () => {
     };
 
     return (
-      <div style={{ maxWidth: "1450px", width: "100%", margin: "16px 0 0" }}>
+        <div style={{ maxWidth: "1450px", width: "100%", margin: "8px 0 0" }}>
         <div style={{ overflowX: "auto" }}>
-          <div style={{ width: "fit-content" }}>
-            <div style={{ fontSize: tableFontSize, marginBottom: 6, color: "#1f1309" }}>
+          <div style={{ width: "100%", minWidth: 0 }}>
+            <div style={{ fontSize: tableFontSize, marginBottom: 1, color: "#1f1309" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "nowrap" }}>
-                <div style={{ width: "fit-content", minWidth: 650, maxWidth: 680, textAlign: "center" }}>
+                <div style={{ width: "fit-content", minWidth: 650, maxWidth: 680, textAlign: "center", flex: "0 0 auto" }}>
                   <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>СОЗВЕЗДИЯ И ПЛАНЕТЫ</span>
                   {transitsEnabled ? (
                     <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: "#5b1111" }}>(РЕЖИМ ТРАНЗИТОВ)</span>
@@ -1998,7 +1999,7 @@ const AdditionalChartPage: React.FC = () => {
                     </span>
                   </span>
                 </div>
-                <div style={{ width: 610, minWidth: 480, maxWidth: 610, textAlign: "center" }}>
+                <div style={{ width: "auto", minWidth: 480, maxWidth: 610, textAlign: "center", flex: "1 1 0" }}>
                   <span style={{ fontWeight: 400, textTransform: "uppercase", letterSpacing: "0.02em" }}>ПАНЕЛЬ РАСЧЁТОВ</span>
                 </div>
               </div>
@@ -2011,6 +2012,7 @@ const AdditionalChartPage: React.FC = () => {
                   width: "fit-content",
                   minWidth: 650,
                   maxWidth: 680,
+                  flex: "0 0 auto",
                   background: PAPER_BLOCK_BG,
                   border: "1px solid #000",
                   padding: "6px 8px",
@@ -2142,9 +2144,10 @@ const AdditionalChartPage: React.FC = () => {
 
               <div
                 style={{
-                  width: 610,
+                  width: "auto",
                   minWidth: 480,
                   maxWidth: 610,
+                  flex: "1 1 0",
                   background: PAPER_BLOCK_BG,
                   border: "1px solid #000",
                   display: "flex",
@@ -2178,7 +2181,15 @@ const AdditionalChartPage: React.FC = () => {
                   );
                 })}
               </div>
-              <div style={{ background: PAPER_BLOCK_BG, padding: "10px 12px", flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
+              <div
+                style={{
+                  background: PAPER_BLOCK_BG,
+                  padding: rightPanelTab === "panchanga" ? "6px 8px" : "10px 12px",
+                  flex: "1 1 auto",
+                  minHeight: 0,
+                  overflowY: rightPanelTab === "panchanga" ? "hidden" : "auto",
+                }}
+              >
                 {rightPanelTab === "tithi" ? (
                   tithiLoading ? (
                     <div style={{ fontSize: 14, color: "#000" }}>Загрузка…</div>
@@ -2453,6 +2464,8 @@ const AdditionalChartPage: React.FC = () => {
                 ) : (
                   <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
                 )
+              ) : rightPanelTab === "panchanga" ? (
+                <CalendarTab apiBaseUrl={API_BASE_URL} ianaTz={ianaTz} />
               ) : (
                 rightPanelTab === "sade-sati" ? (
                   (() => {
@@ -2935,7 +2948,7 @@ const AdditionalChartPage: React.FC = () => {
         .additional-page .north-indian-chart-title {
           color: #2b1c0f !important;
           font-weight: 400 !important;
-          margin-bottom: 12px !important; /* match mb-3 */
+          margin-bottom: 1px !important;
         }
         .additional-page .birth-panel-title {
           text-align: center;
@@ -2943,7 +2956,7 @@ const AdditionalChartPage: React.FC = () => {
           font-weight: 400;
           text-transform: uppercase;
           letter-spacing: 0.06em;
-          margin-bottom: 12px;
+          margin-bottom: 1px;
         }
         .additional-page .birth-panel input:not([type="radio"]):not([type="checkbox"]):focus,
         .additional-page .birth-panel select:focus,
@@ -3139,7 +3152,7 @@ const AdditionalChartPage: React.FC = () => {
           )}
         </div>
 
- 	          <div className="flex flex-row gap-4 overflow-x-auto pb-4 mt-[5px]">
+	          <div className="flex flex-row gap-4 overflow-x-auto pb-2 mt-[5px]">
  	          <div style={{ minWidth: 620, position: "relative" }}>
               <NorthIndianChart
                 title={
@@ -3176,14 +3189,23 @@ const AdditionalChartPage: React.FC = () => {
               {error ? <div className="text-red-700 mt-2">{error}</div> : null}
               {transitsEnabled && transitError ? <div className="text-red-700 mt-2">{transitError}</div> : null}
 	          </div>
-            <div style={{ minWidth: 520, maxWidth: 650 }}>
+            <div style={{ minWidth: 520, maxWidth: 650, display: "flex", flexDirection: "column" }}>
               <div className="birth-panel-title">ДАННЫЕ РОЖДЕНИЯ (локально)</div>
-            <div className="birth-panel" style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px", color: "#000" }}>
+            <div
+              className="birth-panel"
+              style={{
+                background: PAPER_BLOCK_BG,
+                border: "1px solid #000",
+                padding: "8px 12px",
+                color: "#000",
+                minHeight: 400,
+              }}
+            >
               <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
                 <tbody>
                 <tr>
-                  <td style={{ width: "50%", padding: "2px 4px" }}>Имя</td>
-                  <td style={{ padding: "2px 4px" }}>Фамилия</td>
+                  <td style={{ width: "50%", padding: "2px 4px", fontSize: 16 }}>Имя</td>
+                  <td style={{ padding: "2px 4px", fontSize: 16 }}>Фамилия</td>
                 </tr>
                 <tr>
                   <td style={{ padding: "2px 4px" }}>
@@ -3202,7 +3224,7 @@ const AdditionalChartPage: React.FC = () => {
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "2px 4px" }}>Дата</td>
+                  <td style={{ padding: "2px 4px", fontSize: 16 }}>Дата</td>
                   <td style={{ padding: "2px 4px" }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <input
@@ -3236,7 +3258,7 @@ const AdditionalChartPage: React.FC = () => {
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "2px 4px" }}>Время</td>
+                  <td style={{ padding: "2px 4px", fontSize: 16 }}>Время</td>
                   <td style={{ padding: "2px 4px" }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <input
@@ -3261,23 +3283,23 @@ const AdditionalChartPage: React.FC = () => {
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "2px 4px" }}>
+                  <td style={{ padding: "2px 4px", fontSize: 16 }}>
                     <label>
                       <input type="radio" checked={gender === "male"} onChange={() => setGender("male")} /> Мужской
                     </label>
                   </td>
-                  <td style={{ padding: "2px 4px" }}>
+                  <td style={{ padding: "2px 4px", fontSize: 16 }}>
                     <label>
                       <input type="radio" checked={gender === "female"} onChange={() => setGender("female")} /> Женский
                     </label>
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "2px 4px" }}>Страна</td>
+                  <td style={{ padding: "2px 4px", fontSize: 16 }}>Страна</td>
                   <td style={{ padding: "2px 4px" }}>
-	                    <select
-	                      style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
-	                      value={country}
+ 	                    <select
+ 	                      style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
+ 	                      value={country}
 	                      onChange={(e) => {
 	                        const next = e.target.value;
 	                        setCountry(next);
@@ -3293,10 +3315,10 @@ const AdditionalChartPage: React.FC = () => {
 	                        </option>
 	                      ))}
 	                    </select>
-	                  </td>
-	                </tr>
+ 	                  </td>
+ 	                </tr>
                 <tr>
-                  <td style={{ padding: "2px 4px" }}>Город</td>
+                  <td style={{ padding: "2px 4px", fontSize: 16 }}>Город</td>
                   <td style={{ padding: "2px 4px", position: "relative" }}>
                     <input
                       style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
@@ -3339,8 +3361,8 @@ const AdditionalChartPage: React.FC = () => {
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "2px 4px" }}>Широта (lat)</td>
-                  <td style={{ padding: "2px 4px" }}>Долгота (lon)</td>
+                  <td style={{ padding: "2px 4px", fontSize: 16 }}>Широта (lat)</td>
+                  <td style={{ padding: "2px 4px", fontSize: 16 }}>Долгота (lon)</td>
                 </tr>
                 <tr>
                   <td style={{ padding: "2px 4px" }}>
@@ -3371,7 +3393,7 @@ const AdditionalChartPage: React.FC = () => {
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "2px 4px" }}>IANA часовой пояс</td>
+                  <td style={{ padding: "2px 4px", fontSize: 16 }}>IANA часовой пояс</td>
                   <td style={{ padding: "2px 4px" }}>
                     <input
                       style={{ width: "100%", background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
@@ -3382,7 +3404,7 @@ const AdditionalChartPage: React.FC = () => {
                 </tr>
                 <tr>
                   <td colSpan={2} style={{ padding: "4px 4px" }}>
-                    <label>
+                    <label style={{ fontSize: 16, lineHeight: "18px" }}>
 	                      <input
 	                        type="checkbox"
 	                        checked={enableTzCorrection}
@@ -3403,7 +3425,15 @@ const AdditionalChartPage: React.FC = () => {
 	                    <input
 	                      type="number"
 	                      inputMode="numeric"
-	                      style={{ width: 60, marginLeft: 8, background: BIRTH_FIELD_BG, border: "1px solid #000", padding: "2px 4px" }}
+	                      style={{
+                          width: 60,
+                          marginLeft: 8,
+                          background: BIRTH_FIELD_BG,
+                          border: "1px solid #000",
+                          padding: "2px 4px",
+                          fontSize: 16,
+                          lineHeight: "18px",
+                        }}
 	                      value={tzCorrectionHours}
 	                      onChange={(e) => {
                         const val = e.target.value;
@@ -3419,7 +3449,7 @@ const AdditionalChartPage: React.FC = () => {
                 </tr>
                 <tr>
 	                  <td colSpan={2} style={{ padding: "2px 4px" }}>
-	                    <label>
+	                    <label style={{ fontSize: 16, lineHeight: "18px" }}>
 	                      <input
 	                        type="checkbox"
 	                        checked={enableTzCorrection ? dstManual : autoDst}
@@ -3431,7 +3461,7 @@ const AdditionalChartPage: React.FC = () => {
                       />{" "}
                       Принуд. DST +1ч
                     </label>
-                    <div style={{ fontSize: 12, color: "#000" }}>
+                    <div style={{ fontSize: 14, lineHeight: "16px", color: "#000" }}>
                       DST выставляется автоматически по истории тайм-зоны. Снимите галочку, если в этот период переход не применялся.
                     </div>
                   </td>

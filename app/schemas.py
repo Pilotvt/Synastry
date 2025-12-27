@@ -150,6 +150,28 @@ class SadeSatiResponse(BaseModel):
     selected_index: int = 0
     inside_selected: bool = False
 
+
+class CalendarYearRequest(BaseModel):
+    year: int = Field(..., ge=1, le=9999)
+    iana_tz: str = Field(..., min_length=1, description="IANA timezone name, e.g. Europe/Moscow")
+
+
+class CalendarEvent(BaseModel):
+    kind: Literal["tithi", "sankranti", "eclipse", "window"]
+    summary: str
+    start_utc: datetime
+    end_utc: datetime
+    is_all_day: bool = False
+    start_date: Optional[str] = Field(default=None, description="YYYY-MM-DD, for all-day events")
+    end_date: Optional[str] = Field(default=None, description="YYYY-MM-DD (exclusive), for all-day events")
+    meta: dict = Field(default_factory=dict)
+
+
+class CalendarYearResponse(BaseModel):
+    year: int
+    iana_tz: str
+    events: List[CalendarEvent] = Field(default_factory=list)
+
 # Пример использования moment-timezone для установки временной зоны и формата даты
 # birth = '1987-02-21T18:45'
 # ianaTz = 'Asia/Omsk' (или из профиля пользователя)

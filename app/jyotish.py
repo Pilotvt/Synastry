@@ -35,11 +35,11 @@ from .nodes import calculate_nodes
 
 import json
 from pathlib import Path
-from .resource_paths import resource_path, RESOURCE_ROOT
+from .resource_paths import ephemeris_path, resource_path, RESOURCE_ROOT
 
 # Try to load precomputed arcs from file `ephe/iau_arcs.json`; if not present, compute once and save
 RESOURCE_ROOT_STR = str(RESOURCE_ROOT)
-DE421_PATH = resource_path('de421.bsp')
+EPH_PATH = ephemeris_path()
 _iau_path = resource_path('ephe', 'iau_arcs.json')
 try:
     if _iau_path.exists():
@@ -304,7 +304,7 @@ def compute_chart(data: ChartRequest) -> ChartResponse:
         from skyfield.api import Loader, load as skyfield_load
 
         loader = Loader(RESOURCE_ROOT_STR)
-        eph_sf = loader(str(DE421_PATH))
+        eph_sf = loader(str(EPH_PATH))
         ts = skyfield_load.timescale()
         # dt_iso may be a datetime, astropy Time, or iso string. Normalize to astropy Time
         if isinstance(dt_iso, Time):
@@ -356,7 +356,7 @@ def compute_chart(data: ChartRequest) -> ChartResponse:
         try:
             from skyfield.api import Loader, load as skyfield_load
             loader = Loader(RESOURCE_ROOT_STR)
-            eph_sf = loader(str(DE421_PATH))
+            eph_sf = loader(str(EPH_PATH))
             ts = skyfield_load.timescale()
             earth = eph_sf['earth']
             moon = eph_sf['moon']

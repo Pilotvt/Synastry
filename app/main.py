@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .schemas import (
     ChartRequest,
     ChartResponse,
+    CalendarYearRequest,
+    CalendarYearResponse,
     ImageModerationResponse,
     SadeSatiRequest,
     SadeSatiResponse,
@@ -13,6 +15,7 @@ from .schemas import (
     TithiResponse,
 )
 from .jyotish import compute_chart
+from .calendar_year import compute_calendar_year
 from .sade_sati import compute_sade_sati
 from .tithi import compute_tithi
 from .moderation.image import analyze_image
@@ -32,6 +35,15 @@ app.add_middleware(
 @app.post("/api/chart", response_model=ChartResponse)
 def chart_endpoint(data: ChartRequest):
     return compute_chart(data)
+
+
+@app.post("/api/calendar-year", response_model=CalendarYearResponse)
+def calendar_year_endpoint(data: CalendarYearRequest) -> CalendarYearResponse:
+    try:
+        payload = compute_calendar_year(data.year, data.iana_tz)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CalendarYearResponse(**payload)
 
 
 @app.post("/api/tithi", response_model=TithiResponse)
