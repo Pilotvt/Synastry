@@ -752,8 +752,10 @@ function formatArcDegree(value: number): string {
   return `${deg}\u00B0 ${minutes.toString().padStart(2, "0")}'`;
 }
 
-const DE421_START_UTC_MS = moment.utc("1899-07-29T00:00:00Z").valueOf();
-const DE421_END_UTC_MS = moment.utc("2053-10-09T23:59:59Z").valueOf();
+// Ephemeris validity window (DE440s short kernel is ~1849-12-25 .. 2150-01-21).
+// Backend also clamps to the actual bundled ephemeris, so this is only a UI-side guard.
+const EPHEMERIS_START_UTC_MS = moment.utc("1849-12-25T00:00:00Z").valueOf();
+const EPHEMERIS_END_UTC_MS = moment.utc("2150-01-21T23:59:59Z").valueOf();
 
 function normalizeCityQuery(value: string): string {
   return norm(value || "");
@@ -1167,8 +1169,14 @@ const AdditionalChartPage: React.FC = () => {
     if (autoSelect) {
       sadeSatiDatasetKeyRef.current = datasetKey;
     }
-    const maxBackYears = referenceMsUtc && Number.isFinite(referenceMsUtc) ? Math.max(0, (referenceMsUtc - DE421_START_UTC_MS) / (365.2425 * DAY_MS)) : 0;
-    const maxForwardYears = referenceMsUtc && Number.isFinite(referenceMsUtc) ? Math.max(0, (DE421_END_UTC_MS - referenceMsUtc) / (365.2425 * DAY_MS)) : 0;
+    const maxBackYears =
+      referenceMsUtc && Number.isFinite(referenceMsUtc)
+        ? Math.max(0, (referenceMsUtc - EPHEMERIS_START_UTC_MS) / (365.2425 * DAY_MS))
+        : 0;
+    const maxForwardYears =
+      referenceMsUtc && Number.isFinite(referenceMsUtc)
+        ? Math.max(0, (EPHEMERIS_END_UTC_MS - referenceMsUtc) / (365.2425 * DAY_MS))
+        : 0;
 
     const wantedBackYears = 0;
     const wantedForwardYears = 120;
@@ -2601,7 +2609,7 @@ const AdditionalChartPage: React.FC = () => {
                                   })}
                                 </tbody>
                               </table>
-                              <div style={{ fontSize: 12, color: "#000", marginTop: 8 }}>
+                              <div style={{ fontSize: 14, color: "#000", marginTop: 8 }}>
                                 Нажмите на дату, чтобы открыть «Транзиты» на начало или конец отрезка.
                               </div>
                             </div>
@@ -3141,7 +3149,7 @@ const AdditionalChartPage: React.FC = () => {
         </div>
         <div
           className="text-sm"
-          style={{ display: "inline-block", width: "fit-content", maxWidth: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "6px 8px" }}
+          style={{ display: "inline-block", width: "fit-content", maxWidth: "100%", background: PAPER_BLOCK_BG, border: "1px solid #000" }}
         >
           {transitsEnabled ? (
             <div style={{ color: "#000" }}>

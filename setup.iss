@@ -7,10 +7,10 @@
 
 #define MyAppName "Synastry"
 #ifndef MyAppVersion
-	#define MyAppVersion "1.0.1-beta"
+	#define MyAppVersion "1.0.2"
 #endif
 #ifndef MyAppOutputBase
-	#define MyAppOutputBase "Synastry 1.0.1 beta"
+	#define MyAppOutputBase "Synastry 1.0.2"
 #endif
 #define MyAppPublisher "Алексеев В.К."
 #define MyAppExeName "Synastry.exe"

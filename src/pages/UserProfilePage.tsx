@@ -17,6 +17,7 @@ import { useBlocklistStore } from '../store/blocklist';
 import { PROFILE_SNAPSHOT_STORAGE_KEY as STORAGE_KEY } from '../constants/storageKeys';
 import { requestNewChartReset } from '../utils/newChartRequest';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../constants/buttonPalette';
+import AutoAspectImage from '../components/AutoAspectImage';
 const CHAT_TABLE = 'user_messages';
 type UserProfile = {
   personName: string;
@@ -1700,7 +1701,12 @@ const UserProfilePage: React.FC = () => {
           <div className="user-profile-card flex flex-col items-start">
             <div className="bg-white border border-blue-200 rounded-lg p-2 mb-2 w-full overflow-hidden">
               {screenshotUrl ? (
-                <img src={screenshotUrl} alt="Скриншот карты" className="block w-full max-w-[360px] h-[240px] object-contain mx-auto" />
+                <AutoAspectImage
+                  src={screenshotUrl}
+                  alt="Скриншот карты"
+                  wrapperClassName="mx-auto w-full max-w-[360px]"
+                  imgClassName="object-contain"
+                />
               ) : (
                 <div className="w-[240px] h-[240px] flex items-center justify-center text-gray-400 mx-auto">Нет скриншота карты</div>
               )}
@@ -1867,7 +1873,7 @@ const UserProfilePage: React.FC = () => {
                                 <div className="w-full h-full flex items-center justify-center text-xs text-white/60 text-center px-1">Нет фото</div>
                               )}
                             </div>
-                            <div className="w-[140px] h-[100px] bg-white/10 border border-white/20 rounded overflow-hidden flex-shrink-0">
+                            <div className="w-[200px] h-[140px] bg-white/10 border border-white/20 rounded overflow-hidden flex-shrink-0">
                               {entry.chartScreenshot ? (
                                 <img src={entry.chartScreenshot} alt="Скриншот карты" className="w-full h-full object-cover" />
                               ) : (

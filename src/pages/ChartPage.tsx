@@ -1350,11 +1350,69 @@ const ChartPage = () => {
     if (!svgElement) return null;
 
     try {
+      const svgGraphics = svgElement as SVGGraphicsElement;
+      let width = 0;
+      let height = 0;
+
+      try {
+        const viewBox = (svgElement as SVGSVGElement).viewBox?.baseVal;
+        if (viewBox && viewBox.width > 1 && viewBox.height > 1) {
+          width = Math.ceil(viewBox.width);
+          height = Math.ceil(viewBox.height);
+        }
+      } catch {
+        // ignore viewBox probe errors
+      }
+
+      if (!width || !height) {
+        try {
+          const bbox = svgGraphics.getBBox ? svgGraphics.getBBox() : null;
+          if (bbox && bbox.width > 1 && bbox.height > 1) {
+            width = Math.ceil(bbox.width);
+            height = Math.ceil(bbox.height);
+          }
+        } catch {
+          // ignore bbox failures and fallback to client metrics
+        }
+      }
+
+      if (!width || !height) {
+        let rect: DOMRect | null = null;
+        try {
+          rect = (svgGraphics as Element).getBoundingClientRect();
+        } catch {
+          rect = null;
+        }
+        if (rect && rect.width > 1 && rect.height > 1) {
+          width = Math.ceil(rect.width);
+          height = Math.ceil(rect.height);
+        }
+      }
+
+      if (!width || !height) {
+        const svgWithBox = svgGraphics as SVGGraphicsElement & { clientWidth?: number; clientHeight?: number };
+        width = svgWithBox.clientWidth ?? 600;
+        height = svgWithBox.clientHeight ?? 400;
+      }
+
+      width = Math.max(1, width);
+      height = Math.max(1, height);
+
       const serializer = new XMLSerializer();
       let svgStr = serializer.serializeToString(svgElement as SVGElement);
       if (!svgStr.includes('xmlns="http://www.w3.org/2000/svg"')) {
         svgStr = svgStr.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
       }
+
+      // When an SVG is loaded via <img>, browsers default its intrinsic size to 300x150
+      // unless width/height are specified, which can introduce letterboxing inside the image.
+      svgStr = svgStr.replace(/^<svg\b([^>]*)>/, (full, attrs) => {
+        let nextAttrs = attrs as string;
+        if (!/\bwidth=/.test(nextAttrs)) nextAttrs += ` width="${width}"`;
+        if (!/\bheight=/.test(nextAttrs)) nextAttrs += ` height="${height}"`;
+        return `<svg${nextAttrs}>`;
+      });
+
       const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
       const urlFactory = getObjectURLFactory();
       const blobUrl = urlFactory.createObjectURL(blob);
@@ -1366,38 +1424,6 @@ const ChartPage = () => {
         const img = new Image();
         img.onload = () => {
           try {
-            const svgGraphics = svgElement as SVGGraphicsElement;
-            let width = 0;
-            let height = 0;
-            try {
-              const bbox = svgGraphics.getBBox ? svgGraphics.getBBox() : null;
-              if (bbox && bbox.width > 1 && bbox.height > 1) {
-                width = Math.ceil(bbox.width);
-                height = Math.ceil(bbox.height);
-              }
-            } catch {
-              // ignore bbox failures and fallback to client metrics
-            }
-            if (!width || !height) {
-              let rect: DOMRect | null = null;
-              try {
-                rect = (svgGraphics as Element).getBoundingClientRect();
-              } catch {
-                rect = null;
-              }
-              if (rect && rect.width > 1 && rect.height > 1) {
-                width = Math.ceil(rect.width);
-                height = Math.ceil(rect.height);
-              }
-            }
-            if (!width || !height) {
-              const svgWithBox = svgGraphics as SVGGraphicsElement & { clientWidth?: number; clientHeight?: number };
-              width = svgWithBox.clientWidth ?? 600;
-              height = svgWithBox.clientHeight ?? 400;
-            }
-            width = Math.max(1, width);
-            height = Math.max(1, height);
-
             const canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;

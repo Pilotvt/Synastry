@@ -122,7 +122,7 @@ class SadeSatiRequest(BaseModel):
     moon_lon_deg: float = Field(..., ge=0.0, lt=360.0, description="Натальная долгота Луны λ(J2000), 0..360")
     reference_datetime_iso: str = Field(..., description="Точка отсчёта (ISO datetime с offset)")
     years_back: float = Field(default=0.0, ge=0.0, le=200.0)
-    years_forward: float = Field(default=70.0, ge=0.0, le=200.0)
+    years_forward: float = Field(default=120.0, ge=0.0, le=200.0)
     step_days: float = Field(default=5.0, ge=0.25, le=30.0)
     merge_gap_days: float = Field(default=800.0, ge=0.0, le=2000.0)
     half_width_deg: float = Field(default=45.0, ge=1.0, le=90.0, description="Полуширина окна Саде-Сати (по лекции 45°)")
