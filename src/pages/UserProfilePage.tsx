@@ -1711,9 +1711,9 @@ const UserProfilePage: React.FC = () => {
             <div className="mx-auto w-full max-w-[360px]">
               <div className="relative overflow-hidden rounded-lg border border-blue-300 p-1">
                 {currentPhoto ? (
-                  <img src={currentPhoto} alt="Фото" className="block w-full h-[286px] object-cover rounded-lg bg-black/10" />
+                  <img src={currentPhoto} alt="Фото" className="block w-full h-[286px] object-contain rounded-lg bg-transparent" />
                 ) : (
-                  <div className="bg-white/50 border border-dashed border-blue-300 rounded-lg w-full h-[286px] flex items-center justify-center text-sm text-blue-500">
+                  <div className="bg-transparent border border-dashed border-blue-300 rounded-lg w-full h-[286px] flex items-center justify-center text-sm text-blue-500">
                     Нет фото
                   </div>
                 )}
@@ -1722,7 +1722,8 @@ const UserProfilePage: React.FC = () => {
                     type="button"
                     aria-label="Предыдущее фото"
                     onClick={() => setPhotoIndex((i) => Math.max(0, i - 1))}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full border border-black/30 bg-black/50 text-white flex items-center justify-center"
+                    className="absolute top-1/2 -translate-y-1/2 h-9 w-9 rounded-full border border-black/30 bg-black/50 text-white flex items-center justify-center z-10"
+                    style={{ left: 2, right: "auto" }}
                   >
                     ‹
                   </button>
@@ -1732,7 +1733,8 @@ const UserProfilePage: React.FC = () => {
                     type="button"
                     aria-label="Следующее фото"
                     onClick={() => setPhotoIndex((i) => Math.min(photoUrls.length - 1, i + 1))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full border border-black/30 bg-black/50 text-white flex items-center justify-center"
+                    className="absolute top-1/2 -translate-y-1/2 h-9 w-9 rounded-full border border-black/30 bg-black/50 text-white flex items-center justify-center z-10"
+                    style={{ right: 2, left: "auto" }}
                   >
                     ›
                   </button>
@@ -1812,7 +1814,7 @@ const UserProfilePage: React.FC = () => {
                     {isOnline ? 'Анкеты пока не найдены.' : 'Нет подключения: список анкет недоступен.'}
                   </div>
                 ) : (
-                  <ul className="space-y-3">
+                  <ul className="space-y-3 list-none p-0 m-0" style={{ margin: 0, padding: 0 }}>
                     {visibleOtherProfiles.map((entry) => {
                       const fullName = (entry.personName || 'Имя не указано') + (entry.lastName ? ` ${entry.lastName}` : '');
                       const age = calculateAge(entry.birth);

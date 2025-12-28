@@ -388,18 +388,18 @@ function DoneButton({ navigate, getProfileSnapshot, currentUserId }: DoneButtonP
     }
   }
 
-    return (
-      <button
-        className={`${BUTTON_SECONDARY} px-18 py-8 rounded-2xl text-4xl font-bold shadow`}
-        onClick={handleDone}
-        disabled={saving}
-        style={{ marginTop: '-50px' }}
-      >
-        {saving ? 'Сохраняем...' : 'Готово'}
-        {msg ? <span className="ml-4 text-xl font-normal">{msg}</span> : null}
-      </button>
-    );
-  }
+  return (
+    <button
+      type="button"
+      className={`${BUTTON_SECONDARY} px-6 py-2 text-base font-bold`}
+      onClick={handleDone}
+      disabled={saving}
+      title={msg ?? undefined}
+    >
+      {saving ? "Сохраняем..." : "Готово"}
+    </button>
+  );
+}
 
 const Questionnaire: React.FC = () => {
   const navigate = useNavigate();
@@ -1285,7 +1285,7 @@ const Questionnaire: React.FC = () => {
                 <textarea value={about}
                   onChange={makeTextChangeHandler("about", setAbout)}
                   onBlur={makeTextBlurHandler("about", () => about)}
-                  className="mt-1 block w-full rounded px-2 py-1 h-32 bg-black/30 border border-white/10"
+                  className="mt-1 block w-full rounded px-2 py-1 h-32 bg-black/30 border border-white/10 resize-none"
                 />
               </div>
               <div>
@@ -1445,6 +1445,7 @@ const Questionnaire: React.FC = () => {
                   ) : null}
               </div>
             </div>
+            </div>
             <div className="col-span-2 mt-4 flex items-center justify-end gap-4">
               <button
                 className={`${BUTTON_SECONDARY} px-6 py-2 text-base font-bold`}
@@ -1474,7 +1475,6 @@ const Questionnaire: React.FC = () => {
                 getProfileSnapshot={getProfileSnapshot}
                 currentUserId={currentUserId}
               />
-            </div>
             </div>
             </div>
             </div>

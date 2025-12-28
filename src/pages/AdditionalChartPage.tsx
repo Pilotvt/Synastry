@@ -2371,6 +2371,11 @@ const AdditionalChartPage: React.FC = () => {
                                 const displayEndMsUtc = Math.min(p.endMs, windowEndMsUtc);
                                 const startLocal = formatUtcMsInTz(displayStartMsUtc, ianaTz);
                                 const endLocal = formatUtcMsInTz(displayEndMsUtc, ianaTz);
+                                const isStartSelected = Boolean(transitsEnabled && isActive && transitTargetMsUtc === displayStartMsUtc);
+                                const isEndSelected = Boolean(transitsEnabled && isActive && transitTargetMsUtc === displayEndMsUtc);
+                                const inactiveButtonClasses =
+                                  "border border-black bg-[#fff3d8] px-2 py-1 text-sm font-normal transition-colors hover:bg-[#ffedd0] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40";
+                                const activeButtonClasses = `${BUTTON_PRIMARY} px-2 py-1 text-sm font-normal cursor-default`;
                                 return (
                                   <tr
                                     key={`${vimshottariDepth}:${p.path.join("-")}:${p.startMs}`}
@@ -2392,7 +2397,8 @@ const AdditionalChartPage: React.FC = () => {
                                           e.stopPropagation();
                                           openTransitsAtMsUtc(displayStartMsUtc);
                                         }}
-                                        className="mr-2 border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
+                                        className={`${isStartSelected ? activeButtonClasses : inactiveButtonClasses} mr-2`}
+                                        aria-pressed={isStartSelected}
                                       >
                                         начало
                                       </button>
@@ -2402,7 +2408,8 @@ const AdditionalChartPage: React.FC = () => {
                                           e.stopPropagation();
                                           openTransitsAtPeriodEndMsUtc(displayEndMsUtc);
                                         }}
-                                        className="border border-black bg-[#fff3d8] px-2 py-1 text-sm hover:bg-[#ffedd0]"
+                                        className={isEndSelected ? activeButtonClasses : inactiveButtonClasses}
+                                        aria-pressed={isEndSelected}
                                       >
                                         конец
                                       </button>
