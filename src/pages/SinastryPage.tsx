@@ -2085,7 +2085,7 @@ const SinastryPage: React.FC = () => {
                 }
               }}>Ввести ключ</button>
               <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`} onClick={() => { if (typeof window !== 'undefined') { window.location.href = 'mailto:pilot.vt@mail.ru'; } }}>Написать письмо</button>
-              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`} onClick={() => navigate("/chart")}>Натальная карта</button>
+              <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`} onClick={() => navigate("/chart")}>Моя карта</button>
             </div>
           ) : null}
         </div>
@@ -2114,7 +2114,7 @@ const SinastryPage: React.FC = () => {
                 onClick={() => navigate(fromFileRef.current ? "/chart?fromFile=1" : "/chart")}
                 className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
               >
-                Натальная карта
+                Моя карта
               </button>
               <button
                 onClick={() => {
@@ -2135,7 +2135,7 @@ const SinastryPage: React.FC = () => {
                 }}
                 className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
               >
-                Изменить анкету
+                Анкета
               </button>
               <button
                 onClick={async () => {
@@ -2157,7 +2157,7 @@ const SinastryPage: React.FC = () => {
                 onClick={() => navigate(fromFileRef.current ? "/chart/additional?fromFile=1" : "/chart/additional")}
                 className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
               >
-                Дополнительно
+                Модули Джйотиш
               </button>
             </div>
           </div>

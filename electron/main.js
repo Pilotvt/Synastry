@@ -107,6 +107,86 @@ const AUTH_DEEP_LINK_CHANNEL = 'auth:deep-link';
 
 let pendingAuthDeepLink = null;
 
+function resolveThirdPartyNoticesPath() {
+  const candidates = [];
+  try {
+    if (process.resourcesPath) {
+      candidates.push(path.join(process.resourcesPath, 'THIRD_PARTY_NOTICES.txt'));
+      candidates.push(path.join(process.resourcesPath, 'app.asar', 'THIRD_PARTY_NOTICES.txt'));
+    }
+  } catch {}
+
+  try {
+    const appPath = typeof app.getAppPath === 'function' ? app.getAppPath() : '';
+    if (appPath) {
+      candidates.push(path.join(appPath, 'THIRD_PARTY_NOTICES.txt'));
+    }
+  } catch {}
+
+  try {
+    const exePath = typeof app.getPath === 'function' ? app.getPath('exe') : '';
+    const exeDir = exePath ? path.dirname(exePath) : '';
+    if (exeDir) {
+      candidates.push(path.join(exeDir, 'THIRD_PARTY_NOTICES.txt'));
+    }
+  } catch {}
+
+  candidates.push(path.join(__dirname, '../THIRD_PARTY_NOTICES.txt'));
+  try {
+    if (process.cwd) {
+      candidates.push(path.join(process.cwd(), 'THIRD_PARTY_NOTICES.txt'));
+    }
+  } catch {}
+
+  for (const candidate of candidates) {
+    try {
+      if (candidate && fs.existsSync(candidate)) return candidate;
+    } catch {}
+  }
+  return candidates[0] || '';
+}
+
+function resolveAppPackageVersion() {
+  const candidates = [];
+  try {
+    const appPath = typeof app.getAppPath === 'function' ? app.getAppPath() : '';
+    if (appPath) candidates.push(path.join(appPath, 'package.json'));
+  } catch {}
+  try {
+    if (process.resourcesPath) {
+      candidates.push(path.join(process.resourcesPath, 'app.asar', 'package.json'));
+    }
+  } catch {}
+  candidates.push(path.join(__dirname, '../package.json'));
+
+  for (const filePath of candidates) {
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      const version = typeof parsed?.version === 'string' ? parsed.version.trim() : '';
+      if (version && version !== String(process.versions?.electron ?? '').trim()) {
+        return version;
+      }
+    } catch {}
+  }
+  return '';
+}
+
+ipcMain.handle('licenses:get-notices', async () => {
+  const appName = APP_DISPLAY_NAME || (typeof app.getName === 'function' ? app.getName() : 'Synastry');
+  const version = resolveAppPackageVersion() || APP_VERSION || (typeof app.getVersion === 'function' ? app.getVersion() : '');
+  const filePath = resolveThirdPartyNoticesPath();
+  let text = '';
+  try {
+    if (filePath) {
+      text = fs.readFileSync(filePath, 'utf-8');
+    }
+  } catch {
+    text = '';
+  }
+  return { appName, version, filePath, text };
+});
+
 function normalizeEmail(value) {
   if (typeof value !== 'string') return '';
   return value.trim().toLowerCase();
@@ -1782,7 +1862,7 @@ ipcMain.handle('ui:offline-access-dialog', async (event) => {
   const title = `${APP_DISPLAY_NAME} - требуется регистрация`;
   const detail = [
     'Для продолжения требуется регистрация.',
-    'В офлайн-режиме доступна только страница «Дополнительно».',
+    'В офлайн-режиме доступна только страница «Модули Джйотиш».',
   ].join('\n');
 
   try {

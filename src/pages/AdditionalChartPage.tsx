@@ -1,4 +1,4 @@
-// Локальная страница «Дополнительно»: без облака и анкеты, только расчёт и сохранение в файл.
+// Локальная страница «Модули Джйотиш»: без облака и анкеты, только расчёт и сохранение в файл.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import moment from "moment-timezone";
@@ -3168,7 +3168,7 @@ const AdditionalChartPage: React.FC = () => {
         <div className="max-w-[1450px] mx-auto w-full">
         <header className="mb-6">
           <div className="flex justify-between items-center mb-2">
-            <h1 className="text-3xl font-bold text-[#2b1c0f]">Натальная карта</h1>
+            <h1 className="text-3xl font-bold text-[#2b1c0f]">Модули Джйотиш</h1>
             <div className="flex flex-wrap gap-2 items-start justify-end">
               <button
                 type="button"
@@ -3188,7 +3188,7 @@ const AdditionalChartPage: React.FC = () => {
                   navigate("/chart");
                 }}
               >
-                Натальная карта
+                Моя карта
               </button>
               <button
                 type="button"
@@ -3198,7 +3198,7 @@ const AdditionalChartPage: React.FC = () => {
                   navigate("/questionnaire");
                 }}
               >
-                Изменить анкету
+                Анкета
               </button>
               <button
                 type="button"
@@ -3231,7 +3231,7 @@ const AdditionalChartPage: React.FC = () => {
                 className={`${BUTTON_PRIMARY} px-3 py-1.5 text-sm cursor-default`}
                 disabled
               >
-                Дополнительно
+                Модули Джйотиш
               </button>
             </div>
           </div>

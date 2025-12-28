@@ -77,12 +77,23 @@
       (async () => {
         try {
           const api = window.licensesAPI;
-          const data = api ? await api.getNotices() : null;
+          if (!api) {
+            document.getElementById("content").textContent =
+              "Не удалось загрузить окно лицензий: preload недоступен.";
+            return;
+          }
+          const data = await api.getNotices();
           const name = data?.appName || "Synastry";
           const version = data?.version ? `v${data.version}` : "";
           document.getElementById("title").textContent = `${name} — Open Source Licenses`;
           document.getElementById("meta").textContent = version ? version : "";
-          document.getElementById("content").textContent = data?.text || "Файл THIRD_PARTY_NOTICES.txt не найден.";
+          if (data?.text) {
+            document.getElementById("content").textContent = data.text;
+          } else {
+            const pathInfo = data?.filePath ? `\n\nПуть: ${data.filePath}` : "";
+            document.getElementById("content").textContent =
+              `Файл THIRD_PARTY_NOTICES.txt не найден или пуст.${pathInfo}`;
+          }
         } catch (e) {
           document.getElementById("content").textContent = String(e?.message || e || "Ошибка загрузки.");
         }
@@ -90,4 +101,3 @@
     </script>
   </body>
 </html>
-

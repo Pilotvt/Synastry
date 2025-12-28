@@ -34,8 +34,10 @@ type UserProfile = {
   familyStatus: string;
   about: string;
   interests: string;
+  religion: string;
   career: string;
   children: string;
+  profession: string;
   ascSign?: string | null;
 };
 // Минимальный тип статуса лицензии (для email и доступа к анкетам)
@@ -380,8 +382,10 @@ function mergeProfileSnapshots(
     familyStatus: '',
     about: '',
     interests: '',
+    religion: '',
     career: '',
     children: '',
+    profession: '',
   };
   const seen = new Set<object>();
   const assignStringField = (key: keyof UserProfile, value: unknown) => {
@@ -443,8 +447,10 @@ function mergeProfileSnapshots(
     assignStringField('familyStatus', record.familyStatus);
     assignStringField('about', record.about);
     assignStringField('interests', record.interests);
+    assignStringField('religion', record.religion);
     assignStringField('career', record.career);
     assignStringField('children', record.children);
+    assignStringField('profession', record.profession);
     assignMainPhoto(record.mainPhoto ?? record.photo ?? record.avatar);
     assignSmallPhotos(record.smallPhotos ?? record.photos ?? record.thumbnails);
     assignGender(record.gender);
@@ -469,8 +475,10 @@ function mergeProfileSnapshots(
     result.familyStatus,
     result.about,
     result.interests,
+    result.religion,
     result.career,
     result.children,
+    result.profession,
   ].some((value) => typeof value === 'string' && value.trim());
   if (!hasPhotos && !hasText && !result.gender && !result.ascSign) {
     return null;
@@ -1500,7 +1508,7 @@ const UserProfilePage: React.FC = () => {
               kujaPenalty: null,
               hasCurrentKuja: baseHasKuja,
               hasOtherKuja: false,
-              error: 'Натальная карта не найдена.',
+              error: 'Моя карта не найдена.',
               chartSignature: entrySignature,
             },
           }));
@@ -1665,13 +1673,13 @@ const UserProfilePage: React.FC = () => {
               onClick={() => navigate(fromFileRef.current ? '/chart?fromFile=1' : '/chart')}
               className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
             >
-              Натальная карта
+              Моя карта
             </button>
             <button
               onClick={() => navigate(fromFileRef.current ? '/questionnaire?fromFile=1' : '/questionnaire')}
               className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
             >
-              Изменить анкету
+              Анкета
             </button>
             <button
               disabled
@@ -1689,7 +1697,7 @@ const UserProfilePage: React.FC = () => {
               onClick={() => navigate(fromFileRef.current ? '/chart/additional?fromFile=1' : '/chart/additional')}
               className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
             >
-              Дополнительно
+              Модули Джйотиш
             </button>
           </div>
         </div>
@@ -1761,29 +1769,39 @@ const UserProfilePage: React.FC = () => {
           </div>
           {/* Profile info after chart */}
           <div className="user-profile-card">
-            <div className="mb-3">
-              <h3 className="text-lg font-semibold leading-tight mb-1">Типаж</h3>
-              <div className="text-base leading-snug whitespace-pre-line">{profile.typeazh || 'Не указано'}</div>
-            </div>
-            <div className="mb-3">
-              <h3 className="text-lg font-semibold leading-tight mb-1">Семейное положение</h3>
-              <div className="text-base leading-snug whitespace-pre-line">{profile.familyStatus || 'Не указано'}</div>
-            </div>
-            <div className="mb-3">
-              <h3 className="text-lg font-semibold leading-tight mb-1">О себе</h3>
-              <div className="text-base leading-snug whitespace-pre-line">{profile.about || 'Не указано'}</div>
-            </div>
-            <div className="mb-3">
-              <h3 className="text-lg font-semibold leading-tight mb-1">Интересы</h3>
-              <div className="text-base leading-snug whitespace-pre-line">{profile.interests || 'Не указано'}</div>
-            </div>
-            <div className="mb-3">
-              <h3 className="text-lg font-semibold leading-tight mb-1">Карьера, образование</h3>
-              <div className="text-base leading-snug whitespace-pre-line">{profile.career || 'Не указано'}</div>
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold leading-tight mb-1">Дети</h3>
-              <div className="text-base leading-snug whitespace-pre-line">{profile.children || 'Не указано'}</div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <h3 className="text-lg font-semibold leading-tight mb-1">Рост</h3>
+                <div className="text-base leading-snug whitespace-pre-line">{profile.typeazh || 'Не указано'}</div>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold leading-tight mb-1">Семейное положение</h3>
+                <div className="text-base leading-snug whitespace-pre-line">{profile.familyStatus || 'Не указано'}</div>
+              </div>
+              <div className="col-span-2">
+                <h3 className="text-lg font-semibold leading-tight mb-1">О себе</h3>
+                <div className="text-base leading-snug whitespace-pre-line">{profile.about || 'Не указано'}</div>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold leading-tight mb-1">Интересы</h3>
+                <div className="text-base leading-snug whitespace-pre-line">{profile.interests || 'Не указано'}</div>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold leading-tight mb-1">Религия</h3>
+                <div className="text-base leading-snug whitespace-pre-line">{profile.religion || 'Не указано'}</div>
+              </div>
+              <div className="col-span-2">
+                <h3 className="text-lg font-semibold leading-tight mb-1">Образование</h3>
+                <div className="text-base leading-snug whitespace-pre-line">{profile.career || 'Не указано'}</div>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold leading-tight mb-1">Дети</h3>
+                <div className="text-base leading-snug whitespace-pre-line">{profile.children || 'Не указано'}</div>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold leading-tight mb-1">Профессия</h3>
+                <div className="text-base leading-snug whitespace-pre-line">{profile.profession || 'Не указано'}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -1940,7 +1958,7 @@ const UserProfilePage: React.FC = () => {
                               {offlineCached && (
                                 <div className="text-white/50">Данные из локального кеша</div>
                               )}
-                              <div className="pt-1"><span className="text-white font-semibold">Типаж:</span> <span className="text-white/70">{typeazhPreview || 'Не указано'}</span></div>
+                              <div className="pt-1"><span className="text-white font-semibold">Рост:</span> <span className="text-white/70">{typeazhPreview || 'Не указано'}</span></div>
                             </div>
                           </div>
                         </li>

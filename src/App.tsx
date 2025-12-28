@@ -1319,7 +1319,7 @@ useEffect(() => {
 
     // REMOVED: auto-resolve city from query text - this caused unwanted city substitutions.
     // City coords must ONLY come from explicit user selection (handled in handleBuildChart).
-    // Дополнительно: если город не выбран (нет selectedCityId) — НЕ трогаем lat/lon.
+	    // Примечание: если город не выбран (нет selectedCityId) — НЕ трогаем lat/lon.
     // Не перезатираем координаты, если пользователь редактирует поле города.
     if (!manual) {
       let match = (selectedCityData && selectedCityId === selectedCityData.id) ? selectedCityData : null;

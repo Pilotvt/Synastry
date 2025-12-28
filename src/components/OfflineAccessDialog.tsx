@@ -16,7 +16,7 @@ const OfflineAccessDialog: FC<OfflineAccessDialogProps> = ({ open, onClose, onRe
       <div className="relative w-full max-w-[720px] border border-black paper-texture-solid p-5 text-black">
         <div className="text-xl font-semibold mb-2">Требуется регистрация</div>
         <div className="text-base leading-snug">
-          Для продолжения требуется регистрация. В офлайн-режиме доступна только страница {"<"}Дополнительно{">"}.
+          Для продолжения требуется регистрация. В офлайн-режиме доступна только страница {"<"}Модули Джйотиш{">"}.
         </div>
         <div className="mt-4 flex items-center justify-end gap-2">
           <button type="button" className={`${BUTTON_SECONDARY} px-4 py-2 text-sm`} onClick={onClose}>
@@ -32,4 +32,3 @@ const OfflineAccessDialog: FC<OfflineAccessDialogProps> = ({ open, onClose, onRe
 };
 
 export default OfflineAccessDialog;
-

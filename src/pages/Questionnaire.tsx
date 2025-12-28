@@ -1477,13 +1477,13 @@ const Questionnaire: React.FC = () => {
                 onClick={() => navigate(fromFileRef.current ? "/chart?fromFile=1" : "/chart")}
                 className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
               >
-                Натальная карта
+                Моя карта
               </button>
               <button
                 disabled
                 className={`${BUTTON_PRIMARY} px-3 py-1.5 text-sm cursor-default`}
               >
-                Изменить анкету
+                Анкета
               </button>
               <button
                 onClick={async () => {
@@ -1505,7 +1505,7 @@ const Questionnaire: React.FC = () => {
                 onClick={() => navigate(fromFileRef.current ? "/chart/additional?fromFile=1" : "/chart/additional")}
                 className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
               >
-                Дополнительно
+                Модули Джйотиш
               </button>
             </div>
           </div>
