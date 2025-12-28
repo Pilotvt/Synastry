@@ -1443,43 +1443,42 @@ const Questionnaire: React.FC = () => {
                   {residenceCitiesLoading ? (
                     <div className="text-xs text-white/60 mt-1">Загрузка списка городов...</div>
                   ) : null}
-                </div>
               </div>
+            </div>
+            <div className="col-span-2 mt-4 flex items-center justify-end gap-4">
+              <button
+                className={`${BUTTON_SECONDARY} px-6 py-2 text-base font-bold`}
+                type="button"
+                onClick={async () => {
+                  // Очищаем все пользовательские данные анкеты
+                  setMainPhoto(null);
+                  setSmallPhotos([null, null]);
+                  setTypeazh("");
+                  setFamilyStatus("");
+                  setAbout("");
+                  setInterests("");
+                  setCareer("");
+                  setChildren("");
+                  setGender("");
+                  setResidenceCountry("RU");
+                  setResidenceCityName("");
+                  await hardResetAllData({ logout, clearCloud: false });
+                  // Перенаправляем на страницу создания новой карты
+                  navigate("/app");
+                }}
+              >
+                Удалить анкету
+              </button>
+              <DoneButton
+                navigate={navigate}
+                getProfileSnapshot={getProfileSnapshot}
+                currentUserId={currentUserId}
+              />
+            </div>
             </div>
             </div>
             </div>
           </section>
-        </div>
-        {/* Кнопка Удалить анкету и Готово */}
-        <div className="mt-8 flex flex-col items-end relative" style={{ marginBottom: '50px' }}>
-          <button
-            className={`${BUTTON_SECONDARY} mb-4 px-6 py-2 text-base font-bold`}
-            type="button"
-            onClick={async () => {
-              // Очищаем все пользовательские данные анкеты
-              setMainPhoto(null);
-              setSmallPhotos([null, null]);
-              setTypeazh("");
-              setFamilyStatus("");
-              setAbout("");
-              setInterests("");
-              setCareer("");
-              setChildren("");
-              setGender("");
-              setResidenceCountry("RU");
-              setResidenceCityName("");
-              await hardResetAllData({ logout, clearCloud: false });
-              // Перенаправляем на страницу создания новой карты
-              navigate("/app");
-            }}
-          >
-            Удалить анкету
-          </button>
-          <DoneButton
-            navigate={navigate}
-            getProfileSnapshot={getProfileSnapshot}
-            currentUserId={currentUserId}
-          />
         </div>
       </div>
       </div>

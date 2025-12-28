@@ -569,11 +569,21 @@ function calculateAge(birthIso: string | null): number | null {
   }
   return age >= 0 ? age : null;
 }
+
+function formatAgeRu(age: number): string {
+  const value = Math.trunc(age);
+  const mod10 = Math.abs(value) % 10;
+  const mod100 = Math.abs(value) % 100;
+  const word =
+    mod10 === 1 && mod100 !== 11 ? 'год' : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'года' : 'лет';
+  return `${value} ${word}`;
+}
 const UserProfilePage: React.FC = () => {
   const { userId } = useParams();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [chart, setChart] = useState<ChartRow | null>(null);
+  const [photoIndex, setPhotoIndex] = useState(0);
   const [identityEmail, setIdentityEmail] = useState<string | null>(null);
   const [licenseStatus, setLicenseStatus] = useState<ElectronLicenseStatus | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -624,6 +634,28 @@ const UserProfilePage: React.FC = () => {
     return typeof trialDays === 'number' ? trialDays > 0 : true;
   }, [licenseStatus]);
   const partnerSearchLocked = !partnerSearchAllowed;
+  const photoUrls = useMemo(() => {
+    const urls: string[] = [];
+    const main = typeof profile?.mainPhoto === 'string' ? profile.mainPhoto.trim() : '';
+    if (main) urls.push(main);
+    const small = profile?.smallPhotos;
+    if (Array.isArray(small)) {
+      for (const value of small) {
+        const url = typeof value === 'string' ? value.trim() : '';
+        if (url) urls.push(url);
+      }
+    }
+    return urls;
+  }, [profile?.mainPhoto, profile?.smallPhotos]);
+  useEffect(() => {
+    setPhotoIndex(0);
+  }, [userId, profile?.mainPhoto, profile?.smallPhotos]);
+  useEffect(() => {
+    setPhotoIndex((current) => {
+      const maxIndex = Math.max(0, photoUrls.length - 1);
+      return Math.min(Math.max(0, current), maxIndex);
+    });
+  }, [photoUrls.length]);
   useEffect(() => {
     clearedUnreadUserRef.current = currentUserId ?? null;
     if (!currentUserId) {
@@ -1600,13 +1632,17 @@ const UserProfilePage: React.FC = () => {
   })();
 
   const age = calculateAge(profile.birth);
-  const ageText = age !== null ? ` (${age} лет)` : '';
+  const profileFullName = `${profile.personName ?? ''} ${profile.lastName ?? ''}`.trim();
+  const profileTitle = age !== null ? `${profileFullName}, ${formatAgeRu(age)}` : profileFullName;
   const genderText = profile.gender === 'male' ? 'мужской' : profile.gender === 'female' ? 'женский' : '—';
   const profileCityLabel = getCityLabel(profile.cityNameRu, profile.selectedCity);
   const profileResidenceLabel = formatResidenceLabel(profile.residenceCityName, profile.residenceCountry);
+  const currentPhoto = photoUrls[photoIndex] ?? null;
+  const canPrevPhoto = photoIndex > 0;
+  const canNextPhoto = photoIndex < photoUrls.length - 1;
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-[1450px] mx-auto p-8 pt-3">
+      <div className="max-w-[1450px] mx-auto px-0 pb-8 pt-3">
       {!isOnline && (
         <div className="mb-6 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-sm text-yellow-200">
           Нет подключения к сети. Показаны закэшированные данные профиля и анкет.
@@ -1614,7 +1650,7 @@ const UserProfilePage: React.FC = () => {
       )}
       <header className="mb-8">
         <div className="flex justify-between items-center mb-2">
-          <h1 className="text-3xl font-bold">{profile.personName} {profile.lastName}</h1>
+          <h1 className="text-3xl font-bold">{profileTitle || 'Имя не указано'}</h1>
           <div className="flex flex-wrap gap-2 items-start">
             <button
               onClick={(event) => {
@@ -1661,7 +1697,7 @@ const UserProfilePage: React.FC = () => {
           <div className="text-sm text-white/60 mb-2">{'\u0412\u0430\u0448 \u043b\u043e\u0433\u0438\u043d: '}{identityEmail}</div>
         ) : null}
         <div className="text-base text-gray-600">
-          Локальное время: {profile.birth?.replace('T', '; T') || '—'}{ageText}<br />
+          Локальное время: {profile.birth?.replace('T', '; T') || '—'}<br />
           Восходящий знак: {ascSign || '—'}<br />
           Пол: {genderText}<br />
           Место рождения: {profileCityLabel || '—'}<br />
@@ -1670,30 +1706,37 @@ const UserProfilePage: React.FC = () => {
       </header>
       <div className="user-profile-layout">
         <div className="user-profile-left space-y-3">
-          {/* Main photo and thumbnails with highlight */}
+          {/* Photos */}
           <div className="user-profile-card">
-            <div className="flex gap-4 items-start">
-              {profile.mainPhoto ? (
-                <div className="bg-white border border-blue-300 rounded-lg p-1 max-w-[200px] overflow-hidden">
-                  <img src={profile.mainPhoto} alt="Главное фото" className="block w-[200px] h-[286px] object-cover rounded-lg" />
-                </div>
-              ) : (
-                <div className="bg-white/50 border border-dashed border-blue-300 rounded-lg p-4 max-w-[200px] h-[286px] flex items-center justify-center text-sm text-blue-500">
-                  Нет фото
-                </div>
-              )}
-              <div className="flex flex-col gap-3">
-                {profile.smallPhotos?.map((photo, idx) => (
-                  photo ? (
-                    <div key={idx} className="bg-white border border-blue-200 rounded p-1 w-[142px] h-[142px] overflow-hidden">
-                      <img src={photo} alt={`Фото ${idx + 1}`} className="block w-full h-full object-cover rounded" />
-                    </div>
-                  ) : (
-                    <div key={idx} className="bg-white/50 border border-dashed border-blue-200 rounded p-1 w-[142px] h-[142px] flex items-center justify-center text-xs text-blue-500">
-                      Нет фото
-                    </div>
-                  )
-                ))}
+            <div className="mx-auto w-full max-w-[360px]">
+              <div className="relative overflow-hidden rounded-lg border border-blue-300 p-1">
+                {currentPhoto ? (
+                  <img src={currentPhoto} alt="Фото" className="block w-full h-[286px] object-cover rounded-lg bg-black/10" />
+                ) : (
+                  <div className="bg-white/50 border border-dashed border-blue-300 rounded-lg w-full h-[286px] flex items-center justify-center text-sm text-blue-500">
+                    Нет фото
+                  </div>
+                )}
+                {canPrevPhoto ? (
+                  <button
+                    type="button"
+                    aria-label="Предыдущее фото"
+                    onClick={() => setPhotoIndex((i) => Math.max(0, i - 1))}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full border border-black/30 bg-black/50 text-white flex items-center justify-center"
+                  >
+                    ‹
+                  </button>
+                ) : null}
+                {canNextPhoto ? (
+                  <button
+                    type="button"
+                    aria-label="Следующее фото"
+                    onClick={() => setPhotoIndex((i) => Math.min(photoUrls.length - 1, i + 1))}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full border border-black/30 bg-black/50 text-white flex items-center justify-center"
+                  >
+                    ›
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -1708,7 +1751,9 @@ const UserProfilePage: React.FC = () => {
                   imgClassName="object-contain"
                 />
               ) : (
-                <div className="w-[240px] h-[240px] flex items-center justify-center text-gray-400 mx-auto">Нет скриншота карты</div>
+                <div className="mx-auto w-full max-w-[360px] aspect-[3/2] flex items-center justify-center text-gray-400">
+                  Нет скриншота карты
+                </div>
               )}
             </div>
           </div>
@@ -1771,6 +1816,7 @@ const UserProfilePage: React.FC = () => {
                     {visibleOtherProfiles.map((entry) => {
                       const fullName = (entry.personName || 'Имя не указано') + (entry.lastName ? ` ${entry.lastName}` : '');
                       const age = calculateAge(entry.birth);
+                      const ageLabel = typeof age === 'number' ? formatAgeRu(age) : null;
                       const genderLabel = entry.gender === 'male' ? 'мужской' : entry.gender === 'female' ? 'женский' : '—';
                       const compat = compatibilityMap[entry.id];
                       const unreadCount = unreadCounts[entry.id] ?? 0;
@@ -1825,7 +1871,7 @@ const UserProfilePage: React.FC = () => {
                             <div className="min-w-0">
                               <div className="flex items-center gap-3 flex-wrap">
                                 <div className="text-sm font-bold text-white truncate max-w-[220px] mr-1" style={{ fontWeight: 700 }}>
-                                  {fullName}
+                                  {fullName}{ageLabel ? `, ${ageLabel}` : ''}
                                 </div>
                                 <span
                                   className={`inline-flex shrink-0 items-center rounded-full border px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide mt-0.5 ${statusBadge.badgeClass}`}
@@ -1835,7 +1881,7 @@ const UserProfilePage: React.FC = () => {
                                   {statusBadge.label}
                                 </span>
                               </div>
-                              <div className="text-xs text-white/60">{age !== null ? `${age} лет` : 'Возраст не указан'}</div>
+                              {ageLabel ? null : <div className="text-xs text-white/60">Возраст не указан</div>}
                             </div>
                             <button
                               type="button"
@@ -1866,7 +1912,7 @@ const UserProfilePage: React.FC = () => {
                             </button>
                           </div>
                           <div className="flex flex-row flex-wrap gap-3 md:gap-4 md:flex-nowrap md:items-stretch">
-                            <div className="w-[72px] h-[100px] bg-white/10 border border-white/20 rounded overflow-hidden flex-shrink-0">
+                            <div className="w-[100px] h-[140px] bg-white/10 border border-white/20 rounded overflow-hidden flex-shrink-0">
                               {entry.mainPhoto ? (
                                 <img src={entry.mainPhoto} alt={entry.personName || 'Главное фото'} className="w-full h-full object-cover" />
                               ) : (
