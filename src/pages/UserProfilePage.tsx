@@ -1914,14 +1914,14 @@ const UserProfilePage: React.FC = () => {
                             </button>
                           </div>
                           <div className="flex flex-row flex-wrap gap-3 md:gap-4 md:flex-nowrap md:items-stretch">
-                            <div className="w-[100px] h-[140px] bg-white/10 border border-white/20 rounded overflow-hidden flex-shrink-0">
+                            <div className="w-[100px] h-[140px] md:h-auto bg-white/10 border border-white/20 rounded overflow-hidden flex-shrink-0">
                               {entry.mainPhoto ? (
                                 <img src={entry.mainPhoto} alt={entry.personName || 'Главное фото'} className="w-full h-full object-cover" />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-xs text-white/60 text-center px-1">Нет фото</div>
                               )}
                             </div>
-                            <div className="w-[200px] h-[140px] bg-white/10 border border-white/20 rounded overflow-hidden flex-shrink-0">
+                            <div className="w-[200px] h-[140px] md:h-auto bg-white/10 border border-white/20 rounded overflow-hidden flex-shrink-0">
                               {entry.chartScreenshot ? (
                                 <img src={entry.chartScreenshot} alt="Скриншот карты" className="w-full h-full object-cover" />
                               ) : (
@@ -1930,7 +1930,7 @@ const UserProfilePage: React.FC = () => {
                                 </div>
                               )}
                             </div>
-                            <div className="flex-1 bg-white/5 border border-white/10 rounded p-2 text-xs text-white/80 space-y-1 md:max-w-[280px]">
+                            <div className="flex-1 bg-white/5 border border-white/10 rounded p-2 text-xs text-white/80 space-y-1">
                               <div><span className="text-white font-semibold">Пол:</span> {genderLabel}</div>
                               <div><span className="text-white font-semibold">Место рождения:</span> {birthPlaceLabel || '—'}</div>
                               <div><span className="text-white font-semibold">Место жительства:</span> {residenceLabel || '—'}</div>

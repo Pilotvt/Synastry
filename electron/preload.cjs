@@ -89,6 +89,7 @@ const blocklistChannel = {
 
 const uiChannel = {
   showOfflineAccessDialog: () => ipcRenderer.invoke('ui:offline-access-dialog'),
+  showMessageBox: (options) => ipcRenderer.invoke('ui:message-box', options ?? null),
 };
 
 const authChannel = {

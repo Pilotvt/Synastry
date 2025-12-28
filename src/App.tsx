@@ -17,6 +17,8 @@ import {
 import { BUTTON_SECONDARY } from "./constants/buttonPalette";
 import { PAPER_INPUT_STYLE, PAPER_SURFACE_STYLE } from "./constants/paperStyles";
 import { countryNameRU } from "./utils/countryNameRU";
+import { checkTextModeration } from "./utils/textModeration";
+import { showMessageBox } from "./utils/showMessageBox";
 
 const SUPPORT_EMAIL = "pilot.vt@mail.ru";
 const SUPPORT_TELEGRAM = "@PilotVT";
@@ -1286,6 +1288,31 @@ useEffect(() => {
       setBuildError("");
       if (!session?.user?.id) {
         navigate("/", { replace: true });
+        return;
+      }
+
+      const personNameText = typeof personName === "string" ? personName.trim() : "";
+      const lastNameText = typeof lastName === "string" ? lastName.trim() : "";
+
+      const nameVerdict = await checkTextModeration(personNameText, { languageHint: "ru" });
+      if (!nameVerdict.isClean) {
+        await showMessageBox({
+          type: "warning",
+          title: "Невозможно сохранить",
+          message: "Непристойные слова в поле «Имя».",
+          detail: "Удалите непристойные слова и попробуйте снова.",
+        });
+        return;
+      }
+
+      const surnameVerdict = await checkTextModeration(lastNameText, { languageHint: "ru" });
+      if (!surnameVerdict.isClean) {
+        await showMessageBox({
+          type: "warning",
+          title: "Невозможно сохранить",
+          message: "Непристойные слова в поле «Фамилия».",
+          detail: "Удалите непристойные слова и попробуйте снова.",
+        });
         return;
       }
       let profileToPersist: ProfileSnapshot | null = null;

@@ -6,6 +6,7 @@ import { blockUser, unblockUser } from '../lib/blocklist';
 import { useBlocklistStore } from '../store/blocklist';
 import { moderateText } from '../services/moderation';
 import { BUTTON_SECONDARY } from '../constants/buttonPalette';
+import { censorProfanity } from '../utils/profanityDictionary';
 
 type ChatMessage = {
   id: string;
@@ -40,26 +41,8 @@ const FEMALE_BUBBLE = 'text-white shadow-[0px_6px_18px_rgba(236,72,153,0.35)]';
 const NEUTRAL_THEIRS = 'text-white shadow-[0px_6px_18px_rgba(15,23,42,0.25)]';
 const NEUTRAL_MINE = 'text-white shadow-[0px_6px_18px_rgba(15,23,42,0.35)]';
 
-const LOCAL_PROFANITY_PATTERNS: RegExp[] = [
-  /х[уy]й[а-яё]*/gi,
-  /хуйн[яеё]/gi,
-  /пизд[а-яё]*/gi,
-  /п[иі]ськ[а-яё]*/gi,
-  /еб[аоыёу][а-яё]*/gi,
-  /сука/gi,
-];
-
 function applyLocalProfanityCensor(text: string): { censored: string; matches: string[] } {
-  let censored = text;
-  const matches: string[] = [];
-  for (const pattern of LOCAL_PROFANITY_PATTERNS) {
-    const found = Array.from(censored.matchAll(pattern)).map((m) => m[0]).filter(Boolean);
-    if (found.length) {
-      matches.push(...found);
-      censored = censored.replace(pattern, '***');
-    }
-  }
-  return { censored, matches };
+  return censorProfanity(text);
 }
 
 function bubbleColorClass(isMine: boolean, gender: Gender): string {

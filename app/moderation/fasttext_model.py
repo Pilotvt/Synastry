@@ -144,7 +144,21 @@ def predict_profanity(text: str) -> Tuple[str, float]:
         return "clean", 0.0
 
     model = _model()
-    labels, probs = model.predict(payload, k=2)
+    labels: List[str]
+    probs: List[float]
+    try:
+        raw_labels, raw_probs = model.predict(payload, k=2)
+        labels = list(raw_labels)
+        probs = [float(value) for value in raw_probs]
+    except ValueError:
+        # fasttext-wheel 0.9.2 uses `np.array(probs, copy=False)` inside `.predict`,
+        # which fails on NumPy 2.x. Bypass the wrapper and call the underlying model.
+        if not hasattr(model, "f"):
+            raise
+        pairs = model.f.predict(payload, 2, 0.0, "strict")
+        probs = [float(prob) for prob, _label in pairs]
+        labels = [label for _prob, label in pairs]
+
     scores = dict(zip(labels, probs))
     dirty_score = float(scores.get(LABEL_DIRTY, 0.0))
     clean_score = float(scores.get(LABEL_CLEAN, 0.0))

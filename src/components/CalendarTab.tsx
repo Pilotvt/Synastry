@@ -233,7 +233,14 @@ function formatUtcOffsetShort(minutes: number): string {
   return `UTC${sign}${hh}:${mm2}`;
 }
 
-export default function CalendarTab(props: { apiBaseUrl: string; ianaTz: string }) {
+export default function CalendarTab(props: {
+  apiBaseUrl: string;
+  ianaTz: string;
+  onSelectDayMsUtc?: (msUtc: number, ctx: { dateIso: string; ianaTz: string }) => void;
+  gatakiEnabled?: boolean;
+  onToggleGataki?: () => void;
+  gatakiDisabled?: boolean;
+}) {
   const systemTz = useMemo(() => {
     const guessed = moment.tz.guess();
     if (guessed && moment.tz.zone(guessed)) return guessed;
@@ -250,6 +257,14 @@ export default function CalendarTab(props: { apiBaseUrl: string; ianaTz: string 
   const [expanded, setExpanded] = useState<ExpandedEvent | null>(null);
   const [expandedList, setExpandedList] = useState<ExpandedEventList | null>(null);
   const cacheRef = useRef<Map<string, CalendarYearResponse>>(new Map());
+
+  const selectDate = (dateIso: string) => {
+    setSelectedDateIso(dateIso);
+    if (!props.onSelectDayMsUtc) return;
+    const msUtc = moment.tz(dateIso, "YYYY-MM-DD", systemTz).startOf("day").add(12, "hours").valueOf();
+    if (!Number.isFinite(msUtc)) return;
+    props.onSelectDayMsUtc(msUtc, { dateIso, ianaTz: systemTz });
+  };
 
   useEffect(() => {
     const key = `${year}::${systemTz}`;
@@ -351,7 +366,7 @@ export default function CalendarTab(props: { apiBaseUrl: string; ianaTz: string 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, minHeight: 0, height: "100%", overflow: "hidden", fontWeight: 400 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "nowrap" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
           <div style={{ display: "flex" }}>
             {[
               { label: "− год", onClick: () => setYear((y) => y - 1) },
@@ -406,23 +421,44 @@ export default function CalendarTab(props: { apiBaseUrl: string; ianaTz: string 
             ))}
           </div>
 
-          <div style={{ fontSize: 15, color: "#000", fontWeight: 400, lineHeight: "16px" }}>{monthLabel}</div>
-          <div style={{ fontSize: 15, color: "#000", fontWeight: 400, lineHeight: "16px" }}>{tzLabel}</div>
+          <div style={{ fontSize: 15, color: "#000", fontWeight: 400, lineHeight: "16px" }}>
+            {monthLabel}/{tzLabel}
+          </div>
         </div>
 
-        <button
-          type="button"
-          className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm shadow-[0_0_0_1px_rgba(99,102,241,0.35)]`}
-          style={calendarButtonStyle}
-          disabled={!data || loading}
-          onClick={() => {
-            if (!data) return;
-            const ics = buildIcs({ year, ianaTz: systemTz, events: data.events });
-            downloadTextFile(`Synastry-календарь-${year}.ics`, ics);
-          }}
-        >
-          Скачать .ics
-        </button>
+        <div style={{ display: "flex" }}>
+          <button
+            type="button"
+            className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm shadow-[0_0_0_1px_rgba(99,102,241,0.35)]`}
+            style={{
+              ...calendarButtonStyle,
+              marginLeft: 0,
+              marginRight: -1,
+              background: props.gatakiEnabled ? "#864240" : calendarButtonStyle.background,
+              color: props.gatakiEnabled ? "#fff" : calendarButtonStyle.color,
+              boxShadow: props.gatakiEnabled ? "inset 0 1px 2px rgba(0,0,0,0.35)" : calendarButtonStyle.boxShadow,
+            }}
+            aria-pressed={Boolean(props.gatakiEnabled)}
+            disabled={props.gatakiDisabled}
+            onClick={() => props.onToggleGataki?.()}
+            title={props.gatakiDisabled ? "Доступно только с лицензией" : undefined}
+          >
+            Гатаки
+          </button>
+          <button
+            type="button"
+            className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm shadow-[0_0_0_1px_rgba(99,102,241,0.35)]`}
+            style={{ ...calendarButtonStyle, marginLeft: 0 }}
+            disabled={!data || loading}
+            onClick={() => {
+              if (!data) return;
+              const ics = buildIcs({ year, ianaTz: systemTz, events: data.events });
+              downloadTextFile(`Synastry-календарь-${year}.ics`, ics);
+            }}
+          >
+            Скачать .ics
+          </button>
+        </div>
       </div>
 
       {loading ? <div style={{ fontSize: 13, color: "#000" }}>Расчёт календаря…</div> : null}
@@ -500,7 +536,7 @@ export default function CalendarTab(props: { apiBaseUrl: string; ianaTz: string 
                   <button
                     key={dayIso}
                     type="button"
-                    onClick={() => setSelectedDateIso(dayIso)}
+                    onClick={() => selectDate(dayIso)}
                     className="text-left"
                     style={{
                       position: "relative",

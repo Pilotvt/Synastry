@@ -9,9 +9,9 @@
   "scripts": {
     "dev": "cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true vite",
     "build": "node scripts/patch-baseline.js && cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true tsc -b && cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true vite build",
-    "postinstall": "node scripts/patch-baseline.js",
+    "postinstall": "node scripts/patch-baseline.js && node scripts/generate-third-party-notices.mjs",
     "backend:setup": "python scripts/build_backend_env.py",
-    "sync:version": "node scripts/sync_version.mjs",
+    "sync:version": "node scripts/sync_version.mjs && node scripts/generate-third-party-notices.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
@@ -23,7 +23,9 @@
     "dist": "npm run desktop:build",
     "pack": "npm run desktop:pack",
     "generate:license": "node scripts/generate-license-key.mjs",
-    "generate:cities": "node scripts/split_cities_by_country.cjs"
+    "generate:cities": "node scripts/split_cities_by_country.cjs",
+    "generate:third-party-notices": "node scripts/generate-third-party-notices.mjs",
+    "merge:profanity:safetext": "node scripts/merge-profanity-safetext-filtered.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.80.0",
@@ -77,6 +79,7 @@
       "ephe/**/*",
       "iau_constellations/**/*",
       "public/**/*",
+      "THIRD_PARTY_NOTICES.txt",
       "requirements.txt",
       "package.json",
       "!python-env",
@@ -100,6 +103,10 @@
       {
         "from": "electron/resources/python-embed",
         "to": "python-embed"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.txt",
+        "to": "THIRD_PARTY_NOTICES.txt"
       },
       {
         "from": "requirements.txt",

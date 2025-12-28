@@ -11,6 +11,8 @@ import CalendarTab from "../components/CalendarTab";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 import { getTithiStatic, tithiOrdinalRu, tithiPakshaRu } from "../constants/tithi";
 import { NAKSHATRA_LECTURES_RU } from "../data/nakshatraLecturesRu";
+import { GATAKI_RULES_RU } from "../data/gatakiRu";
+import { GOCHARA_PLANETS_RU, GOCHARA_PLANET_ORDER, type GocharaPlanetCode } from "../data/gocharaLecturesRu";
 import { getRussianCities } from "../utils/russianCitiesClient";
 import { formatArcMin, nakshatraFromLonJ2000 } from "../utils/nakshatraJ2000";
 import { requestNewChartReset } from "../utils/newChartRequest";
@@ -822,6 +824,15 @@ const AdditionalChartPage: React.FC = () => {
   const [fullDetailsOpen, setFullDetailsOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<AdditionalRightTabId>("tithi");
   const fullDetailsRequestedRef = useRef(false);
+  const [gatakiOpen, setGatakiOpen] = useState(false);
+  const gatakiRequestedRef = useRef(false);
+  const [selectedCalendarDateIso, setSelectedCalendarDateIso] = useState<string | null>(null);
+  const [selectedCalendarTz, setSelectedCalendarTz] = useState<string | null>(null);
+  const [selectedCalendarMsUtc, setSelectedCalendarMsUtc] = useState<number | null>(null);
+  const [gatakiTithiInfo, setGatakiTithiInfo] = useState<TithiApiResponse | null>(null);
+  const [gatakiTithiLoading, setGatakiTithiLoading] = useState(false);
+  const [gatakiTithiError, setGatakiTithiError] = useState<string | null>(null);
+  const gatakiTithiAbortRef = useRef<AbortController | null>(null);
   const [tithiInfo, setTithiInfo] = useState<TithiApiResponse | null>(null);
   const [tithiLoading, setTithiLoading] = useState(false);
   const [tithiError, setTithiError] = useState<string | null>(null);
@@ -854,6 +865,15 @@ const AdditionalChartPage: React.FC = () => {
     if (rightPanelTab !== "vimshottari-dasha") return;
     setVimshottariDepth(1);
   }, [rightPanelTab]);
+
+  useEffect(() => {
+    if (rightPanelTab === "panchanga") return;
+    setGatakiOpen(false);
+  }, [rightPanelTab]);
+
+  useEffect(() => {
+    setFullDetailsOpen(false);
+  }, [transitsEnabled]);
 
   const transitRefMode = useMemo<"moon" | "lagna" | "surya">(() => {
     if (!transitsEnabled) return "moon";
@@ -929,6 +949,13 @@ const AdditionalChartPage: React.FC = () => {
     if (!fullDetailsRequestedRef.current) return;
     fullDetailsRequestedRef.current = false;
     setFullDetailsOpen(true);
+  }, [isLicensed]);
+
+  useEffect(() => {
+    if (!isLicensed) return;
+    if (!gatakiRequestedRef.current) return;
+    gatakiRequestedRef.current = false;
+    setGatakiOpen(true);
   }, [isLicensed]);
 
   useEffect(() => {
@@ -1317,6 +1344,57 @@ const AdditionalChartPage: React.FC = () => {
     return () => controller.abort();
   }, [lat, lon, transitTargetMsUtc, transitsEnabled, vimshottariFocusMsUtc]);
 
+  useEffect(() => {
+    if (!gatakiOpen) {
+      gatakiTithiAbortRef.current?.abort();
+      setGatakiTithiInfo(null);
+      setGatakiTithiError(null);
+      setGatakiTithiLoading(false);
+      return;
+    }
+    if (!selectedCalendarMsUtc || !Number.isFinite(selectedCalendarMsUtc) || !selectedCalendarTz) {
+      gatakiTithiAbortRef.current?.abort();
+      setGatakiTithiInfo(null);
+      setGatakiTithiError(null);
+      setGatakiTithiLoading(false);
+      return;
+    }
+
+    gatakiTithiAbortRef.current?.abort();
+    const controller = new AbortController();
+    gatakiTithiAbortRef.current = controller;
+    setGatakiTithiLoading(true);
+    setGatakiTithiError(null);
+
+    (async () => {
+      try {
+        const datetimeIso = moment.tz(selectedCalendarMsUtc, selectedCalendarTz).format("YYYY-MM-DDTHH:mm:ssZ");
+        const endpoint = `${API_BASE_URL.replace(/\/$/, "")}/api/tithi`;
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ datetime_iso: datetimeIso }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(`Ошибка сервера: ${res.status} ${txt}`);
+        }
+        const json = (await res.json()) as TithiApiResponse;
+        if (controller.signal.aborted) return;
+        setGatakiTithiInfo(json);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setGatakiTithiInfo(null);
+        setGatakiTithiError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!controller.signal.aborted) setGatakiTithiLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [gatakiOpen, selectedCalendarMsUtc, selectedCalendarTz]);
+
   const scheduleRebuild = useCallback(
     (nextParts: BirthParts) => {
       setBirthParts(nextParts);
@@ -1597,8 +1675,22 @@ const AdditionalChartPage: React.FC = () => {
   const transitsPanelInfo = useMemo(() => {
     if (!transitsEnabled) return null;
     const ms = transitTargetMsUtc ?? vimshottariFocusMsUtc ?? null;
-    const when =
-      typeof ms === "number" && Number.isFinite(ms) ? `${formatUtcMsInTz(ms, ianaTz)} (${ianaTz})` : "-";
+    const when = (() => {
+      if (typeof ms !== "number" || !Number.isFinite(ms)) return "-";
+      const isCalendarPick =
+        typeof selectedCalendarMsUtc === "number" &&
+        Number.isFinite(selectedCalendarMsUtc) &&
+        selectedCalendarMsUtc === ms &&
+        Boolean(selectedCalendarTz);
+
+      if (isCalendarPick) {
+        const tz = selectedCalendarTz as string;
+        const offset = formatOffset(moment.tz(ms, tz).utcOffset());
+        return `${formatUtcMsInTz(ms, tz)} ${offset} (сист.)`;
+      }
+
+      return `${formatUtcMsInTz(ms, ianaTz)} (${ianaTz})`;
+    })();
 
     const lagnaSign = chart?.houses?.find((h) => h.house === 1)?.sign ?? "";
     const moonHouseNum = chart?.planets?.find((p) => p.name === "Mo")?.house ?? null;
@@ -1621,7 +1713,16 @@ const AdditionalChartPage: React.FC = () => {
           : "Транзиты по дому Луны в карте рождения";
 
     return { when, refLabel, refName, modeText };
-  }, [chart, ianaTz, transitRefMode, transitTargetMsUtc, transitsEnabled, vimshottariFocusMsUtc]);
+  }, [
+    chart,
+    ianaTz,
+    selectedCalendarMsUtc,
+    selectedCalendarTz,
+    transitRefMode,
+    transitTargetMsUtc,
+    transitsEnabled,
+    vimshottariFocusMsUtc,
+  ]);
 
   const variantShift = useMemo(() => {
     const sunBaseHouse = sunPlanet?.house ?? null;
@@ -1749,6 +1850,21 @@ const AdditionalChartPage: React.FC = () => {
 
     return rotatedBase;
   }, [chart, transitChart, transitRefMode, transitsEnabled]);
+
+  const gocharaTransitHouseByPlanet = useMemo(() => {
+    if (!transitsEnabled) return null;
+    if (!transitHouses) return null;
+    const map = new Map<GocharaPlanetCode, number>();
+    transitHouses.forEach((house) => {
+      const houseNumber = house.houseNumber;
+      const labels = Array.isArray(house.planetLabels) ? house.planetLabels : [];
+      labels.forEach((label) => {
+        const code = String(label || "").split(" ")[0] as GocharaPlanetCode;
+        if (code in GOCHARA_PLANETS_RU) map.set(code, houseNumber);
+      });
+    });
+    return map;
+  }, [transitHouses, transitsEnabled]);
 
   const arcsForRender = useMemo(() => (Array.isArray(chart?.constellation_arcs) ? chart.constellation_arcs : []), [chart]);
   const planetTableChart = transitsEnabled ? (transitChart ?? chart) : chart;
@@ -1960,6 +2076,93 @@ const AdditionalChartPage: React.FC = () => {
       return true;
     });
   }, []);
+
+  const openOfflineAccessDialog = useCallback(async () => {
+    const dialogFn = window.electronAPI?.ui?.showOfflineAccessDialog;
+    if (typeof dialogFn !== "function") {
+      setOfflineDialogOpen(true);
+      return;
+    }
+    try {
+      const response = await dialogFn();
+      if (response === 1) {
+        setOfflineModeEnabled(false);
+        navigate("/", { replace: true });
+      }
+    } catch (error) {
+      console.warn("Failed to show offline access dialog", error);
+      setOfflineDialogOpen(true);
+    }
+  }, [navigate, setOfflineModeEnabled]);
+
+  const ensureLicenseStatus = useCallback(async () => {
+    if (licenseStatus) return licenseStatus;
+    const api = typeof window !== "undefined" ? window.electronAPI?.license : undefined;
+    if (typeof api?.getStatus !== "function") return null;
+    try {
+      const status = await api.getStatus();
+      setLicenseStatus(status ?? null);
+      return status ?? null;
+    } catch {
+      return null;
+    }
+  }, [licenseStatus]);
+
+  const handleFullDetailsClick = useCallback(() => {
+    if (offlineModeEnabled) {
+      void openOfflineAccessDialog();
+      return;
+    }
+    if (isLicensed) {
+      setFullDetailsOpen((prev) => !prev);
+      return;
+    }
+    fullDetailsRequestedRef.current = true;
+    try {
+      window.electronAPI?.license?.requestPrompt?.();
+    } catch (promptError) {
+      console.warn("Failed to request license prompt from Additional full description CTA", promptError);
+    }
+  }, [isLicensed, offlineModeEnabled, openOfflineAccessDialog]);
+
+  const handleGatakiToggle = useCallback(() => {
+    void (async () => {
+      if (offlineModeEnabled) {
+        await openOfflineAccessDialog();
+        return;
+      }
+
+      const status = isLicensed ? licenseStatus : await ensureLicenseStatus();
+      const licensedNow = Boolean(status?.licensed);
+
+      if (licensedNow) {
+        gatakiRequestedRef.current = false;
+        setGatakiOpen((prev) => !prev);
+        return;
+      }
+
+      gatakiRequestedRef.current = true;
+      try {
+        window.electronAPI?.license?.requestPrompt?.();
+      } catch (promptError) {
+        console.warn("Failed to request license prompt for Gataki toggle", promptError);
+      }
+    })();
+  }, [ensureLicenseStatus, isLicensed, licenseStatus, offlineModeEnabled, openOfflineAccessDialog]);
+
+  const handleOfflineRegister = useCallback(() => {
+    setOfflineDialogOpen(false);
+    setOfflineModeEnabled(false);
+    navigate("/", { replace: true });
+  }, [navigate, setOfflineModeEnabled]);
+
+  const handleOfflineClose = useCallback(() => {
+    setOfflineDialogOpen(false);
+  }, []);
+
+  const handleOfflineRestrictedNav = useCallback(() => {
+    void openOfflineAccessDialog();
+  }, [openOfflineAccessDialog]);
 
   const planetTable = useMemo(() => {
     if (!planetTableChart) return null;
@@ -2438,7 +2641,7 @@ const AdditionalChartPage: React.FC = () => {
                     return (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         <div style={{ fontSize: 14, color: "#000" }}>
-                          Накшатра по Луне, на эклиптике J2000:
+                          Накшатра по Луне, на момент рождения, на эклиптике J2000:
                         </div>
 
                         {moonInfo ? (
@@ -2480,7 +2683,22 @@ const AdditionalChartPage: React.FC = () => {
                   <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>
                 )
               ) : rightPanelTab === "panchanga" ? (
-                <CalendarTab apiBaseUrl={API_BASE_URL} ianaTz={ianaTz} />
+                <CalendarTab
+                  apiBaseUrl={API_BASE_URL}
+                  ianaTz={ianaTz}
+                  gatakiEnabled={gatakiOpen}
+                  onToggleGataki={handleGatakiToggle}
+                  onSelectDayMsUtc={(msUtc, ctx) => {
+                    if (!chart) {
+                      setError("Сначала постройте натальную карту.");
+                      return;
+                    }
+                    setSelectedCalendarDateIso(ctx.dateIso);
+                    setSelectedCalendarTz(ctx.ianaTz);
+                    setSelectedCalendarMsUtc(msUtc);
+                    openTransitsAtMsUtc(msUtc);
+                  }}
+                />
               ) : (
                 rightPanelTab === "sade-sati" ? (
                   (() => {
@@ -2639,6 +2857,8 @@ const AdditionalChartPage: React.FC = () => {
   }, [
     arcsForRender,
     chart,
+    gatakiOpen,
+    handleGatakiToggle,
     ianaTz,
     meta,
     moonPlanet?.lon_sidereal,
@@ -2723,55 +2943,6 @@ const AdditionalChartPage: React.FC = () => {
     typeof ascLongitudeValueForText === "number" && Number.isFinite(ascLongitudeValueForText) ? degStr(ascLongitudeValueForText) : "";
   const ascDescription =
     (chartTextResources?.ascSignDescriptions ?? EMPTY_CHART_TEXT_RESOURCES.ascSignDescriptions)[ascSignCodeForText] ?? "";
-
-  const openOfflineAccessDialog = useCallback(async () => {
-    const dialogFn = window.electronAPI?.ui?.showOfflineAccessDialog;
-    if (typeof dialogFn !== "function") {
-      setOfflineDialogOpen(true);
-      return;
-    }
-    try {
-      const response = await dialogFn();
-      if (response === 1) {
-        setOfflineModeEnabled(false);
-        navigate("/", { replace: true });
-      }
-    } catch (error) {
-      console.warn("Failed to show offline access dialog", error);
-      setOfflineDialogOpen(true);
-    }
-  }, [navigate, setOfflineModeEnabled]);
-
-  const handleFullDetailsClick = useCallback(() => {
-    if (offlineModeEnabled) {
-      void openOfflineAccessDialog();
-      return;
-    }
-    if (isLicensed) {
-      setFullDetailsOpen((prev) => !prev);
-      return;
-    }
-    fullDetailsRequestedRef.current = true;
-    try {
-      window.electronAPI?.license?.requestPrompt?.();
-    } catch (promptError) {
-      console.warn("Failed to request license prompt from Additional full description CTA", promptError);
-    }
-  }, [isLicensed, offlineModeEnabled, openOfflineAccessDialog]);
-
-  const handleOfflineRegister = useCallback(() => {
-    setOfflineDialogOpen(false);
-    setOfflineModeEnabled(false);
-    navigate("/", { replace: true });
-  }, [navigate, setOfflineModeEnabled]);
-
-  const handleOfflineClose = useCallback(() => {
-    setOfflineDialogOpen(false);
-  }, []);
-
-  const handleOfflineRestrictedNav = useCallback(() => {
-    void openOfflineAccessDialog();
-  }, [openOfflineAccessDialog]);
 
   const lagneshaCode = ascSignCodeForText ? LAGNESHA_BY_ASC_SIGN[ascSignCodeForText] ?? "" : "";
   const lagneshaName = lagneshaCode ? PLANET_NAMES_RU[lagneshaCode] ?? lagneshaCode : "";
@@ -3122,7 +3293,7 @@ const AdditionalChartPage: React.FC = () => {
                 ? `${BUTTON_PRIMARY} cursor-default`
                 : "border border-black bg-[#f1d6ae] text-black transition-colors hover:bg-[#edd7aa] focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/40"
             }`}
-            style={transitsEnabled ? { background: "#813939f2" } : undefined}
+            style={transitsEnabled ? { background: "#864240" } : undefined}
             aria-pressed={transitsEnabled}
           >
             <div className="text-sm font-semibold">
@@ -3505,18 +3676,88 @@ const AdditionalChartPage: React.FC = () => {
             className="mt-6 space-y-4"
             style={{ margin: "20px auto 30px", paddingBottom: "30px", maxWidth: "1450px", width: "100%" }}
           >
-            <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
-              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{ascSectionTitle}</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "#000", marginBottom: 6 }}>
-                {ascSignNameForText}
-                {ascLongitudeTextForText
-                  ? chartVariantConfig.longitudeLabel
-                    ? ` - ${chartVariantConfig.longitudeLabel} ${ascLongitudeTextForText}`
-                    : ` - ${ascLongitudeTextForText}`
-                  : ""}
+            {!transitsEnabled ? (
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{ascSectionTitle}</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "#000", marginBottom: 6 }}>
+                  {ascSignNameForText}
+                  {ascLongitudeTextForText
+                    ? chartVariantConfig.longitudeLabel
+                      ? ` - ${chartVariantConfig.longitudeLabel} ${ascLongitudeTextForText}`
+                      : ` - ${ascLongitudeTextForText}`
+                    : ""}
+                </div>
+                {ascDescription ? <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{ascDescription}</div> : null}
               </div>
-              {ascDescription ? <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{ascDescription}</div> : null}
-            </div>
+            ) : null}
+
+            {gatakiOpen ? (
+              <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6, color: "#000" }}>Гатаки</div>
+                {(() => {
+                  if (!selectedCalendarDateIso || !selectedCalendarTz) {
+                    return <div style={{ fontSize: 14, color: "#000" }}>Для отображения выберите день!</div>;
+                  }
+
+                  const natalMoonSignCode = moonPlanet?.sign ?? "";
+                  const natalMoonSignIndex = natalMoonSignCode ? SIGN_INFO[natalMoonSignCode]?.index ?? null : null;
+                  if (typeof natalMoonSignIndex !== "number") {
+                    return <div style={{ fontSize: 14, color: "#000" }}>Не удалось определить лунный знак рождения.</div>;
+                  }
+                  const rule = GATAKI_RULES_RU[natalMoonSignIndex];
+                  if (!rule) {
+                    return <div style={{ fontSize: 14, color: "#000" }}>Не удалось загрузить правила гатак.</div>;
+                  }
+
+                  const weekdayNum = moment.tz(selectedCalendarDateIso, "YYYY-MM-DD", selectedCalendarTz).day(); // 0..6, Sun=0
+                  const weekdayRuUpper = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"][weekdayNum] ?? "";
+
+                  const tithiRaw = gatakiTithiInfo?.tithi ?? null;
+                  const tithiNorm = typeof tithiRaw === "number" ? (tithiRaw <= 15 ? tithiRaw : tithiRaw - 15) : null;
+
+                  const transitMoon = transitChart?.planets?.find((p) => p.name === "Mo") ?? null;
+                  const transitMoonSignIndex = transitMoon?.sign ? SIGN_INFO[transitMoon.sign]?.index ?? null : null;
+                  const transitMoonNakshatra =
+                    typeof transitMoon?.lon_sidereal === "number" && Number.isFinite(transitMoon.lon_sidereal)
+                      ? nakshatraFromLonJ2000(transitMoon.lon_sidereal)
+                      : null;
+                  const transitMoonNakshatraName = transitMoonNakshatra?.name ?? "";
+
+                  const reasons: string[] = [];
+                  if (typeof transitMoonSignIndex === "number" && transitMoonSignIndex === rule.gatakaRashi) {
+                    const gatakaRashiName =
+                      Object.values(SIGN_INFO).find((s) => s.index === rule.gatakaRashi)?.ru ?? String(rule.gatakaRashi);
+                    reasons.push(`Гатака раши: ${gatakaRashiName}`);
+                  }
+                  if (typeof tithiNorm === "number" && rule.gatakaTithi.includes(tithiNorm as any)) {
+                    reasons.push(`Гатака титхи: ${tithiNorm}`);
+                  }
+                  if (weekdayNum === rule.gatakaVara) {
+                    reasons.push(`Гатака вара: ${weekdayRuUpper}`);
+                  }
+                  if (
+                    transitMoonNakshatraName &&
+                    transitMoonNakshatraName.trim().toLowerCase() === String(rule.gatakaNakshatraRu).trim().toLowerCase()
+                  ) {
+                    reasons.push(`Гатака накшатра: ${transitMoonNakshatraName}`);
+                  }
+
+                  if (transitLoading) return <div style={{ fontSize: 14, color: "#000" }}>Расчёт транзитов…</div>;
+                  if (transitError) return <div style={{ fontSize: 14, color: "#900" }}>Ошибка транзитов: {transitError}</div>;
+                  if (gatakiTithiLoading) return <div style={{ fontSize: 14, color: "#000" }}>Расчёт титхи…</div>;
+                  if (gatakiTithiError) return <div style={{ fontSize: 14, color: "#900" }}>Ошибка титхи: {gatakiTithiError}</div>;
+                  if (!transitsEnabled || !transitMoon) return <div style={{ fontSize: 14, color: "#000" }}>Пока пусто.</div>;
+
+                  return (
+                    <div style={{ fontSize: 16, color: "#000", whiteSpace: "pre-line" }}>
+                      {reasons.length
+                        ? `Гатака (повреждение, разрушение, сложности): ⛔Есть ${reasons.join("; ")}\n Если важное дело в этот день перенести нельзя, качестве упаи, рекомендуется читать мантру Ганеше - эта мантра разрушает препчдствия.`
+                        : "Гатака (повреждение, разрушение, сложности): ✅нет."}
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : null}
 
             <div className="flex justify-center px-2" style={{ marginTop: "12px", marginBottom: "12px" }}>
               <button
@@ -3534,11 +3775,61 @@ const AdditionalChartPage: React.FC = () => {
                 }}
                 onClick={handleFullDetailsClick}
               >
-                {allowFullDetails ? "Скрыть полное описание" : "Полное описание карты"}
+                {transitsEnabled
+                  ? allowFullDetails
+                    ? "Скрыть Гочары - описание транзитов"
+                    : "Гочары - описание транзитов"
+                  : allowFullDetails
+                    ? "Скрыть полное описание"
+                    : "Полное описание карты"}
               </button>
             </div>
 
-            {allowFullDetails && lagneshaDescription ? (
+            {allowFullDetails && transitsEnabled ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {transitLoading ? <div style={{ fontSize: 14, color: "#000" }}>Расчёт транзитов…</div> : null}
+                {!transitLoading && transitError ? (
+                  <div style={{ fontSize: 14, color: "#900" }}>Ошибка транзитов: {transitError}</div>
+                ) : null}
+                {!transitLoading && !transitError
+                  ? (
+                      <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000" }}>
+                        {GOCHARA_PLANET_ORDER.map((code, idx) => {
+                          const title = GOCHARA_PLANETS_RU[code]?.title ?? PLANET_NAMES_RU[code] ?? code;
+                          const houseNum = gocharaTransitHouseByPlanet?.get(code) ?? null;
+                          const lecture =
+                            typeof houseNum === "number" ? GOCHARA_PLANETS_RU[code]?.byHouse?.[String(houseNum)] ?? "" : "";
+                          const cleaned = lecture
+                            .split(/\r?\n/)
+                            .filter((line) => !/^Источник:\s*/i.test(line.trim()))
+                            .join("\n")
+                            .trim();
+
+                          return (
+                            <div
+                              key={code}
+                              style={{
+                                padding: "10px 12px",
+                                borderTop: idx === 0 ? "none" : "1px solid #000",
+                              }}
+                            >
+                              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
+                                <strong>
+                                  {title}
+                                  {typeof houseNum === "number" ? ` · ${houseNum} дом` : ""}
+                                </strong>
+                              </div>
+                              <div style={{ fontSize: 16, whiteSpace: "pre-line" }}>{cleaned || "Пока пусто."}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )
+                  : null}
+              </div>
+            ) : null}
+
+            {allowFullDetails && !transitsEnabled && lagneshaDescription ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px", marginTop: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Лагнеша</strong>
@@ -3548,7 +3839,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && lagneshaHouseDescription ? (
+            {allowFullDetails && !transitsEnabled && lagneshaHouseDescription ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Лагнеша в доме</strong>
@@ -3560,7 +3851,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && atmaKarakaDescription ? (
+            {allowFullDetails && !transitsEnabled && atmaKarakaDescription ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Атма-карака</strong>
@@ -3574,7 +3865,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && daraKarakaDescription ? (
+            {allowFullDetails && !transitsEnabled && daraKarakaDescription ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Дара-карака</strong>
@@ -3588,7 +3879,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && showSunSection ? (
+            {allowFullDetails && !transitsEnabled && showSunSection ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Солнце</strong>
@@ -3598,7 +3889,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && showMoonSection ? (
+            {allowFullDetails && !transitsEnabled && showMoonSection ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Луна</strong>
@@ -3608,7 +3899,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && jupiterHouseBody ? (
+            {allowFullDetails && !transitsEnabled && jupiterHouseBody ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Юпитер</strong>
@@ -3618,7 +3909,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && mercuryHouseBody ? (
+            {allowFullDetails && !transitsEnabled && mercuryHouseBody ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Меркурий</strong>
@@ -3628,7 +3919,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && venusHouseBody ? (
+            {allowFullDetails && !transitsEnabled && venusHouseBody ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Венера</strong>
@@ -3638,7 +3929,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && saturnHouseBody ? (
+            {allowFullDetails && !transitsEnabled && saturnHouseBody ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Сатурн</strong>
@@ -3648,7 +3939,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && marsHouseBody ? (
+            {allowFullDetails && !transitsEnabled && marsHouseBody ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Марс</strong>
@@ -3658,7 +3949,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && rahuHouseBody ? (
+            {allowFullDetails && !transitsEnabled && rahuHouseBody ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Раху</strong>
@@ -3668,7 +3959,7 @@ const AdditionalChartPage: React.FC = () => {
               </div>
             ) : null}
 
-            {allowFullDetails && ketuHouseBody ? (
+            {allowFullDetails && !transitsEnabled && ketuHouseBody ? (
               <div style={{ background: PAPER_BLOCK_BG, border: "1px solid #000", padding: "10px 12px" }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
                   <strong>Кету</strong>

@@ -821,7 +821,12 @@ function ProfilePanel({ heading, description, state, isLoading, onUploadRequest,
       </div>
       <div className="w-fit max-w-full self-start overflow-hidden rounded-xl border border-white/10 bg-slate-950/60">
         {screenshotUrl ? (
-          <img src={screenshotUrl} alt="Скриншот карты" className="block max-h-[260px] w-[420px] max-w-full object-contain" />
+          <img
+            src={screenshotUrl}
+            alt="Скриншот карты"
+            className="block h-auto max-h-[260px] w-auto max-w-full object-contain"
+            style={{ maxWidth: 420 }}
+          />
         ) : (
           <div className="flex h-[260px] w-[420px] max-w-full items-center justify-center text-sm text-white/50">
             Скриншот карты пока не найден

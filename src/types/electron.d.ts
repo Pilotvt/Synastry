@@ -67,6 +67,12 @@ declare global {
       };
       ui?: {
         showOfflineAccessDialog(): Promise<number>;
+        showMessageBox(options: {
+          type?: "info" | "warning" | "error";
+          title?: string;
+          message: string;
+          detail?: string;
+        }): Promise<void>;
       };
       moderation?: never;
     };

@@ -95,6 +95,7 @@ let currentLicenseIdentity = {
   userId: null,
 };
 let calculationsHelpWindow = null;
+let licensesWindow = null;
 const chatWindows = new Set();
 const blocklistWindows = new Set();
 const TRIAL_PROMPT_CHANNEL = 'license:show-trial-warning';
@@ -259,6 +260,46 @@ function openCalculationsHelpWindow(parent) {
 
 function showCalculationsDialog(parent) {
   openCalculationsHelpWindow(parent ?? null);
+}
+
+function openLicensesWindow(parent) {
+  if (licensesWindow && !licensesWindow.isDestroyed()) {
+    licensesWindow.show();
+    licensesWindow.focus();
+    return licensesWindow;
+  }
+
+  const popup = new BrowserWindow({
+    width: 980,
+    height: 760,
+    minWidth: 720,
+    minHeight: 520,
+    title: 'Open Source Licenses',
+    icon: APP_ICON,
+    autoHideMenuBar: true,
+    parent: parent && !parent.isDestroyed() ? parent : undefined,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'licenses-preload.cjs'),
+      devTools: true,
+    },
+  });
+
+  popup.setMenu(null);
+  popup.loadFile(path.join(__dirname, 'licenses.html'));
+  popup.on('closed', () => {
+    if (licensesWindow === popup) {
+      licensesWindow = null;
+    }
+  });
+
+  licensesWindow = popup;
+  return popup;
+}
+
+function showLicensesDialog(parent) {
+  openLicensesWindow(parent ?? null);
 }
 
 function normalizeAuthDeepLink(rawUrl) {
@@ -835,6 +876,10 @@ function buildApplicationMenu() {
         {
           label: 'Помощь',
           click: (_item, browserWindow) => showCalculationsDialog(browserWindow || BrowserWindow.getFocusedWindow()),
+        },
+        {
+          label: 'Лицензии (Open Source)',
+          click: (_item, browserWindow) => showLicensesDialog(browserWindow || BrowserWindow.getFocusedWindow()),
         },
       ],
     },
@@ -1755,6 +1800,32 @@ ipcMain.handle('ui:offline-access-dialog', async (event) => {
   } catch (error) {
     console.warn('Failed to show offline access dialog', error);
     return 0;
+  }
+});
+
+ipcMain.handle('ui:message-box', async (event, options) => {
+  const parent = BrowserWindow.fromWebContents(event?.sender) || null;
+  const payload = options && typeof options === 'object' ? options : {};
+  const type = payload.type === 'warning' || payload.type === 'error' ? payload.type : 'info';
+  const title = typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim() : APP_DISPLAY_NAME;
+  const message = typeof payload.message === 'string' && payload.message.trim() ? payload.message.trim() : '';
+  const detail = typeof payload.detail === 'string' && payload.detail.trim() ? payload.detail.trim() : undefined;
+
+  try {
+    await dialog.showMessageBox(parent, {
+      type,
+      buttons: ['OK'],
+      defaultId: 0,
+      cancelId: 0,
+      title,
+      message,
+      detail,
+      noLink: true,
+    });
+    return true;
+  } catch (error) {
+    console.warn('Failed to show message box', error);
+    return false;
   }
 });
 

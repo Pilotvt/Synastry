@@ -6,6 +6,16 @@ import AuthPage from "./pages/AuthPage";
 import ChartPage from "./pages/ChartPage";
 import AdditionalChartPage from "./pages/AdditionalChartPage";
 import Questionnaire from "./pages/Questionnaire";
+import PhotoView from "./pages/PhotoView";
+import UserProfilePage from "./pages/UserProfilePage";
+import SinastryPage from "./pages/SinastryPage";
+import AuthCallbackPage from "./pages/AuthCallback";
+import ChatPopupPage from "./pages/ChatPopupPage";
+import SettingsPage from "./pages/SettingsPage";
+import BlacklistSettingsPage from "./pages/BlacklistSettingsPage";
+import BlocklistPopupPage from "./pages/BlocklistPopupPage";
+import ChangePasswordPage from "./pages/ChangePasswordPage";
+import PasswordRecoveryPage from "./pages/PasswordRecoveryPage";
 import NetStatusBanner from "./components/NetStatusBanner";
 import { NetStatusProvider } from "./context/NetStatusProvider";
 import LicenseIdentityBridge from "./components/LicenseIdentityBridge";
@@ -16,16 +26,6 @@ import LastSeenHeartbeat from "./components/LastSeenHeartbeat";
 import NewChartResetGateway from "./components/NewChartResetGateway";
 import BlocklistBootstrapper from "./components/BlocklistBootstrapper";
 import OfflineModeEnforcer from "./components/OfflineModeEnforcer";
-const PhotoView = React.lazy(() => import("./pages/PhotoView"));
-const UserProfilePage = React.lazy(() => import("./pages/UserProfilePage"));
-const SinastryPage = React.lazy(() => import("./pages/SinastryPage"));
-const AuthCallbackPage = React.lazy(() => import("./pages/AuthCallback"));
-const ChatPopupPage = React.lazy(() => import("./pages/ChatPopupPage"));
-const SettingsPage = React.lazy(() => import("./pages/SettingsPage"));
-const BlacklistSettingsPage = React.lazy(() => import("./pages/BlacklistSettingsPage"));
-const BlocklistPopupPage = React.lazy(() => import("./pages/BlocklistPopupPage"));
-const ChangePasswordPage = React.lazy(() => import("./pages/ChangePasswordPage"));
-const PasswordRecoveryPage = React.lazy(() => import("./pages/PasswordRecoveryPage"));
 import "./index.css";
 
 const RouterComponent = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
@@ -71,103 +71,26 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <BlocklistBootstrapper />
         <OfflineModeEnforcer />
         <AppBoundary>
-        <LastSeenHeartbeat />
-        <NewChartResetGateway />
-        <Routes>
-          <Route path="/" element={<AuthPage />} />
-          <Route path="/app" element={<App />} />
-          <Route path="/chart" element={<ChartPage />} />
-          <Route path="/chart/additional" element={<AdditionalChartPage />} />
-          <Route
-            path="/auth/callback"
-            element={
-              <React.Suspense fallback={<>...</>}>
-          <Route
-            path="/settings/blacklist"
-            element={
-              <React.Suspense fallback={<>...</>}>
-                <BlacklistSettingsPage />
-              </React.Suspense>
-            }
-          />
-                <AuthCallbackPage />
-              </React.Suspense>
-            }
-          />
-          <Route
-            path="/questionnaire"
-            element={
-              <React.Suspense fallback={<>...</>}>
-                <Questionnaire />
-              </React.Suspense>
-            }
-          />
-          <Route
-            path="/photo/:userId/:idx"
-            element={
-              <React.Suspense fallback={<>...</>}>
-                <PhotoView />
-              </React.Suspense>
-            }
-          />
-          <Route
-            path="/user/:userId"
-            element={
-              <React.Suspense fallback={<>...</>}>
-                <UserProfilePage />
-              </React.Suspense>
-            }
-          />
-          <Route
-            path="/sinastry"
-            element={
-              <React.Suspense fallback={<>...</>}>
-                <SinastryPage />
-              </React.Suspense>
-            }
-          />
-          <Route
-            path="/chat-popup"
-            element={
-              <React.Suspense fallback={<>...</>}>
-                <ChatPopupPage />
-              </React.Suspense>
-            }
-          />
-          <Route
-            path="/blocklist-popup"
-            element={
-              <React.Suspense fallback={<>...</>}>
-                <BlocklistPopupPage />
-              </React.Suspense>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <React.Suspense fallback={<>...</>}>
-                <SettingsPage />
-              </React.Suspense>
-            }
-          />
-          <Route
-            path="/settings/password"
-            element={
-              <React.Suspense fallback={<>...</>}>
-                <ChangePasswordPage />
-              </React.Suspense>
-            }
-          />
-          <Route
-            path="/auth/password-reset"
-            element={
-              <React.Suspense fallback={<>...</>}>
-                <PasswordRecoveryPage />
-              </React.Suspense>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          <LastSeenHeartbeat />
+          <NewChartResetGateway />
+          <Routes>
+            <Route path="/" element={<AuthPage />} />
+            <Route path="/app" element={<App />} />
+            <Route path="/chart" element={<ChartPage />} />
+            <Route path="/chart/additional" element={<AdditionalChartPage />} />
+            <Route path="/auth/callback" element={<AuthCallbackPage />} />
+            <Route path="/auth/password-reset" element={<PasswordRecoveryPage />} />
+            <Route path="/questionnaire" element={<Questionnaire />} />
+            <Route path="/photo/:userId/:idx" element={<PhotoView />} />
+            <Route path="/user/:userId" element={<UserProfilePage />} />
+            <Route path="/sinastry" element={<SinastryPage />} />
+            <Route path="/chat-popup" element={<ChatPopupPage />} />
+            <Route path="/blocklist-popup" element={<BlocklistPopupPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings/blacklist" element={<BlacklistSettingsPage />} />
+            <Route path="/settings/password" element={<ChangePasswordPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </AppBoundary>
       </RouterComponent>
     </NetStatusProvider>

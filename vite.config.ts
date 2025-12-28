@@ -58,6 +58,12 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 3000,
     rollupOptions: {
+      output: {
+        // Desktop Electron builds are loaded from disk; stable filenames avoid intermittent
+        // "Failed to fetch dynamically imported module" errors after rebuilding `dist/`.
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+      },
       onwarn(warning, warn) {
         const msg = typeof warning === 'string' ? warning : warning.message || '';
         if (msg.includes('baseline-browser-mapping')) return;

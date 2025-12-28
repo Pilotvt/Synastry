@@ -24,6 +24,8 @@ import { requestNewChartReset } from "../utils/newChartRequest";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 import { PAPER_INPUT_STYLE, PAPER_SURFACE_STYLE } from "../constants/paperStyles";
 import { countryNameRU } from "../utils/countryNameRU";
+import { checkTextModeration } from "../utils/textModeration";
+import { showMessageBox } from "../utils/showMessageBox";
 
 type ProfileSnapshot = {
   personName?: string;
@@ -51,9 +53,199 @@ type ProfileSnapshot = {
   interests?: string;
   career?: string;
   children?: string;
+  profession?: string;
+  religion?: string;
   ascSign?: string;
   updated_at?: number;
 };
+
+const ABOUT_MAX_LEN = 300;
+
+const FAMILY_STATUS_OPTIONS_MALE: readonly string[] = ["Женат", "Холост"];
+const FAMILY_STATUS_OPTIONS_FEMALE: readonly string[] = ["Замужем", "Незамужем"];
+
+const EDUCATION_OPTIONS: readonly string[] = [
+  "Среднее",
+  "Средне-техническое",
+  "Высшее",
+  "Ученая степень",
+  "Младший специалист",
+  "Бакалавр",
+  "Магистр",
+  "Специалист",
+  "Неполное",
+  "Не важно",
+];
+
+const CHILDREN_OPTIONS: readonly string[] = ["Нет", "1", "2", "3", "3+"] as const;
+
+const RELIGION_OPTIONS: readonly string[] = [
+  "Христианство",
+  "Ислам",
+  "Буддизм",
+  "Вайшнавизм",
+  "Шиваизм",
+  "Другая",
+];
+
+const HEIGHT_OPTIONS: readonly string[] = (() => {
+  const list: string[] = ["менее 140 см"];
+  for (let cm = 140; cm <= 210; cm += 1) {
+    list.push(`${cm} см`);
+  }
+  list.push("более 210 см");
+  return list;
+})();
+
+function useCloseOnOutsideClick(open: boolean, ref: React.RefObject<HTMLElement | null>, close: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && ref.current && ref.current.contains(target)) return;
+      close();
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    return () => window.removeEventListener("mousedown", onPointerDown);
+  }, [close, open, ref]);
+}
+
+function DropdownField({
+  value,
+  placeholder,
+  options,
+  open,
+  setOpen,
+  onSelect,
+  containerRef,
+  maxHeight = 320,
+}: {
+  value: string;
+  placeholder: string;
+  options: readonly string[];
+  open: boolean;
+  setOpen: (next: boolean) => void;
+  onSelect: (next: string) => void;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  maxHeight?: number;
+}) {
+  return (
+    <div className="relative mt-1" ref={containerRef}>
+      <button
+        type="button"
+        className="w-full rounded-lg px-3 py-2 outline-none text-left flex items-center justify-between gap-2"
+        style={PAPER_INPUT_STYLE}
+        onClick={() => setOpen(!open)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="truncate">{value || placeholder}</span>
+        <span aria-hidden className="text-black/60">
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <ul
+          className="absolute left-0 right-0 top-full z-[120] mt-1 rounded-xl shadow-lg text-sm"
+          style={{
+            ...PAPER_SURFACE_STYLE,
+            listStyle: "none",
+            margin: 0,
+            padding: 0,
+            maxHeight: `${maxHeight}px`,
+            overflowY: "auto",
+          }}
+          role="listbox"
+        >
+          <li
+            key="__empty__"
+            role="option"
+            aria-selected={!value}
+            className="px-3 py-2 cursor-pointer hover:bg-black/5"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              onSelect("");
+              setOpen(false);
+            }}
+          >
+            {placeholder}
+          </li>
+          {options.map((option) => {
+            const selected = option === value;
+            return (
+              <li
+                key={option}
+                role="option"
+                aria-selected={selected}
+                className={`px-3 py-2 cursor-pointer hover:bg-black/5 ${selected ? "font-semibold" : ""}`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  onSelect(option);
+                  setOpen(false);
+                }}
+              >
+                {option}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+const INTEREST_OPTIONS: readonly string[] = [
+  "Музыка",
+  "Кино",
+  "Сериалы",
+  "Путешествия",
+  "Автомобили",
+  "Танцы",
+  "Животные",
+  "Фитнес",
+  "Йога",
+  "Бег",
+  "Чтение книг",
+  "Телевизор",
+  "Шопинг",
+  "Компьютерные игры",
+  "Компьютеры",
+  "Настольные игры",
+  "Технологии",
+  "Мода",
+  "Кулинария",
+  "Вкусная еда",
+  "Театр",
+  "Концерты",
+  "Фестивали",
+  "Фотография",
+  "Искусство",
+  "Ведение блогов",
+  "Рукоделие",
+  "Садоводство",
+  "Психология",
+  "Личностный рост",
+  "Здоровье",
+  "Волонтёрство",
+  "Работа",
+  "Друзья",
+  "Семья",
+  "Прогулки",
+  "Отдых на природе",
+  "Велосипед",
+  "Лыжи и сноуборд",
+  "Спорт",
+  "Море",
+  "Горы",
+  "Гольф",
+  "Гик",
+  "Кошки",
+  "Собаки",
+  "Татуировки",
+  "Политика",
+  "Астрология",
+  "Приключения",
+];
 
 type ResidenceCityOption = {
   id: string;
@@ -315,6 +507,40 @@ function DoneButton({ navigate, getProfileSnapshot, currentUserId }: DoneButtonP
       }
       if (!snapshot) throw new Error("Не удалось собрать данные профиля.");
 
+      const aboutText = typeof snapshot.about === "string" ? snapshot.about : "";
+      if (aboutText.length > ABOUT_MAX_LEN) {
+        await showMessageBox({
+          type: "warning",
+          title: "Невозможно сохранить",
+          message: "Поле «О себе» слишком длинное.",
+          detail: `Максимум: ${ABOUT_MAX_LEN} символов.`,
+        });
+        return;
+      }
+
+      const moderation = await checkTextModeration(aboutText, { languageHint: "ru" });
+      if (!moderation.isClean) {
+        await showMessageBox({
+          type: "warning",
+          title: "Невозможно сохранить",
+          message: "Непристойные слова в поле «О себе».",
+          detail: "Удалите непристойные слова и попробуйте снова.",
+        });
+        return;
+      }
+
+      const professionText = typeof snapshot.profession === "string" ? snapshot.profession : "";
+      const professionModeration = await checkTextModeration(professionText, { languageHint: "ru" });
+      if (!professionModeration.isClean) {
+        await showMessageBox({
+          type: "warning",
+          title: "Невозможно сохранить",
+          message: "Непристойные слова в поле «Профессия».",
+          detail: "Удалите непристойные слова и попробуйте снова.",
+        });
+        return;
+      }
+
       // 1) Save locally and navigate immediately
       const stamped: ProfileSnapshot = { ...(snapshot ?? {}), updated_at: Date.now() };
       try {
@@ -383,6 +609,12 @@ function DoneButton({ navigate, getProfileSnapshot, currentUserId }: DoneButtonP
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setMsg(`Ошибка при сохранении: ${message}`);
+      await showMessageBox({
+        type: "error",
+        title: "Ошибка сохранения",
+        message: "Не удалось сохранить анкету.",
+        detail: message,
+      });
     } finally {
       setSaving(false);
     }
@@ -481,10 +713,12 @@ const Questionnaire: React.FC = () => {
         setSmallPhotos(normalizeSmallPhotos(localSnapshot.smallPhotos));
         setTypeazh(typeof localSnapshot.typeazh === "string" ? localSnapshot.typeazh : "");
         setFamilyStatus(typeof localSnapshot.familyStatus === "string" ? localSnapshot.familyStatus : "");
-        setAbout(typeof localSnapshot.about === "string" ? localSnapshot.about : "");
+        setAbout(typeof localSnapshot.about === "string" ? localSnapshot.about.slice(0, ABOUT_MAX_LEN) : "");
         setInterests(typeof localSnapshot.interests === "string" ? localSnapshot.interests : "");
         setCareer(typeof localSnapshot.career === "string" ? localSnapshot.career : "");
         setChildren(typeof localSnapshot.children === "string" ? localSnapshot.children : "");
+        setProfession(typeof localSnapshot.profession === "string" ? localSnapshot.profession : "");
+        setReligion(typeof localSnapshot.religion === "string" ? localSnapshot.religion : "");
         setResidenceCountry(
           typeof localSnapshot.residenceCountry === "string" && localSnapshot.residenceCountry
             ? localSnapshot.residenceCountry
@@ -579,10 +813,12 @@ const Questionnaire: React.FC = () => {
         setSmallPhotos(normalizeSmallPhotos(mergedSnapshot.smallPhotos));
         setTypeazh(typeof mergedSnapshot.typeazh === "string" ? mergedSnapshot.typeazh : "");
         setFamilyStatus(typeof mergedSnapshot.familyStatus === "string" ? mergedSnapshot.familyStatus : "");
-        setAbout(typeof mergedSnapshot.about === "string" ? mergedSnapshot.about : "");
+        setAbout(typeof mergedSnapshot.about === "string" ? mergedSnapshot.about.slice(0, ABOUT_MAX_LEN) : "");
         setInterests(typeof mergedSnapshot.interests === "string" ? mergedSnapshot.interests : "");
         setCareer(typeof mergedSnapshot.career === "string" ? mergedSnapshot.career : "");
         setChildren(typeof mergedSnapshot.children === "string" ? mergedSnapshot.children : "");
+        setProfession(typeof mergedSnapshot.profession === "string" ? mergedSnapshot.profession : "");
+        setReligion(typeof mergedSnapshot.religion === "string" ? mergedSnapshot.religion : "");
         setResidenceCountry(
           typeof mergedSnapshot.residenceCountry === "string" && mergedSnapshot.residenceCountry
             ? mergedSnapshot.residenceCountry
@@ -609,6 +845,8 @@ const Questionnaire: React.FC = () => {
         setInterests("");
         setCareer("");
         setChildren("");
+        setProfession("");
+        setReligion("");
         setResidenceCountry("RU");
         setResidenceCityName("");
       }
@@ -641,6 +879,8 @@ const Questionnaire: React.FC = () => {
   const [interests, setInterests] = useState<string>("");
   const [career, setCareer] = useState<string>("");
   const [children, setChildren] = useState<string>("");
+  const [profession, setProfession] = useState<string>("");
+  const [religion, setReligion] = useState<string>("");
   const [residenceCountry, setResidenceCountry] = useState<string>("RU");
   const [residenceCityName, setResidenceCityName] = useState<string>("");
   const [residenceCountries, setResidenceCountries] = useState<string[]>(["RU"]);
@@ -653,6 +893,18 @@ const Questionnaire: React.FC = () => {
   const [residenceCityOpen, setResidenceCityOpen] = useState(false);
   const residenceCountryRef = useRef<HTMLDivElement | null>(null);
   const residenceCityRef = useRef<HTMLDivElement | null>(null);
+  const [familyStatusOpen, setFamilyStatusOpen] = useState(false);
+  const familyStatusRef = useRef<HTMLDivElement | null>(null);
+  const [interestsOpen, setInterestsOpen] = useState(false);
+  const interestsRef = useRef<HTMLDivElement | null>(null);
+  const [heightOpen, setHeightOpen] = useState(false);
+  const heightRef = useRef<HTMLDivElement | null>(null);
+  const [educationOpen, setEducationOpen] = useState(false);
+  const educationRef = useRef<HTMLDivElement | null>(null);
+  const [childrenOpen, setChildrenOpen] = useState(false);
+  const childrenRef = useRef<HTMLDivElement | null>(null);
+  const [religionOpen, setReligionOpen] = useState(false);
+  const religionRef = useRef<HTMLDivElement | null>(null);
 
   const persistFieldToLocal = useCallback((field: keyof ProfileSnapshot, value: JsonValue) => {
     try {
@@ -690,15 +942,136 @@ const Questionnaire: React.FC = () => {
     [currentUserId],
   );
 
+  const familyStatusOptions = useMemo<string[]>(() => {
+    if (gender === "male") return [...FAMILY_STATUS_OPTIONS_MALE];
+    if (gender === "female") return [...FAMILY_STATUS_OPTIONS_FEMALE];
+    return [...FAMILY_STATUS_OPTIONS_MALE, ...FAMILY_STATUS_OPTIONS_FEMALE];
+  }, [gender]);
+
+  useEffect(() => {
+    if (!familyStatus) return;
+    if (!familyStatusOptions.includes(familyStatus)) {
+      setFamilyStatus("");
+      persistFieldToLocal("familyStatus", "");
+      void persistFieldToCloud("familyStatus", "");
+    }
+  }, [familyStatus, familyStatusOptions, persistFieldToCloud, persistFieldToLocal]);
+
+  const applyFamilyStatus = useCallback(
+    (next: string) => {
+      setFamilyStatus(next);
+      persistFieldToLocal("familyStatus", next);
+      void persistFieldToCloud("familyStatus", next);
+      setFamilyStatusOpen(false);
+    },
+    [persistFieldToCloud, persistFieldToLocal],
+  );
+
+  const applyHeight = useCallback(
+    (next: string) => {
+      setTypeazh(next);
+      persistFieldToLocal("typeazh", next);
+      void persistFieldToCloud("typeazh", next);
+      setHeightOpen(false);
+    },
+    [persistFieldToCloud, persistFieldToLocal],
+  );
+
+  const applyEducation = useCallback(
+    (next: string) => {
+      setCareer(next);
+      persistFieldToLocal("career", next);
+      void persistFieldToCloud("career", next);
+      setEducationOpen(false);
+    },
+    [persistFieldToCloud, persistFieldToLocal],
+  );
+
+  const applyChildren = useCallback(
+    (next: string) => {
+      setChildren(next);
+      persistFieldToLocal("children", next);
+      void persistFieldToCloud("children", next);
+      setChildrenOpen(false);
+    },
+    [persistFieldToCloud, persistFieldToLocal],
+  );
+
+  const applyReligion = useCallback(
+    (next: string) => {
+      setReligion(next);
+      persistFieldToLocal("religion", next);
+      void persistFieldToCloud("religion", next);
+      setReligionOpen(false);
+    },
+    [persistFieldToCloud, persistFieldToLocal],
+  );
+
+  const selectedInterests = useMemo(() => {
+    return interests
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }, [interests]);
+
+  const selectedInterestSet = useMemo(() => new Set(selectedInterests), [selectedInterests]);
+
+  const interestsSummary = useMemo(() => {
+    if (selectedInterests.length === 0) return "Выберите интересы";
+    const head = selectedInterests.slice(0, 3).join(", ");
+    const rest = selectedInterests.length - 3;
+    return rest > 0 ? `${head} (+${rest})` : head;
+  }, [selectedInterests]);
+
+  const toggleInterest = useCallback(
+    (label: string) => {
+      const current = new Set(selectedInterests);
+      if (current.has(label)) {
+        current.delete(label);
+      } else {
+        current.add(label);
+      }
+
+      const ordered = INTEREST_OPTIONS.filter((option) => current.has(option));
+      for (const value of current) {
+        if (!INTEREST_OPTIONS.includes(value)) {
+          ordered.push(value);
+        }
+      }
+
+      const nextValue = ordered.join(", ");
+      setInterests(nextValue);
+      persistFieldToLocal("interests", nextValue);
+      void persistFieldToCloud("interests", nextValue);
+    },
+    [persistFieldToCloud, persistFieldToLocal, selectedInterests],
+  );
+
   const makeTextChangeHandler = useCallback(
     (field: keyof ProfileSnapshot, setter: (value: string) => void) =>
-      (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { value } = event.target;
         setter(value);
         persistFieldToLocal(field, value);
       },
     [persistFieldToLocal],
   );
+
+	  const handleAboutChange = useCallback(
+	    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+	      const next = event.target.value.slice(0, ABOUT_MAX_LEN);
+	      setAbout(next);
+	      persistFieldToLocal("about", next);
+	    },
+	    [persistFieldToLocal],
+	  );
+
+	  useCloseOnOutsideClick(familyStatusOpen, familyStatusRef, () => setFamilyStatusOpen(false));
+	  useCloseOnOutsideClick(interestsOpen, interestsRef, () => setInterestsOpen(false));
+	  useCloseOnOutsideClick(heightOpen, heightRef, () => setHeightOpen(false));
+	  useCloseOnOutsideClick(educationOpen, educationRef, () => setEducationOpen(false));
+	  useCloseOnOutsideClick(childrenOpen, childrenRef, () => setChildrenOpen(false));
+	  useCloseOnOutsideClick(religionOpen, religionRef, () => setReligionOpen(false));
 
   const makeTextBlurHandler = useCallback(
     (field: keyof ProfileSnapshot, getter: () => string) => () => {
@@ -885,7 +1258,7 @@ const Questionnaire: React.FC = () => {
   
   // Build a profile snapshot from current state.
   // IMPORTANT: empty strings are treated as an explicit "clear" (no fallback to old localStorage values).
-  const getProfileSnapshot = useCallback((): ProfileSnapshot => {
+	  const getProfileSnapshot = useCallback((): ProfileSnapshot => {
     const ownerId = currentUserId ?? null;
     const stored = readProfileFromStorage<ProfileSnapshot | Record<string, JsonValue>>(STORAGE_KEY);
     const source = stored && isOwnerMatch(stored.ownerId, ownerId) ? (stored.profile ?? stored.raw) : null;
@@ -900,22 +1273,24 @@ const Questionnaire: React.FC = () => {
       : normalizeSmallPhotos(profileBase.smallPhotos);
     const resolvedAscSign = headerData?.ascSign || profileBase.ascSign || "";
 
-    return {
-      ...profileBase,
-      gender: resolvedGender,
-      mainPhoto: resolvedMainPhoto,
-      smallPhotos: resolvedSmallPhotos,
-      typeazh,
-      familyStatus,
-      about,
-      interests,
-      career,
-      children,
-      ascSign: resolvedAscSign,
-      residenceCountry,
-      residenceCityName,
-    };
-  }, [currentUserId, gender, mainPhoto, smallPhotos, typeazh, familyStatus, about, interests, career, children, residenceCountry, residenceCityName, headerData]);
+	    return {
+	      ...profileBase,
+	      gender: resolvedGender,
+	      mainPhoto: resolvedMainPhoto,
+	      smallPhotos: resolvedSmallPhotos,
+	      typeazh,
+	      familyStatus,
+	      about,
+	      interests,
+	      career,
+	      children,
+	      profession,
+	      religion,
+	      ascSign: resolvedAscSign,
+	      residenceCountry,
+	      residenceCityName,
+	    };
+	  }, [currentUserId, gender, mainPhoto, smallPhotos, typeazh, familyStatus, about, interests, career, children, profession, religion, residenceCountry, residenceCityName, headerData]);
 
   // ========== Image utilities ==========
   // Estimate bytes of a data URL without decoding
@@ -1263,55 +1638,174 @@ const Questionnaire: React.FC = () => {
           {/* Fields column */}
           <section className="flex-1 flex justify-center items-start pl-8" style={{ marginLeft: '-50px' }}>
             <div className="w-[500px]">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-white">Типаж</label>
-                <input value={typeazh}
-                  onChange={makeTextChangeHandler("typeazh", setTypeazh)}
-                  onBlur={makeTextBlurHandler("typeazh", () => typeazh)}
-                  className="mt-1 block w-full rounded px-2 py-1 bg-black/30 border border-white/10"
-                />
+	            <div className="grid grid-cols-2 gap-4">
+	              <div>
+	                <label className="block text-sm font-medium text-white">Рост</label>
+	                <DropdownField
+	                  value={typeazh}
+	                  placeholder="Выберите..."
+	                  options={HEIGHT_OPTIONS}
+	                  open={heightOpen}
+	                  setOpen={setHeightOpen}
+	                  onSelect={applyHeight}
+	                  containerRef={heightRef}
+	                  maxHeight={320}
+	                />
+	              </div>
+	              <div>
+	                <label className="block text-sm font-medium text-white">Семейное положение</label>
+	                <div className="relative mt-1" ref={familyStatusRef}>
+                  <button
+                    type="button"
+                    className="w-full rounded-lg px-3 py-2 outline-none text-left flex items-center justify-between gap-2"
+                    style={PAPER_INPUT_STYLE}
+                    onClick={() => setFamilyStatusOpen((prev) => !prev)}
+                    aria-haspopup="listbox"
+                    aria-expanded={familyStatusOpen}
+                  >
+                    <span className="truncate">{familyStatus || "Выберите..."}</span>
+                    <span aria-hidden className="text-black/60">
+                      ▾
+                    </span>
+                  </button>
+                  {familyStatusOpen ? (
+                    <ul
+                      className="absolute left-0 right-0 top-full z-[120] mt-1 rounded-xl shadow-lg text-sm"
+                      style={{
+                        ...PAPER_SURFACE_STYLE,
+                        listStyle: "none",
+                        margin: 0,
+                        padding: 0,
+                        maxHeight: "220px",
+                        overflowY: "auto",
+                      }}
+                      role="listbox"
+                    >
+                      {familyStatusOptions.map((option) => {
+                        const selected = option === familyStatus;
+                        return (
+                          <li
+                            key={option}
+                            role="option"
+                            aria-selected={selected}
+                            className={`px-3 py-2 cursor-pointer hover:bg-black/5 ${selected ? "font-semibold" : ""}`}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              applyFamilyStatus(option);
+                            }}
+                          >
+                            {option}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-white">Семейное положение</label>
-                <input value={familyStatus}
-                  onChange={makeTextChangeHandler("familyStatus", setFamilyStatus)}
-                  onBlur={makeTextBlurHandler("familyStatus", () => familyStatus)}
-                  className="mt-1 block w-full rounded px-2 py-1 bg-black/30 border border-white/10"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-white">О себе</label>
-                <textarea value={about}
-                  onChange={makeTextChangeHandler("about", setAbout)}
-                  onBlur={makeTextBlurHandler("about", () => about)}
-                  className="mt-1 block w-full rounded px-2 py-1 h-32 bg-black/30 border border-white/10 resize-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-white">Интересы</label>
-                <input value={interests}
-                  onChange={makeTextChangeHandler("interests", setInterests)}
-                  onBlur={makeTextBlurHandler("interests", () => interests)}
-                  className="mt-1 block w-full rounded px-2 py-1 bg-black/30 border border-white/10"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-white">Карьера, образование</label>
-                <input value={career}
-                  onChange={makeTextChangeHandler("career", setCareer)}
-                  onBlur={makeTextBlurHandler("career", () => career)}
-                  className="mt-1 block w-full rounded px-2 py-1 bg-black/30 border border-white/10"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-white">Дети</label>
-                <input value={children}
-                  onChange={makeTextChangeHandler("children", setChildren)}
-                  onBlur={makeTextBlurHandler("children", () => children)}
-                  className="mt-1 block w-full rounded px-2 py-1 bg-black/30 border border-white/10"
-                />
-              </div>
+	              <div className="col-span-2">
+	                <label className="block text-sm font-medium text-white">О себе</label>
+	                <textarea
+	                  value={about}
+	                  onChange={handleAboutChange}
+	                  maxLength={ABOUT_MAX_LEN}
+	                  className="mt-1 block w-full rounded-lg px-3 py-2 outline-none h-32 resize-none"
+	                  style={{ ...PAPER_INPUT_STYLE, font: "inherit" }}
+	                />
+	              </div>
+	              <div>
+	                <label className="block text-sm font-medium text-white">Интересы</label>
+	                <div className="relative mt-1" ref={interestsRef}>
+                  <button
+                    type="button"
+                    className="w-full rounded-lg px-3 py-2 outline-none text-left flex items-center justify-between gap-2"
+                    style={PAPER_INPUT_STYLE}
+                    onClick={() => setInterestsOpen((prev) => !prev)}
+                    aria-haspopup="dialog"
+                    aria-expanded={interestsOpen}
+                  >
+                    <span className="truncate">{interestsSummary}</span>
+                    <span aria-hidden className="text-black/60">
+                      ▾
+                    </span>
+                  </button>
+                  {interestsOpen ? (
+                    <div
+                      className="absolute left-0 right-0 top-full z-[120] mt-1 rounded-xl shadow-lg"
+                      style={{ ...PAPER_SURFACE_STYLE, maxHeight: "320px", overflow: "hidden" }}
+                      role="dialog"
+                    >
+                      <div className="p-2 flex flex-wrap gap-2 overflow-y-auto" style={{ maxHeight: "300px" }}>
+                        {INTEREST_OPTIONS.map((label) => {
+                          const selected = selectedInterestSet.has(label);
+                          return (
+                            <button
+                              key={label}
+                              type="button"
+                              className={`px-3 py-2 rounded-full border text-sm transition-colors ${
+                                selected ? "bg-black/10 border-black/30" : "bg-transparent border-black/20 hover:bg-black/5"
+                              }`}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => toggleInterest(label)}
+                            >
+                              {selected ? "✓ " : ""}
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+	                  ) : null}
+	                </div>
+	              </div>
+	              <div>
+	                <label className="block text-sm font-medium text-white">Религия</label>
+	                <DropdownField
+	                  value={religion}
+	                  placeholder="Выберите..."
+	                  options={RELIGION_OPTIONS}
+	                  open={religionOpen}
+	                  setOpen={setReligionOpen}
+	                  onSelect={applyReligion}
+	                  containerRef={religionRef}
+	                  maxHeight={240}
+	                />
+	              </div>
+	              <div className="col-span-2">
+	                <label className="block text-sm font-medium text-white">Образование</label>
+	                <DropdownField
+	                  value={career}
+	                  placeholder="Выберите..."
+	                  options={EDUCATION_OPTIONS}
+	                  open={educationOpen}
+	                  setOpen={setEducationOpen}
+	                  onSelect={applyEducation}
+	                  containerRef={educationRef}
+	                  maxHeight={320}
+	                />
+	              </div>
+	              <div>
+	                <label className="block text-sm font-medium text-white">Дети</label>
+	                <DropdownField
+	                  value={children}
+	                  placeholder="Выберите..."
+	                  options={CHILDREN_OPTIONS}
+	                  open={childrenOpen}
+	                  setOpen={setChildrenOpen}
+	                  onSelect={applyChildren}
+	                  containerRef={childrenRef}
+	                  maxHeight={220}
+	                />
+	              </div>
+		              <div>
+		                <label className="block text-sm font-medium text-white">Профессия</label>
+		                <input
+	                  value={profession}
+	                  onChange={makeTextChangeHandler("profession", setProfession)}
+	                  onBlur={makeTextBlurHandler("profession", () => profession)}
+	                  className="mt-1 block w-full rounded-lg px-3 py-2 outline-none"
+	                  style={{ ...PAPER_INPUT_STYLE, font: "inherit" }}
+	                />
+	              </div>
             <div className="col-span-2 rounded border border-white/10 p-3 bg-black/10">
               <label className="block text-sm font-medium text-white mb-2">Место жительства</label>
               <div className="grid grid-cols-2 gap-3">
@@ -1446,7 +1940,8 @@ const Questionnaire: React.FC = () => {
               </div>
             </div>
             </div>
-            <div className="col-span-2 mt-4 flex items-center justify-end gap-4">
+
+            <div className="col-span-2 mt-3 flex items-center justify-end gap-4">
               <button
                 className={`${BUTTON_SECONDARY} px-6 py-2 text-base font-bold`}
                 type="button"
@@ -1470,11 +1965,7 @@ const Questionnaire: React.FC = () => {
               >
                 Удалить анкету
               </button>
-              <DoneButton
-                navigate={navigate}
-                getProfileSnapshot={getProfileSnapshot}
-                currentUserId={currentUserId}
-              />
+              <DoneButton navigate={navigate} getProfileSnapshot={getProfileSnapshot} currentUserId={currentUserId} />
             </div>
             </div>
             </div>

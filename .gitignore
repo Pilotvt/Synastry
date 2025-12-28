@@ -7,6 +7,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Generated notices (kept out of git; created during postinstall/sync:version)
+THIRD_PARTY_NOTICES.txt
+
 node_modules
 dist
 dist-ssr

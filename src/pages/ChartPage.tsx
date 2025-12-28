@@ -59,6 +59,9 @@ type ProfileSnapshot = {
   interests?: string;
   career?: string;
   children?: string;
+  profession?: string;
+  religion?: string;
+  ascSign?: string;
   updated_at?: number;
 };
 
@@ -457,9 +460,26 @@ function writeLastSavedFingerprint(fingerprint: string | null): void {
   }
 }
 
-type ProfileTextField = "typeazh" | "familyStatus" | "about" | "interests" | "career" | "children";
+type ProfileTextField =
+  | "typeazh"
+  | "familyStatus"
+  | "about"
+  | "interests"
+  | "career"
+  | "children"
+  | "profession"
+  | "religion";
 
-const PROFILE_TEXT_FIELDS: ProfileTextField[] = ["typeazh", "familyStatus", "about", "interests", "career", "children"];
+const PROFILE_TEXT_FIELDS: ProfileTextField[] = [
+  "typeazh",
+  "familyStatus",
+  "about",
+  "interests",
+  "career",
+  "children",
+  "profession",
+  "religion",
+];
 
 function updateSavedChartLocalStorage(
   ownerId: string | null,
@@ -844,6 +864,8 @@ function persistProfileSnapshotLocal(profile: ProfileSnapshot | null, ownerId?: 
     sanitized.interests = sanitized.interests ?? "";
     sanitized.career = sanitized.career ?? "";
     sanitized.children = sanitized.children ?? "";
+    sanitized.profession = sanitized.profession ?? "";
+    sanitized.religion = sanitized.religion ?? "";
     writeProfileToStorage(PROFILE_SNAPSHOT_STORAGE_KEY, sanitized, ownerId ?? null, false);
   } catch (err) {
     console.warn("Unable to persist profile data snapshot during initialization", err);
@@ -1927,7 +1949,9 @@ const ChartPage = () => {
   }, [profile]);
   const buildProfileForCloud = useCallback((): ProfileSnapshot | null => {
     if (!profile) return null;
-    const localized = ensureProfileLocalization({ ...profile });
+    const ownerId = currentUserId ?? null;
+    const merged = mergeWithLocalSnapshot(profile, undefined, ownerId) ?? profile;
+    const localized = ensureProfileLocalization({ ...merged });
     if (!localized) return null;
     const withCoords = ensureProfileCoords(localized, chart ?? null) ?? localized;
 
@@ -1960,7 +1984,7 @@ const ChartPage = () => {
         ? withCoords.residenceCityName ?? storeProfile?.residenceCityName ?? undefined
         : withCoords.residenceCityName ?? undefined,
     };
-  }, [profile, storeProfile, chart]);
+  }, [profile, storeProfile, chart, currentUserId]);
 // Capture SVG of NorthIndianChart as PNG data URL and save to localStorage / cloud
   useEffect(() => {
     if (!screenshotTaskKey) return;
@@ -3085,20 +3109,20 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
                   </button>
                 );
               })}
-              <button
-                type="button"
-                className={`${BUTTON_SECONDARY} px-4 py-2 text-sm self-start`}
-                onClick={() => {
-                  // Save chart/profile as JSON file
-                  const chartForExport = chartScreenshot
-                    ? mergeChartWithScreenshot(chart, chartScreenshot, chartScreenshotHash, chart.screenshotStoragePointer ?? null)
-                    : chart;
-                  const profileForExport = ensureProfileCoords(profile, chart) ?? profile;
-                  const payload: Record<string, unknown> = {
-                    chart: chartForExport,
-                    profile: profileForExport,
-                    meta,
-                  };
+	              <button
+	                type="button"
+	                className={`${BUTTON_SECONDARY} px-4 py-2 text-sm self-start`}
+	                onClick={() => {
+	                  // Save chart/profile as JSON file
+	                  const chartForExport = chartScreenshot
+	                    ? mergeChartWithScreenshot(chart, chartScreenshot, chartScreenshotHash, chart.screenshotStoragePointer ?? null)
+	                    : chart;
+	                  const profileForExport = buildProfileForCloud() ?? (ensureProfileCoords(profile, chart) ?? profile);
+	                  const payload: Record<string, unknown> = {
+	                    profile: profileForExport,
+	                    chart: chartForExport,
+	                    meta,
+	                  };
                   if (chartScreenshot) {
                     payload.screenshot = chartScreenshot;
                     if (chartScreenshotHash) {
