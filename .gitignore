@@ -34,3 +34,5 @@ test_images/
 *.sln
 *.sw?
 release/
+.Лекции/
+Ключию.txt

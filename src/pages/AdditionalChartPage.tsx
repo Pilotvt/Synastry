@@ -55,6 +55,24 @@ function publicAssetUrl(relativePath: string) {
   }
 }
 
+function lruGet<K, V>(map: Map<K, V>, key: K): V | undefined {
+  const value = map.get(key);
+  if (typeof value === "undefined") return undefined;
+  map.delete(key);
+  map.set(key, value);
+  return value;
+}
+
+function lruSet<K, V>(map: Map<K, V>, key: K, value: V, maxSize: number) {
+  if (map.has(key)) map.delete(key);
+  map.set(key, value);
+  while (map.size > maxSize) {
+    const firstKey = map.keys().next().value as K | undefined;
+    if (typeof firstKey === "undefined") break;
+    map.delete(firstKey);
+  }
+}
+
 type CitiesIndexFile = {
   countries: Array<{ country: string; count: number }>;
 };
@@ -223,6 +241,10 @@ type TithiApiResponse = {
   illumination: number;
 };
 
+const TITHI_CACHE_MAX = 300;
+const TRANSIT_CHART_CACHE_MAX = 60;
+const VIMSHOTTARI_CACHE_MAX = 6;
+
 type SadeSatiApiSegment = { start_utc: string; end_utc: string };
 type SadeSatiApiPeriod = { start_utc: string; end_utc: string; duration_days: number; segments: SadeSatiApiSegment[] };
 type SadeSatiApiResponse = {
@@ -237,7 +259,13 @@ type SadeSatiApiResponse = {
 };
 
 type ChartVariant = "rashi" | "chandra" | "surya";
-type VimshottariDepth = 1 | 2 | 3 | 4 | 5;
+type VimshottariDepth = 1 | 2 | 3 | 4;
+type VimshottariCachedPeriod = {
+  lord: VimshottariPlanetCode;
+  startMs: number;
+  endMs: number;
+  path: VimshottariPlanetCode[];
+};
 
 const CHART_VARIANT_OPTIONS: Array<{ value: ChartVariant; title: string; subtitle: string }> = [
   { value: "rashi", title: "Rashi", subtitle: "Карта восходящего знака" },
@@ -815,8 +843,11 @@ const AdditionalChartPage: React.FC = () => {
   const [transitError, setTransitError] = useState<string | null>(null);
   const transitAbortRef = useRef<AbortController | null>(null);
   const transitSeqRef = useRef(0);
+  const transitDebounceRef = useRef<number | null>(null);
+  const transitChartCacheRef = useRef<Map<string, ChartResponse>>(new Map());
   const [transitTargetMsUtc, setTransitTargetMsUtc] = useState<number | null>(null);
-  const [vimshottariDepth, setVimshottariDepth] = useState<VimshottariDepth>(1);
+  const vimshottariPeriodsCacheRef = useRef<Map<string, VimshottariCachedPeriod[]>>(new Map());
+  const [vimshottariDepth, setVimshottariDepth] = useState<VimshottariDepth>(4);
   const [vimshottariFocusMsUtc, setVimshottariFocusMsUtc] = useState<number | null>(null);
   const [chartTextResources, setChartTextResources] = useState<ChartTextResources | null>(null);
   const [licenseStatus, setLicenseStatus] = useState<ElectronLicenseStatus | null>(null);
@@ -833,6 +864,8 @@ const AdditionalChartPage: React.FC = () => {
   const [gatakiTithiLoading, setGatakiTithiLoading] = useState(false);
   const [gatakiTithiError, setGatakiTithiError] = useState<string | null>(null);
   const gatakiTithiAbortRef = useRef<AbortController | null>(null);
+  const gatakiTithiDebounceRef = useRef<number | null>(null);
+  const tithiCacheRef = useRef<Map<string, TithiApiResponse>>(new Map());
   const [tithiInfo, setTithiInfo] = useState<TithiApiResponse | null>(null);
   const [tithiLoading, setTithiLoading] = useState(false);
   const [tithiError, setTithiError] = useState<string | null>(null);
@@ -863,7 +896,7 @@ const AdditionalChartPage: React.FC = () => {
 
   useEffect(() => {
     if (rightPanelTab !== "vimshottari-dasha") return;
-    setVimshottariDepth(1);
+    setVimshottariDepth(4);
   }, [rightPanelTab]);
 
   useEffect(() => {
@@ -1125,6 +1158,16 @@ const AdditionalChartPage: React.FC = () => {
       return;
     }
 
+    const cached = lruGet(tithiCacheRef.current, datetimeIso);
+    if (cached) {
+      if (tithiDebounceRef.current) clearTimeout(tithiDebounceRef.current);
+      tithiAbortRef.current?.abort();
+      setTithiInfo(cached);
+      setTithiLoading(false);
+      setTithiError(null);
+      return;
+    }
+
     if (tithiDebounceRef.current) {
       clearTimeout(tithiDebounceRef.current);
     }
@@ -1151,6 +1194,7 @@ const AdditionalChartPage: React.FC = () => {
           }
           const json = (await res.json()) as TithiApiResponse;
           if (controller.signal.aborted) return;
+          lruSet(tithiCacheRef.current, datetimeIso, json, TITHI_CACHE_MAX);
           setTithiInfo(json);
         } catch (err) {
           if (controller.signal.aborted) return;
@@ -1300,13 +1344,36 @@ const AdditionalChartPage: React.FC = () => {
       setTransitError(null);
       return;
     }
+
+    if (transitDebounceRef.current) {
+      clearTimeout(transitDebounceRef.current);
+      transitDebounceRef.current = null;
+    }
+
+    const isCalendarPick =
+      typeof selectedCalendarMsUtc === "number" &&
+      Number.isFinite(selectedCalendarMsUtc) &&
+      selectedCalendarMsUtc === ms &&
+      Boolean(selectedCalendarTz);
+    const debounceMs = isCalendarPick ? 250 : 0;
+
+    const datetimeIso = isoUtcFromMs(ms);
+    const cacheKey = `${datetimeIso}::${Number(lat).toFixed(6)}::${Number(lon).toFixed(6)}::W`;
+    const cached = lruGet(transitChartCacheRef.current, cacheKey);
+    if (cached) {
+      setTransitChart(cached);
+      setTransitLoading(false);
+      setTransitError(null);
+      return;
+    }
+
     const seq = ++transitSeqRef.current;
     transitAbortRef.current?.abort();
     const controller = new AbortController();
     transitAbortRef.current = controller;
 
     const payload: ChartRequestPayload = {
-      datetime_iso: isoUtcFromMs(ms),
+      datetime_iso: datetimeIso,
       latitude: lat,
       longitude: lon,
       elevation_m: 0,
@@ -1314,8 +1381,10 @@ const AdditionalChartPage: React.FC = () => {
     };
     setTransitLoading(true);
     setTransitError(null);
-    (async () => {
+
+    const run = async () => {
       try {
+        if (controller.signal.aborted || seq !== transitSeqRef.current) return;
         const endpoint = `${API_BASE_URL.replace(/\/$/, "")}/api/chart`;
         const res = await fetch(endpoint, {
           method: "POST",
@@ -1329,6 +1398,7 @@ const AdditionalChartPage: React.FC = () => {
         }
         const json = (await res.json()) as ChartResponse;
         if (controller.signal.aborted || seq !== transitSeqRef.current) return;
+        lruSet(transitChartCacheRef.current, cacheKey, json, TRANSIT_CHART_CACHE_MAX);
         setTransitChart(json);
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -1340,12 +1410,32 @@ const AdditionalChartPage: React.FC = () => {
           setTransitLoading(false);
         }
       }
-    })();
+    };
+
+    if (debounceMs > 0) {
+      const timeoutId = window.setTimeout(() => {
+        if (transitDebounceRef.current === timeoutId) transitDebounceRef.current = null;
+        void run();
+      }, debounceMs);
+      transitDebounceRef.current = timeoutId;
+
+      return () => {
+        clearTimeout(timeoutId);
+        if (transitDebounceRef.current === timeoutId) transitDebounceRef.current = null;
+        controller.abort();
+      };
+    }
+
+    void run();
     return () => controller.abort();
-  }, [lat, lon, transitTargetMsUtc, transitsEnabled, vimshottariFocusMsUtc]);
+  }, [lat, lon, selectedCalendarMsUtc, selectedCalendarTz, transitTargetMsUtc, transitsEnabled, vimshottariFocusMsUtc]);
 
   useEffect(() => {
     if (!gatakiOpen) {
+      if (gatakiTithiDebounceRef.current) {
+        clearTimeout(gatakiTithiDebounceRef.current);
+        gatakiTithiDebounceRef.current = null;
+      }
       gatakiTithiAbortRef.current?.abort();
       setGatakiTithiInfo(null);
       setGatakiTithiError(null);
@@ -1353,10 +1443,33 @@ const AdditionalChartPage: React.FC = () => {
       return;
     }
     if (!selectedCalendarMsUtc || !Number.isFinite(selectedCalendarMsUtc) || !selectedCalendarTz) {
+      if (gatakiTithiDebounceRef.current) {
+        clearTimeout(gatakiTithiDebounceRef.current);
+        gatakiTithiDebounceRef.current = null;
+      }
       gatakiTithiAbortRef.current?.abort();
       setGatakiTithiInfo(null);
       setGatakiTithiError(null);
       setGatakiTithiLoading(false);
+      return;
+    }
+
+    if (gatakiTithiDebounceRef.current) {
+      clearTimeout(gatakiTithiDebounceRef.current);
+      gatakiTithiDebounceRef.current = null;
+    }
+
+    const cacheKey = `${selectedCalendarMsUtc}::${selectedCalendarTz}`;
+    const cached = lruGet(tithiCacheRef.current, cacheKey);
+    if (cached) {
+      if (gatakiTithiDebounceRef.current) {
+        clearTimeout(gatakiTithiDebounceRef.current);
+        gatakiTithiDebounceRef.current = null;
+      }
+      gatakiTithiAbortRef.current?.abort();
+      setGatakiTithiInfo(cached);
+      setGatakiTithiLoading(false);
+      setGatakiTithiError(null);
       return;
     }
 
@@ -1366,33 +1479,44 @@ const AdditionalChartPage: React.FC = () => {
     setGatakiTithiLoading(true);
     setGatakiTithiError(null);
 
-    (async () => {
-      try {
-        const datetimeIso = moment.tz(selectedCalendarMsUtc, selectedCalendarTz).format("YYYY-MM-DDTHH:mm:ssZ");
-        const endpoint = `${API_BASE_URL.replace(/\/$/, "")}/api/tithi`;
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ datetime_iso: datetimeIso }),
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          const txt = await res.text();
-          throw new Error(`Ошибка сервера: ${res.status} ${txt}`);
-        }
-        const json = (await res.json()) as TithiApiResponse;
-        if (controller.signal.aborted) return;
-        setGatakiTithiInfo(json);
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        setGatakiTithiInfo(null);
-        setGatakiTithiError(err instanceof Error ? err.message : String(err));
-      } finally {
-        if (!controller.signal.aborted) setGatakiTithiLoading(false);
-      }
-    })();
+    const datetimeIso = moment.tz(selectedCalendarMsUtc, selectedCalendarTz).format("YYYY-MM-DDTHH:mm:ssZ");
 
-    return () => controller.abort();
+    const timeoutId = window.setTimeout(() => {
+      if (gatakiTithiDebounceRef.current === timeoutId) gatakiTithiDebounceRef.current = null;
+      void (async () => {
+        try {
+          if (controller.signal.aborted) return;
+          const endpoint = `${API_BASE_URL.replace(/\/$/, "")}/api/tithi`;
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ datetime_iso: datetimeIso }),
+            signal: controller.signal,
+          });
+          if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(`Ошибка сервера: ${res.status} ${txt}`);
+          }
+          const json = (await res.json()) as TithiApiResponse;
+          if (controller.signal.aborted) return;
+          lruSet(tithiCacheRef.current, cacheKey, json, TITHI_CACHE_MAX);
+          setGatakiTithiInfo(json);
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          setGatakiTithiInfo(null);
+          setGatakiTithiError(err instanceof Error ? err.message : String(err));
+        } finally {
+          if (!controller.signal.aborted) setGatakiTithiLoading(false);
+        }
+      })();
+    }, 250);
+    gatakiTithiDebounceRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (gatakiTithiDebounceRef.current === timeoutId) gatakiTithiDebounceRef.current = null;
+      controller.abort();
+    };
   }, [gatakiOpen, selectedCalendarMsUtc, selectedCalendarTz]);
 
   const scheduleRebuild = useCallback(
@@ -2461,12 +2585,7 @@ const AdditionalChartPage: React.FC = () => {
                     const moonInfo = nakshatraFromLonJ2000(moonLon);
                     const startLord = vimshottariPlanetFromNakshatraLord(moonInfo.lord);
 
-                    type Period = {
-                      lord: VimshottariPlanetCode;
-                      startMs: number;
-                      endMs: number;
-                      path: VimshottariPlanetCode[];
-                    };
+                    type Period = VimshottariCachedPeriod;
 
                     const overlapsLifeWindow = (p: { startMs: number; endMs: number }) =>
                       p.endMs > windowStartMsUtc && p.startMs < windowEndMsUtc;
@@ -2512,9 +2631,21 @@ const AdditionalChartPage: React.FC = () => {
                       }
                     }
 
-                    let listPeriods: Period[] = mahaPeriodsAll.filter(overlapsLifeWindow);
-                    for (let level = 2 as VimshottariDepth; level <= vimshottariDepth; level = (level + 1) as VimshottariDepth) {
-                      listPeriods = expand(listPeriods).filter(overlapsLifeWindow);
+                    const birthKey = `${meta.datetimeIso}::${Number(lat).toFixed(6)}::${Number(lon).toFixed(6)}::${ianaTz}::${moonLon.toFixed(
+                      8,
+                    )}::${vimshottariDepth}`;
+
+                    let listPeriods = lruGet(vimshottariPeriodsCacheRef.current, birthKey);
+                    if (!listPeriods) {
+                      listPeriods = mahaPeriodsAll.filter(overlapsLifeWindow);
+                      for (
+                        let level = 2 as VimshottariDepth;
+                        level <= vimshottariDepth;
+                        level = (level + 1) as VimshottariDepth
+                      ) {
+                        listPeriods = expand(listPeriods).filter(overlapsLifeWindow);
+                      }
+                      lruSet(vimshottariPeriodsCacheRef.current, birthKey, listPeriods, VIMSHOTTARI_CACHE_MAX);
                     }
 
                     const activeIdx = findPeriodIndexContaining(listPeriods, focusMsUtc);
@@ -2527,7 +2658,7 @@ const AdditionalChartPage: React.FC = () => {
                         onChange={(e) => setVimshottariDepth(Number(e.target.value) as VimshottariDepth)}
                         style={{ border: "1px solid #000", background: "#fff3d8", padding: "2px 6px" }}
                       >
-                        {[1, 2, 3, 4, 5].map((n) => (
+                        {[1, 2, 3, 4].map((n) => (
                           <option key={n} value={n}>
                             {n}
                           </option>

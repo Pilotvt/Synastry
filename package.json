@@ -82,6 +82,8 @@
       "THIRD_PARTY_NOTICES.txt",
       "requirements.txt",
       "package.json",
+      "!.Лекции/**",
+      "!Ключи.txt",
       "!python-env",
       "!test_images"
     ],

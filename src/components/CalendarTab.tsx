@@ -241,6 +241,7 @@ export default function CalendarTab(props: {
   onToggleGataki?: () => void;
   gatakiDisabled?: boolean;
 }) {
+  const YEAR_CACHE_MAX = 10;
   const systemTz = useMemo(() => {
     const guessed = moment.tz.guess();
     if (guessed && moment.tz.zone(guessed)) return guessed;
@@ -270,6 +271,8 @@ export default function CalendarTab(props: {
     const key = `${year}::${systemTz}`;
     const cached = cacheRef.current.get(key);
     if (cached) {
+      cacheRef.current.delete(key);
+      cacheRef.current.set(key, cached);
       setData(cached);
       setError(null);
       setLoading(false);
@@ -295,7 +298,13 @@ export default function CalendarTab(props: {
         }
         const json = (await res.json()) as CalendarYearResponse;
         if (controller.signal.aborted) return;
+        cacheRef.current.delete(key);
         cacheRef.current.set(key, json);
+        while (cacheRef.current.size > YEAR_CACHE_MAX) {
+          const firstKey = cacheRef.current.keys().next().value as string | undefined;
+          if (!firstKey) break;
+          cacheRef.current.delete(firstKey);
+        }
         setData(json);
       } catch (err) {
         if (controller.signal.aborted) return;
