@@ -520,11 +520,17 @@ function DoneButton({ navigate, getProfileSnapshot, currentUserId }: DoneButtonP
 
       const moderation = await checkTextModeration(aboutText, { languageHint: "ru" });
       if (!moderation.isClean) {
+        const details = [
+          moderation.matches.length ? `Совпадения: ${moderation.matches.join(", ")}` : "",
+          moderation.reasons.length ? `Причина: ${moderation.reasons.join("; ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
         await showMessageBox({
           type: "warning",
           title: "Невозможно сохранить",
           message: "Непристойные слова в поле «О себе».",
-          detail: "Удалите непристойные слова и попробуйте снова.",
+          detail: details || "Удалите непристойные слова и попробуйте снова.",
         });
         return;
       }
@@ -532,11 +538,17 @@ function DoneButton({ navigate, getProfileSnapshot, currentUserId }: DoneButtonP
       const professionText = typeof snapshot.profession === "string" ? snapshot.profession : "";
       const professionModeration = await checkTextModeration(professionText, { languageHint: "ru" });
       if (!professionModeration.isClean) {
+        const details = [
+          professionModeration.matches.length ? `Совпадения: ${professionModeration.matches.join(", ")}` : "",
+          professionModeration.reasons.length ? `Причина: ${professionModeration.reasons.join("; ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
         await showMessageBox({
           type: "warning",
           title: "Невозможно сохранить",
           message: "Непристойные слова в поле «Профессия».",
-          detail: "Удалите непристойные слова и попробуйте снова.",
+          detail: details || "Удалите непристойные слова и попробуйте снова.",
         });
         return;
       }
@@ -1259,9 +1271,11 @@ const Questionnaire: React.FC = () => {
   // Build a profile snapshot from current state.
   // IMPORTANT: empty strings are treated as an explicit "clear" (no fallback to old localStorage values).
 	  const getProfileSnapshot = useCallback((): ProfileSnapshot => {
-    const ownerId = currentUserId ?? null;
+    // If `currentUserId` is not resolved yet, do NOT require ownerId match,
+    // otherwise we may lose the base snapshot and overwrite core fields (name/birth/city) with blanks.
+    const expectedOwnerId = currentUserId ?? undefined;
     const stored = readProfileFromStorage<ProfileSnapshot | Record<string, JsonValue>>(STORAGE_KEY);
-    const source = stored && isOwnerMatch(stored.ownerId, ownerId) ? (stored.profile ?? stored.raw) : null;
+    const source = stored && isOwnerMatch(stored.ownerId, expectedOwnerId) ? (stored.profile ?? stored.raw) : null;
     const profileBase: ProfileSnapshot = isRecord(source) ? (source as ProfileSnapshot) : {} as ProfileSnapshot;
 
     const resolvedGender = (gender || profileBase.gender) as ProfileSnapshot["gender"];

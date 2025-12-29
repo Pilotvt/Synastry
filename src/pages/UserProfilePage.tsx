@@ -62,11 +62,19 @@ type OtherProfilePreview = {
   residenceCountry?: string | null;
   residenceCityName?: string | null;
   mainPhoto: string | null;
+  smallPhotos: (string | null)[];
   birth: string | null;
   ascSign: string | null;
   chartScreenshot: string | null;
   gender: "male" | "female" | null;
   typeazh: string;
+  familyStatus: string;
+  about: string;
+  interests: string;
+  religion: string;
+  career: string;
+  profession: string;
+  children: string;
   chart: ChartPayload;
   chartSignature: string | null;
   lastSeenAt: string | null;
@@ -500,11 +508,19 @@ const restoreCachedOtherProfile = (value: unknown): OtherProfilePreview | null =
   const residenceCountry = readStringProp(record, 'residenceCountry');
   const residenceCityName = readStringProp(record, 'residenceCityName');
   const mainPhoto = typeof value.mainPhoto === 'string' ? value.mainPhoto : null;
+  const smallPhotos = normalizeSmallPhotosField(record.smallPhotos ?? record.photos ?? record.thumbnails ?? (value as Record<string, unknown>).smallPhotos);
   const birth = typeof value.birth === 'string' ? value.birth : null;
   const ascSign = typeof value.ascSign === 'string' ? value.ascSign : null;
   const chartScreenshot = typeof value.chartScreenshot === 'string' ? value.chartScreenshot : null;
   const gender = normalizeGender(value.gender);
   const typeazh = typeof value.typeazh === 'string' ? value.typeazh : '';
+  const familyStatus = readStringProp(record, 'familyStatus');
+  const about = readStringProp(record, 'about');
+  const interests = readStringProp(record, 'interests');
+  const religion = readStringProp(record, 'religion');
+  const career = readStringProp(record, 'career');
+  const profession = readStringProp(record, 'profession');
+  const children = readStringProp(record, 'children');
   let chart: ChartPayload = null;
   if (value.chart === null) {
     chart = null;
@@ -527,11 +543,19 @@ const restoreCachedOtherProfile = (value: unknown): OtherProfilePreview | null =
     residenceCountry,
     residenceCityName,
     mainPhoto,
+    smallPhotos,
     birth,
     ascSign,
     chartScreenshot,
     gender,
     typeazh,
+    familyStatus,
+    about,
+    interests,
+    religion,
+    career,
+    profession,
+    children,
     chart,
     chartSignature,
     lastSeenAt,
@@ -586,18 +610,20 @@ function formatAgeRu(age: number): string {
     mod10 === 1 && mod100 !== 11 ? 'год' : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'года' : 'лет';
   return `${value} ${word}`;
 }
-const UserProfilePage: React.FC = () => {
+  const UserProfilePage: React.FC = () => {
   const { userId } = useParams();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [chart, setChart] = useState<ChartRow | null>(null);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [otherProfilePhotoIndex, setOtherProfilePhotoIndex] = useState(0);
   const [identityEmail, setIdentityEmail] = useState<string | null>(null);
   const [licenseStatus, setLicenseStatus] = useState<ElectronLicenseStatus | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const viewingOwnProfile = useMemo(() => Boolean(currentUserId && userId && currentUserId === userId), [currentUserId, userId]);
   const [otherProfiles, setOtherProfiles] = useState<OtherProfilePreview[]>([]);
   const [otherLoading, setOtherLoading] = useState(true);
+  const [selectedOtherProfileId, setSelectedOtherProfileId] = useState<string | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [compatibilityMap, setCompatibilityMap] = useState<Record<string, CompatibilityPreview>>({});
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
@@ -617,6 +643,14 @@ const UserProfilePage: React.FC = () => {
   const blockedKeys = useMemo(() => Object.keys(blocklistEntries), [blocklistEntries]);
   const blockedIds = useMemo(() => new Set(blockedKeys), [blockedKeys]);
   const selfGender = useMemo(() => normalizeGender(profile?.gender), [profile?.gender]);
+  const selectedOtherProfile = useMemo(
+    () => (selectedOtherProfileId ? otherProfiles.find((entry) => entry.id === selectedOtherProfileId) ?? null : null),
+    [otherProfiles, selectedOtherProfileId],
+  );
+
+  useEffect(() => {
+    setOtherProfilePhotoIndex(0);
+  }, [selectedOtherProfileId]);
   const visibleOtherProfiles = useMemo(() => {
     const blockedSet = blockedKeys.length ? new Set(blockedKeys) : null;
     const base = blockedSet ? otherProfiles.filter((entry) => !blockedSet.has(entry.id)) : otherProfiles;
@@ -1338,49 +1372,65 @@ const UserProfilePage: React.FC = () => {
           setOtherProfiles([]);
           return;
         }
-        let mapped = data
-          .map((entry) => {
-            if (!isRecord(entry) || typeof entry.id !== 'string') return null;
-            const snapshot = isRecord(entry.data) ? (entry.data as Record<string, unknown>) : {};
-            const lastSeenRaw = entry['last_seen_at'];
-            const lastSeenAt = typeof lastSeenRaw === 'string' ? lastSeenRaw : null;
-            const personName = typeof snapshot.personName === 'string' ? snapshot.personName : '';
-            const lastName = typeof snapshot.lastName === 'string' ? snapshot.lastName : '';
-            const selectedCity = typeof snapshot.selectedCity === 'string' ? snapshot.selectedCity : '';
-            const cityNameRuRaw = typeof snapshot.cityNameRu === 'string' ? snapshot.cityNameRu : '';
-            const cityNameRu = cityNameRuRaw || (selectedCity ? latinToRuName(selectedCity) : '');
-            const residenceCountry = typeof snapshot.residenceCountry === 'string' ? snapshot.residenceCountry : '';
-            const residenceCityName =
-              typeof snapshot.residenceCityName === 'string'
-                ? snapshot.residenceCityName
-                : typeof snapshot.residenceCity === 'string'
-                  ? snapshot.residenceCity
-                  : '';
-            const mainPhoto = typeof snapshot.mainPhoto === 'string' ? snapshot.mainPhoto : null;
-            const birth = typeof snapshot.birth === 'string' ? snapshot.birth : null;
-            const ascSignFromProfile = typeof snapshot.ascSign === 'string' ? snapshot.ascSign : null;
-            const gender = normalizeGender(snapshot.gender);
-            const typeazh = typeof snapshot.typeazh === 'string' ? snapshot.typeazh : '';
-            return {
-              id: entry.id,
-              personName,
-              lastName,
-              selectedCity,
-              cityNameRu,
-              residenceCountry,
-              residenceCityName,
-              mainPhoto,
-              birth,
-              ascSign: ascSignFromProfile,
-              gender,
-              typeazh,
-              chartScreenshot: null,
-              chart: null,
-              chartSignature: null,
-              lastSeenAt,
-            } as OtherProfilePreview;
-          })
-          .filter((item): item is OtherProfilePreview => Boolean(item));
+	        let mapped = data
+	          .map((entry) => {
+	            if (!isRecord(entry) || typeof entry.id !== 'string') return null;
+	            const snapshot = isRecord(entry.data) ? (entry.data as Record<string, unknown>) : {};
+	            const lastSeenRaw = entry['last_seen_at'];
+	            const lastSeenAt = typeof lastSeenRaw === 'string' ? lastSeenRaw : null;
+	            const personName = typeof snapshot.personName === 'string' ? snapshot.personName : '';
+	            const lastName = typeof snapshot.lastName === 'string' ? snapshot.lastName : '';
+	            const selectedCity = typeof snapshot.selectedCity === 'string' ? snapshot.selectedCity : '';
+	            const cityNameRuRaw = typeof snapshot.cityNameRu === 'string' ? snapshot.cityNameRu : '';
+	            const cityNameRu = cityNameRuRaw || (selectedCity ? latinToRuName(selectedCity) : '');
+	            const residenceCountry = typeof snapshot.residenceCountry === 'string' ? snapshot.residenceCountry : '';
+	            const residenceCityName =
+	              typeof snapshot.residenceCityName === 'string'
+	                ? snapshot.residenceCityName
+	                : typeof snapshot.residenceCity === 'string'
+	                  ? snapshot.residenceCity
+	                  : '';
+	            const mainPhoto = typeof snapshot.mainPhoto === 'string' ? snapshot.mainPhoto : null;
+	            const smallPhotos = normalizeSmallPhotosField(snapshot.smallPhotos);
+	            const birth = typeof snapshot.birth === 'string' ? snapshot.birth : null;
+	            const ascSignFromProfile = typeof snapshot.ascSign === 'string' ? snapshot.ascSign : null;
+	            const gender = normalizeGender(snapshot.gender);
+	            const typeazh = typeof snapshot.typeazh === 'string' ? snapshot.typeazh : '';
+	            const familyStatus = typeof snapshot.familyStatus === 'string' ? snapshot.familyStatus : '';
+	            const about = typeof snapshot.about === 'string' ? snapshot.about : '';
+	            const interests = typeof snapshot.interests === 'string' ? snapshot.interests : '';
+	            const religion = typeof snapshot.religion === 'string' ? snapshot.religion : '';
+	            const career = typeof snapshot.career === 'string' ? snapshot.career : '';
+	            const profession = typeof snapshot.profession === 'string' ? snapshot.profession : '';
+	            const children = typeof snapshot.children === 'string' ? snapshot.children : '';
+	            return {
+	              id: entry.id,
+	              personName,
+	              lastName,
+	              selectedCity,
+	              cityNameRu,
+	              residenceCountry,
+	              residenceCityName,
+	              mainPhoto,
+	              smallPhotos,
+	              birth,
+	              ascSign: ascSignFromProfile,
+	              gender,
+	              typeazh,
+	              familyStatus,
+	              about,
+	              interests,
+	              religion,
+	              career,
+	              profession,
+	              children,
+	              chartScreenshot: null,
+	              chart: null,
+	              chartSignature: null,
+	              lastSeenAt,
+	            } as OtherProfilePreview;
+	          })
+	          .filter((item): item is OtherProfilePreview => Boolean(item));
         // filter by opposite gender if current profile gender known
         const g = profile?.gender;
         if (g === 'male' || g === 'female') {
@@ -1394,7 +1444,7 @@ const UserProfilePage: React.FC = () => {
             try {
               const { data: chartRow, error: chartErr } = await supabase
                 .from('charts')
-                .select('chart')
+                .select('chart, meta')
                 .eq('user_id', entry.id)
                 .order('created_at', { ascending: false })
                 .limit(1)
@@ -1405,19 +1455,14 @@ const UserProfilePage: React.FC = () => {
               if (chartRow && isRecord(chartRow)) {
                 const normalized = toChartRow(chartRow);
                 chartPayload = normalized.chart ?? null;
-                chartScreenshot = extractChartScreenshot(normalized);
+                chartScreenshot = resolveScreenshotFromAny(normalized) ?? extractChartScreenshot(normalized);
                 if (chartScreenshot && typeof chartScreenshot === 'string' && needsSupabaseResolution(chartScreenshot)) {
                   try {
                     const resolved = await resolveSupabaseScreenshotUrl(chartScreenshot);
-                    const isSupabasePublic = /\/storage\/v1\/object\/public\//.test(chartScreenshot);
-                    if (
-                      resolved &&
-                      typeof resolved === 'string' &&
-                      !resolved.startsWith('supabase://') &&
-                      !(isSupabasePublic && resolved === chartScreenshot)
-                    ) {
+                    if (resolved && typeof resolved === 'string' && !resolved.startsWith('supabase://')) {
                       chartScreenshot = resolved;
-                    } else {
+                    }
+                    if (chartScreenshot?.startsWith('supabase://')) {
                       chartScreenshot = null;
                     }
                   } catch (resolveError) {
@@ -1482,6 +1527,14 @@ const UserProfilePage: React.FC = () => {
       return next;
     });
   }, [otherProfiles, updateCompatibilityMap]);
+
+  useEffect(() => {
+    if (!selectedOtherProfileId) return;
+    const stillExists = otherProfiles.some((entry) => entry.id === selectedOtherProfileId);
+    if (!stillExists) {
+      setSelectedOtherProfileId(null);
+    }
+  }, [otherProfiles, selectedOtherProfileId]);
   useEffect(() => {
     if (!profile) return;
     const baseChartPayload = extractChartPayload(chart);
@@ -1805,17 +1858,208 @@ const UserProfilePage: React.FC = () => {
             </div>
           </div>
         </div>
-        <aside className="user-profile-sidebar sticky top-24 h-[calc(100vh-6rem)] overflow-hidden">
-          <div className="user-profile-scroll h-full overflow-y-auto">
-            <div className="bg-slate-900/40 border border-slate-700 rounded-lg p-4 flex flex-col h-full">
-              <h2 className="text-lg font-semibold text-white mb-3">Анкеты других пользователей</h2>
-              <div className="flex-1 pr-1">
-                {partnerSearchLocked ? (
-                  <div className="text-sm text-white/80 border border-white/10 bg-white/5 rounded-md px-3 py-4 text-center flex flex-col gap-3 items-center">
-                    <div>Приобретите лицензию для поиска партнёра.</div>
-                    <button
-                      type="button"
-                      onClick={requestPurchaseDialog}
+        <aside className="user-profile-sidebar">
+          <div className="user-profile-scroll">
+	            <div className="bg-slate-900/40 border border-slate-700 rounded-lg p-4 flex flex-col h-full">
+	              <h2 className="text-lg font-semibold text-white mb-3">Анкеты других пользователей</h2>
+	              <div className="flex-1 pr-1">
+	                {selectedOtherProfile ? (
+	                  (() => {
+	                    const entry = selectedOtherProfile;
+	                    const fullName =
+	                      (entry.personName || 'Имя не указано') + (entry.lastName ? ` ${entry.lastName}` : '');
+	                    const age = calculateAge(entry.birth);
+	                    const ageLabel = typeof age === 'number' ? formatAgeRu(age) : null;
+	                    const genderLabel =
+	                      entry.gender === 'male' ? 'мужской' : entry.gender === 'female' ? 'женский' : '—';
+	                    const birthPlaceLabel = getCityLabel(entry.cityNameRu, entry.selectedCity);
+	                    const residenceLabel = formatResidenceLabel(entry.residenceCityName, entry.residenceCountry);
+
+	                    const photoUrls = [
+	                      typeof entry.mainPhoto === 'string' ? entry.mainPhoto : null,
+	                      ...(Array.isArray(entry.smallPhotos) ? entry.smallPhotos : []),
+	                    ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+	                    const safeIndex = Math.min(
+	                      Math.max(0, otherProfilePhotoIndex),
+	                      Math.max(0, photoUrls.length - 1),
+	                    );
+	                    const currentPhoto = photoUrls.length ? photoUrls[safeIndex] : null;
+	                    const canPrevPhoto = safeIndex > 0;
+	                    const canNextPhoto = safeIndex < photoUrls.length - 1;
+
+	                    const chatDisabled =
+	                      !currentUserId ||
+	                      !selfGender ||
+	                      !entry.gender ||
+	                      entry.gender === selfGender ||
+	                      partnerSearchLocked;
+
+	                    return (
+	                      <div className="space-y-3">
+	                        <div className="flex items-center justify-between gap-2">
+	                          <button
+	                            type="button"
+	                            onClick={() => setSelectedOtherProfileId(null)}
+	                            className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
+	                          >
+	                            Назад
+	                          </button>
+	                          <button
+	                            type="button"
+	                            onClick={() => handleOpenChat(entry)}
+	                            className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`}
+	                            disabled={chatDisabled}
+	                            title={
+	                              !currentUserId
+	                                ? 'Требуется вход в учётную запись'
+	                                : !selfGender
+	                                  ? 'Укажите свой пол, чтобы открыть чат'
+	                                  : !entry.gender || entry.gender === selfGender
+	                                    ? 'Чат доступен только с противоположным полом'
+	                                    : partnerSearchLocked
+	                                      ? 'Для чата нужен активный доступ поиска партнёров'
+	                                      : 'Открыть окно чата'
+	                            }
+	                          >
+	                            Чат
+	                          </button>
+	                        </div>
+
+	                        <div className="text-base font-bold text-white">
+	                          {fullName}
+	                          {ageLabel ? `, ${ageLabel}` : ''}
+	                        </div>
+
+	                        <div className="text-xs text-white/80 space-y-1">
+	                          <div>
+	                            <span className="text-white font-semibold">Восходящий знак:</span> {entry.ascSign || '—'}
+	                          </div>
+	                          <div>
+	                            <span className="text-white font-semibold">Пол:</span> {genderLabel}
+	                          </div>
+	                          <div>
+	                            <span className="text-white font-semibold">Место рождения:</span> {birthPlaceLabel || '—'}
+	                          </div>
+	                          <div>
+	                            <span className="text-white font-semibold">Место жительства:</span> {residenceLabel || '—'}
+	                          </div>
+	                        </div>
+
+	                        <div className="relative overflow-hidden rounded-lg border border-blue-300 p-1 bg-white/5">
+	                          {currentPhoto ? (
+	                            <img
+	                              src={currentPhoto}
+	                              alt="Фото"
+	                              className="block w-full h-[286px] object-contain rounded-lg bg-transparent"
+	                            />
+	                          ) : (
+	                            <div className="bg-transparent border border-dashed border-blue-300 rounded-lg w-full h-[286px] flex items-center justify-center text-sm text-blue-500">
+	                              Нет фото
+	                            </div>
+	                          )}
+	                          {canPrevPhoto ? (
+	                            <button
+	                              type="button"
+	                              aria-label="Предыдущее фото"
+	                              onClick={() => setOtherProfilePhotoIndex((i) => Math.max(0, i - 1))}
+	                              className="absolute top-1/2 -translate-y-1/2 h-9 w-9 rounded-full border border-black/30 bg-black/50 text-white flex items-center justify-center z-10"
+	                              style={{ left: 2, right: 'auto' }}
+	                            >
+	                              ‹
+	                            </button>
+	                          ) : null}
+	                          {canNextPhoto ? (
+	                            <button
+	                              type="button"
+	                              aria-label="Следующее фото"
+	                              onClick={() =>
+	                                setOtherProfilePhotoIndex((i) => Math.min(Math.max(0, photoUrls.length - 1), i + 1))
+	                              }
+	                              className="absolute top-1/2 -translate-y-1/2 h-9 w-9 rounded-full border border-black/30 bg-black/50 text-white flex items-center justify-center z-10"
+	                              style={{ right: 2, left: 'auto' }}
+	                            >
+	                              ›
+	                            </button>
+	                          ) : null}
+	                        </div>
+
+	                        <div className="relative overflow-hidden rounded-lg border border-blue-300 p-1 bg-white/5 w-full">
+	                          {entry.chartScreenshot ? (
+	                            <AutoAspectImage
+	                              src={entry.chartScreenshot}
+	                              alt="Скриншот карты"
+	                              wrapperClassName="mx-auto w-full max-w-[360px]"
+	                              imgClassName="object-contain"
+	                            />
+	                          ) : (
+	                            <div className="mx-auto w-full max-w-[360px] aspect-[3/2] flex items-center justify-center text-gray-400">
+	                              Нет скриншота карты
+	                            </div>
+	                          )}
+	                        </div>
+
+	                        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+	                          <div className="grid grid-cols-2 gap-4">
+	                            <div>
+	                              <h3 className="text-sm font-semibold leading-tight mb-1 text-white">Рост</h3>
+	                              <div className="text-sm leading-snug whitespace-pre-line text-white/80">
+	                                {entry.typeazh || 'Не указано'}
+	                              </div>
+	                            </div>
+	                            <div>
+	                              <h3 className="text-sm font-semibold leading-tight mb-1 text-white">Семейное положение</h3>
+	                              <div className="text-sm leading-snug whitespace-pre-line text-white/80">
+	                                {entry.familyStatus || 'Не указано'}
+	                              </div>
+	                            </div>
+	                            <div className="col-span-2">
+	                              <h3 className="text-sm font-semibold leading-tight mb-1 text-white">О себе</h3>
+	                              <div className="text-sm leading-snug whitespace-pre-line text-white/80">
+	                                {entry.about || 'Не указано'}
+	                              </div>
+	                            </div>
+	                            <div>
+	                              <h3 className="text-sm font-semibold leading-tight mb-1 text-white">Интересы</h3>
+	                              <div className="text-sm leading-snug whitespace-pre-line text-white/80">
+	                                {entry.interests || 'Не указано'}
+	                              </div>
+	                            </div>
+	                            <div>
+	                              <h3 className="text-sm font-semibold leading-tight mb-1 text-white">Религия</h3>
+	                              <div className="text-sm leading-snug whitespace-pre-line text-white/80">
+	                                {entry.religion || 'Не указано'}
+	                              </div>
+	                            </div>
+	                            <div className="col-span-2">
+	                              <h3 className="text-sm font-semibold leading-tight mb-1 text-white">Образование</h3>
+	                              <div className="text-sm leading-snug whitespace-pre-line text-white/80">
+	                                {entry.career || 'Не указано'}
+	                              </div>
+	                            </div>
+	                            <div>
+	                              <h3 className="text-sm font-semibold leading-tight mb-1 text-white">Профессия</h3>
+	                              <div className="text-sm leading-snug whitespace-pre-line text-white/80">
+	                                {entry.profession || 'Не указано'}
+	                              </div>
+	                            </div>
+	                            <div>
+	                              <h3 className="text-sm font-semibold leading-tight mb-1 text-white">Дети</h3>
+	                              <div className="text-sm leading-snug whitespace-pre-line text-white/80">
+	                                {entry.children || 'Не указано'}
+	                              </div>
+	                            </div>
+	                          </div>
+	                        </div>
+	                      </div>
+	                    );
+	                  })()
+	                ) : partnerSearchLocked ? (
+	                  <div className="text-sm text-white/80 border border-white/10 bg-white/5 rounded-md px-3 py-4 text-center flex flex-col gap-3 items-center">
+	                    <div>Приобретите лицензию для поиска партнёра.</div>
+	                    <button
+	                      type="button"
+	                      onClick={requestPurchaseDialog}
                       className={`${BUTTON_SECONDARY} px-4 py-1.5 text-sm`}
                     >
                       Купить лицензию
@@ -1903,34 +2147,44 @@ const UserProfilePage: React.FC = () => {
                               </div>
                               {ageLabel ? null : <div className="text-xs text-white/60">Возраст не указан</div>}
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenChat(entry)}
-                              className={`px-3 py-1 border border-black text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                                hasUnread ? 'bg-[#f0c0c0]' : 'bg-[#f5d6ab]'
-                              }`}
-                              disabled={
-                                !currentUserId ||
-                                !selfGender ||
-                                !entry.gender ||
-                                entry.gender === selfGender ||
-                                partnerSearchLocked
-                              }
-                              title={
-                                !currentUserId
-                                  ? 'Требуется вход в учётную запись'
-                                  : !selfGender
-                                    ? 'Укажите свой пол, чтобы открыть чат'
-                                    : !entry.gender || entry.gender === selfGender
-                                      ? 'Чат доступен только с противоположным полом'
-                                      : partnerSearchLocked
-                                        ? 'Для чата нужен активный доступ поиска партнёров'
-                                        : 'Открыть окно чата'
-                              }
-                            >
-                              {chatLabel}
-                            </button>
-                          </div>
+	                            <div className="flex items-center gap-2">
+	                              <button
+	                                type="button"
+	                                onClick={() => setSelectedOtherProfileId(entry.id)}
+	                                className="px-3 py-1 border border-black text-xs font-semibold whitespace-nowrap transition-colors bg-[#f5d6ab] hover:bg-[#eed0a3]"
+	                                title="Открыть анкету пользователя"
+	                              >
+	                                Анкета
+	                              </button>
+	                              <button
+	                                type="button"
+	                                onClick={() => handleOpenChat(entry)}
+	                                className={`px-3 py-1 border border-black text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+	                                  hasUnread ? 'bg-[#f0c0c0]' : 'bg-[#f5d6ab]'
+	                                }`}
+	                                disabled={
+	                                  !currentUserId ||
+	                                  !selfGender ||
+	                                  !entry.gender ||
+	                                  entry.gender === selfGender ||
+	                                  partnerSearchLocked
+	                                }
+	                                title={
+	                                  !currentUserId
+	                                    ? 'Требуется вход в учётную запись'
+	                                    : !selfGender
+	                                      ? 'Укажите свой пол, чтобы открыть чат'
+	                                      : !entry.gender || entry.gender === selfGender
+	                                        ? 'Чат доступен только с противоположным полом'
+	                                        : partnerSearchLocked
+	                                          ? 'Для чата нужен активный доступ поиска партнёров'
+	                                          : 'Открыть окно чата'
+	                                }
+	                              >
+	                                {chatLabel}
+	                              </button>
+	                            </div>
+	                          </div>
                           <div className="flex flex-row flex-wrap gap-3 md:gap-4 md:flex-nowrap md:items-stretch">
                             <div className="w-[100px] h-[140px] md:h-auto bg-white/10 border border-white/20 rounded overflow-hidden flex-shrink-0">
                               {entry.mainPhoto ? (

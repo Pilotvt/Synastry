@@ -1296,22 +1296,34 @@ useEffect(() => {
 
       const nameVerdict = await checkTextModeration(personNameText, { languageHint: "ru" });
       if (!nameVerdict.isClean) {
+        const details = [
+          nameVerdict.matches.length ? `Совпадения: ${nameVerdict.matches.join(", ")}` : "",
+          nameVerdict.reasons.length ? `Причина: ${nameVerdict.reasons.join("; ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
         await showMessageBox({
           type: "warning",
           title: "Невозможно сохранить",
           message: "Непристойные слова в поле «Имя».",
-          detail: "Удалите непристойные слова и попробуйте снова.",
+          detail: details || "Удалите непристойные слова и попробуйте снова.",
         });
         return;
       }
 
       const surnameVerdict = await checkTextModeration(lastNameText, { languageHint: "ru" });
       if (!surnameVerdict.isClean) {
+        const details = [
+          surnameVerdict.matches.length ? `Совпадения: ${surnameVerdict.matches.join(", ")}` : "",
+          surnameVerdict.reasons.length ? `Причина: ${surnameVerdict.reasons.join("; ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
         await showMessageBox({
           type: "warning",
           title: "Невозможно сохранить",
           message: "Непристойные слова в поле «Фамилия».",
-          detail: "Удалите непристойные слова и попробуйте снова.",
+          detail: details || "Удалите непристойные слова и попробуйте снова.",
         });
         return;
       }

@@ -11,6 +11,15 @@ function unique(values: string[]): string[] {
   return Array.from(new Set(values.map((v) => v.trim()).filter(Boolean)));
 }
 
+function normalizeForRemoteModeration(text: string): string {
+  return String(text)
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, "е");
+}
+
 export function findLocalProfanityMatches(text: string): string[] {
   return unique(findProfanityMatches(text));
 }
@@ -29,8 +38,9 @@ export async function checkTextModeration(
 
   const timeoutMs = options?.remoteTimeoutMs ?? 1500;
   try {
+    const remoteText = normalizeForRemoteModeration(trimmed);
     const verdict = await Promise.race([
-      moderateText(trimmed, options?.languageHint ?? "ru"),
+      moderateText(remoteText, options?.languageHint ?? "ru"),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
     ]);
 
