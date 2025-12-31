@@ -1,7 +1,7 @@
 {
-  "name": "Synastry",
+  "name": "synastry",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Desktop application for Jyotish natal charts, synastry, and muhurtas with real IAU constellations.",
   "type": "module",
   "main": "electron/main.js",
@@ -138,7 +138,7 @@
           ]
         }
       ],
-      "artifactName": "${productName}-${version}-setup.${ext}"
+      "artifactName": "Synastry-${version}-update.${ext}"
     },
     "nsis": {
       "oneClick": true,

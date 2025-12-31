@@ -1,0 +1,10 @@
+python312.zip
+.
+..
+..\app.asar.unpacked
+..\app.asar.unpacked\app
+# Allow finding the dev app folder when running the embedded interpreter outside a packaged build
+..\..\..\app
+
+# Uncomment to run site.main() automatically
+import site

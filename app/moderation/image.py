@@ -111,8 +111,13 @@ def _resolve_model_path() -> Optional[str]:
 @lru_cache
 def _detector() -> NudeDetector:
     model_path = _resolve_model_path()
-    detector = NudeDetector(model_path=model_path, inference_resolution=640) if model_path else NudeDetector(inference_resolution=640)
-    print(f"[NUDENET] Detector initialized with 640m model: {model_path}")
+    if model_path:
+        detector = NudeDetector(model_path=model_path, inference_resolution=640)
+        print(f"[NUDENET] Detector initialized with 640m model: {model_path}")
+    else:
+        # Fallback to NudeNet bundled default model (320n.onnx). It expects 320x320 inputs.
+        detector = NudeDetector(inference_resolution=320)
+        print("[NUDENET] Detector initialized with default 320n model (bundled in nudenet package)")
     return detector
 
 

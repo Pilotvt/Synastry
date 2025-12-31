@@ -1472,7 +1472,7 @@ const Questionnaire: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="p-4 pt-3">
+      <div className="p-4 pt-3 pb-10">
       <div className="max-w-[1450px] mx-auto">
         <header className="mb-4 flex flex-col items-start gap-2">
           <div className="w-full flex justify-between items-center mb-2">

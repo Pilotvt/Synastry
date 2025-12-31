@@ -1822,7 +1822,7 @@ function formatAgeRu(age: number): string {
           </div>
           {/* Profile info after chart */}
           <div className="user-profile-card">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 pb-[10px]">
               <div>
                 <h3 className="text-lg font-semibold leading-tight mb-1">Рост</h3>
                 <div className="text-base leading-snug whitespace-pre-line">{profile.typeazh || 'Не указано'}</div>
@@ -2000,7 +2000,7 @@ function formatAgeRu(age: number): string {
 	                        </div>
 
 	                        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-	                          <div className="grid grid-cols-2 gap-4">
+	                          <div className="grid grid-cols-2 gap-4 pb-[10px]">
 	                            <div>
 	                              <h3 className="text-sm font-semibold leading-tight mb-1 text-white">Рост</h3>
 	                              <div className="text-sm leading-snug whitespace-pre-line text-white/80">

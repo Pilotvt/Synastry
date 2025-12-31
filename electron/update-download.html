@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Загрузка обновления</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --panel: rgba(255, 255, 255, 0.06);
+        --border: rgba(255, 255, 255, 0.12);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.65);
+        --danger: #fca5a5;
+        --focus: rgba(37, 99, 235, 0.45);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+        padding: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 12px;
+        padding: 12px 12px 10px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 16px;
+        font-weight: 650;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin: 6px 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .row strong {
+        color: var(--text);
+        font-weight: 650;
+      }
+
+      progress {
+        width: 100%;
+        height: 16px;
+        border-radius: 999px;
+        overflow: hidden;
+        margin: 8px 0 6px;
+      }
+
+      progress::-webkit-progress-bar {
+        background-color: rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+      }
+
+      progress::-webkit-progress-value {
+        background: linear-gradient(90deg, rgba(59, 130, 246, 0.95), rgba(16, 185, 129, 0.92));
+        border-radius: 999px;
+      }
+
+      .path {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.7);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .error {
+        margin-top: 8px;
+        padding: 8px 10px;
+        border: 1px solid rgba(239, 68, 68, 0.35);
+        background: rgba(239, 68, 68, 0.12);
+        border-radius: 10px;
+        color: var(--danger);
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Загрузка обновления</h1>
+      <div class="row"><span>Версия:</span> <strong id="version">—</strong></div>
+      <progress id="bar" max="100" value="0"></progress>
+      <div class="row">
+        <span>Прогресс:</span>
+        <strong id="percent">0%</strong>
+      </div>
+      <div class="row" style="margin-top: 10px;">
+        <span>Куда скачивается:</span>
+      </div>
+      <div class="path" id="cacheDir">—</div>
+      <div class="row" style="margin-top: 10px;">
+        <span>Файл (после загрузки):</span>
+      </div>
+      <div class="path" id="downloadedFile">—</div>
+      <div class="error" id="error" style="display: none;"></div>
+    </div>
+
+    <script>
+      const bar = document.getElementById("bar");
+      const percent = document.getElementById("percent");
+      const cacheDir = document.getElementById("cacheDir");
+      const downloadedFile = document.getElementById("downloadedFile");
+      const version = document.getElementById("version");
+      const errorBox = document.getElementById("error");
+
+      const fmtBytes = (n) => {
+        const num = Number(n);
+        if (!Number.isFinite(num) || num <= 0) return "0 B";
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let v = num;
+        let i = 0;
+        while (v >= 1024 && i < units.length - 1) {
+          v /= 1024;
+          i += 1;
+        }
+        const digits = i <= 1 ? 0 : i === 2 ? 1 : 2;
+        return `${v.toFixed(digits)} ${units[i]}`;
+      };
+
+      const fmtSpeed = (bps) => `${fmtBytes(bps)}/s`;
+
+      const setError = (text) => {
+        const msg = String(text ?? "").trim();
+        if (!msg) return;
+        errorBox.textContent = msg;
+        errorBox.style.display = "";
+      };
+
+      const applyStatus = (payload) => {
+        if (!payload || typeof payload !== "object") return;
+        const type = payload.type;
+        const info = payload.info ?? null;
+
+        if (type === "available" && info?.version) {
+          version.textContent = String(info.version);
+        }
+
+        if (type === "download-started") {
+          if (info?.version) version.textContent = String(info.version);
+          if (info?.cacheDir) cacheDir.textContent = String(info.cacheDir);
+        }
+
+        if (type === "download-progress" && info) {
+          const p = Number(info.percent);
+          if (Number.isFinite(p)) {
+            bar.value = Math.max(0, Math.min(100, p));
+            percent.textContent = `${Math.round(p)}%`;
+          }
+          const bps = Number(info.bytesPerSecond);
+          const transferred = Number(info.transferred);
+          const total = Number(info.total);
+          if (Number.isFinite(bps) || Number.isFinite(transferred) || Number.isFinite(total)) {
+            const parts = [];
+            if (Number.isFinite(transferred) && Number.isFinite(total) && total > 0) {
+              parts.push(`${fmtBytes(transferred)} / ${fmtBytes(total)}`);
+            } else if (Number.isFinite(transferred)) {
+              parts.push(fmtBytes(transferred));
+            }
+            if (Number.isFinite(bps) && bps > 0) parts.push(fmtSpeed(bps));
+            if (parts.length) {
+              percent.textContent = `${Math.round(bar.value)}% • ${parts.join(" • ")}`;
+            }
+          }
+        }
+
+        if (type === "downloaded" && info) {
+          if (info.version) version.textContent = String(info.version);
+          if (info.downloadedFile) downloadedFile.textContent = String(info.downloadedFile);
+          bar.value = 100;
+          percent.textContent = "100% • загружено";
+        }
+      };
+
+      try {
+        const api = window.electronAPI?.updates;
+        if (api?.onStatus) api.onStatus(applyStatus);
+        if (api?.onError) api.onError((payload) => setError(payload?.detail || payload?.message || payload));
+      } catch (e) {
+        setError(e?.message || String(e));
+      }
+    </script>
+  </body>
+</html>
+

@@ -92,6 +92,26 @@ const uiChannel = {
   showMessageBox: (options) => ipcRenderer.invoke('ui:message-box', options ?? null),
 };
 
+const updatesChannel = {
+  onStatus: (callback) => {
+    if (typeof callback !== 'function') return () => undefined;
+    const subscription = (_event, payload) => {
+      callback(payload);
+    };
+    ipcRenderer.on('updates:status', subscription);
+    return () => ipcRenderer.removeListener('updates:status', subscription);
+  },
+  onError: (callback) => {
+    if (typeof callback !== 'function') return () => undefined;
+    const subscription = (_event, payload) => {
+      callback(payload);
+    };
+    ipcRenderer.on('updates:error', subscription);
+    return () => ipcRenderer.removeListener('updates:error', subscription);
+  },
+  checkNow: () => ipcRenderer.invoke('updates:check-now'),
+};
+
 const authChannel = {
   getPending: () => ipcRenderer.invoke('auth:get-pending'),
   acknowledge: () => ipcRenderer.invoke('auth:acknowledge'),
@@ -128,6 +148,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   chat: chatChannel,
   blocklist: blocklistChannel,
   ui: uiChannel,
+  updates: updatesChannel,
   navigation: {
     onOpenApp: (callback) => {
       if (typeof callback !== 'function') return () => undefined;

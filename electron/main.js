@@ -83,6 +83,7 @@ let autoUpdateListenersBound = false;
 let isCheckingForUpdates = false;
 let isDownloadingUpdate = false;
 let autoUpdateErrorNotified = false;
+let updateDownloadWindow = null;
 const manualUpdateState = {
   pending: false,
   window: null,
@@ -509,6 +510,92 @@ function broadcastUpdateError(payload) {
   });
 }
 
+function getUpdaterCacheDir() {
+  try {
+    const helper = autoUpdater?.downloadedUpdateHelper;
+    if (helper?.cacheDir && typeof helper.cacheDir === 'string') {
+      return helper.cacheDir;
+    }
+  } catch {}
+  try {
+    const name = autoUpdater?.updaterCacheDirName;
+    const base = typeof app.getPath === 'function' ? app.getPath('cache') : '';
+    if (name && base) {
+      return path.join(base, name);
+    }
+  } catch {}
+  try {
+    const base = typeof app.getPath === 'function' ? app.getPath('userData') : '';
+    const name = autoUpdater?.updaterCacheDirName || `${APP_DISPLAY_NAME}-updater`;
+    if (base) {
+      return path.join(base, name);
+    }
+  } catch {}
+  return '';
+}
+
+function closeUpdateDownloadWindow() {
+  if (!updateDownloadWindow || updateDownloadWindow.isDestroyed()) {
+    updateDownloadWindow = null;
+    return;
+  }
+  try {
+    updateDownloadWindow.close();
+  } catch {
+    // ignore close errors
+  }
+  updateDownloadWindow = null;
+}
+
+function ensureUpdateDownloadWindow(parentWindow) {
+  if (!ALLOW_AUTO_UPDATE || !app.isPackaged) return null;
+  if (updateDownloadWindow && !updateDownloadWindow.isDestroyed()) {
+    try {
+      updateDownloadWindow.focus();
+    } catch {}
+    return updateDownloadWindow;
+  }
+
+  const parent = getDialogTarget(parentWindow);
+  const win = new BrowserWindow({
+    width: 520,
+    height: 270,
+    resizable: false,
+    minimizable: true,
+    maximizable: false,
+    show: false,
+    parent: parent ?? undefined,
+    modal: false,
+    title: 'Загрузка обновления',
+    icon: APP_ICON,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
+      devTools: true,
+    },
+  });
+  win.setMenu(null);
+  win.on('closed', () => {
+    if (updateDownloadWindow === win) {
+      updateDownloadWindow = null;
+    }
+  });
+
+  win.loadFile(path.join(__dirname, 'update-download.html')).catch((error) => {
+    log.error('Failed to load update-download window', error);
+  });
+
+  win.once('ready-to-show', () => {
+    try {
+      win.show();
+    } catch {}
+  });
+
+  updateDownloadWindow = win;
+  return win;
+}
+
 function formatReleaseNotes(releaseNotes) {
   if (!releaseNotes) {
     return '';
@@ -590,10 +677,14 @@ function setupAutoUpdate(window) {
           return;
         }
         isDownloadingUpdate = true;
+        const cacheDir = getUpdaterCacheDir();
+        broadcastUpdateStatus({ type: 'download-started', info: { version: info?.version, cacheDir } });
+        ensureUpdateDownloadWindow(target);
         try {
           await autoUpdater.downloadUpdate();
         } catch (error) {
           isDownloadingUpdate = false;
+          closeUpdateDownloadWindow();
           log.error('Failed to download update', error);
           dialog.showMessageBox(target ?? null, {
             type: 'error',
@@ -619,12 +710,36 @@ function setupAutoUpdate(window) {
 
   autoUpdater.on('download-progress', (progress) => {
     broadcastUpdateStatus({ type: 'download-progress', info: progress });
+    const p = Number(progress?.percent);
+    const win = getDialogTarget();
+    if (win && !win.isDestroyed()) {
+      try {
+        if (Number.isFinite(p)) {
+          win.setProgressBar(Math.max(0, Math.min(1, p / 100)));
+        }
+      } catch {}
+    }
   });
 
   autoUpdater.on('update-downloaded', (info) => {
     isDownloadingUpdate = false;
     broadcastUpdateStatus({ type: 'downloaded', info });
+    closeUpdateDownloadWindow();
+    const win = getDialogTarget();
+    if (win && !win.isDestroyed()) {
+      try {
+        win.setProgressBar(-1);
+      } catch {}
+    }
     const target = getDialogTarget();
+    const cacheDir = getUpdaterCacheDir();
+    const downloadedPath =
+      typeof info?.downloadedFile === 'string' && info.downloadedFile.trim()
+        ? info.downloadedFile.trim()
+        : '';
+    const detailLines = ['Приложение будет закрыто и перезапущено автоматически.'];
+    if (cacheDir) detailLines.push('', `Папка загрузки: ${cacheDir}`);
+    if (downloadedPath) detailLines.push(`Файл: ${downloadedPath}`);
     dialog
       .showMessageBox(target ?? null, {
         type: 'info',
@@ -633,7 +748,7 @@ function setupAutoUpdate(window) {
         cancelId: 1,
         title: 'Обновление загружено',
         message: 'Новая версия загружена. Установить сейчас?',
-        detail: 'Приложение будет закрыто и перезапущено автоматически.',
+        detail: detailLines.join('\n'),
         noLink: true,
       })
       .then(({ response }) => {
@@ -650,6 +765,13 @@ function setupAutoUpdate(window) {
     isDownloadingUpdate = false;
     log.error('Auto update error', error);
     broadcastUpdateError({ message: 'auto-update-error', detail: error?.message ?? '' });
+    closeUpdateDownloadWindow();
+    const win = getDialogTarget();
+    if (win && !win.isDestroyed()) {
+      try {
+        win.setProgressBar(-1);
+      } catch {}
+    }
 
     if (manualUpdateState.pending) {
       resolveManualUpdateRequest({
