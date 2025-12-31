@@ -1,0 +1,6 @@
+Установка Synastry будет выполнена в папку профиля пользователя:
+%LOCALAPPDATA%\Programs\Synastry
+(например: C:\Users\<Имя>\AppData\Local\Programs\Synastry)
+
+Путь установки менять нельзя. Перенос в Program Files требует прав администратора
+и может нарушить работу встроенного Python.

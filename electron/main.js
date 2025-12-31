@@ -494,6 +494,42 @@ function resolveManualUpdateRequest(messageOptions = {}) {
   });
 }
 
+function formatAutoUpdateErrorForUser(error) {
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  const firstLine = raw.split(/\r?\n/)[0]?.trim() ?? '';
+  const lower = raw.toLowerCase();
+
+  if (
+    lower.includes('unable to find latest version on github') ||
+    lower.includes('cannot parse releases feed')
+  ) {
+    return {
+      message: 'Обновление пока недоступно.',
+      detail:
+        'На GitHub ещё нет опубликованного релиза (Releases/latest). Опубликуйте релиз и повторите проверку.',
+    };
+  }
+
+  if (lower.includes('net::') || lower.includes('enotfound') || lower.includes('ecconnrefused')) {
+    return {
+      message: 'Не удалось проверить обновления.',
+      detail: 'Проверьте интернет и попробуйте снова.',
+    };
+  }
+
+  if (lower.includes('404')) {
+    return {
+      message: 'Обновление пока недоступно.',
+      detail: 'Ссылка на релизы не найдена (404). Проверьте настройки репозитория и релизов.',
+    };
+  }
+
+  return {
+    message: 'Не удалось проверить обновления. Попробуйте позже.',
+    detail: firstLine && firstLine.length <= 200 ? firstLine : '',
+  };
+}
+
 function broadcastUpdateStatus(payload) {
   BrowserWindow.getAllWindows().forEach((win) => {
     if (win && !win.isDestroyed()) {
@@ -647,7 +683,7 @@ function setupAutoUpdate(window) {
     if (info?.version && info.version === app.getVersion()) {
       broadcastUpdateStatus({ type: 'not-available', info });
       resolveManualUpdateRequest({
-        message: '��⠭������ �� ���������: ������ ��㯭� �� ������.',
+        message: 'Обновление не требуется: установлена последняя версия.',
       });
       return;
     }
@@ -764,7 +800,8 @@ function setupAutoUpdate(window) {
   autoUpdater.on('error', (error) => {
     isDownloadingUpdate = false;
     log.error('Auto update error', error);
-    broadcastUpdateError({ message: 'auto-update-error', detail: error?.message ?? '' });
+    const userError = formatAutoUpdateErrorForUser(error);
+    broadcastUpdateError({ message: 'auto-update-error', detail: userError.detail ?? '' });
     closeUpdateDownloadWindow();
     const win = getDialogTarget();
     if (win && !win.isDestroyed()) {
@@ -776,8 +813,8 @@ function setupAutoUpdate(window) {
     if (manualUpdateState.pending) {
       resolveManualUpdateRequest({
         type: 'error',
-        message: 'Не удалось проверить обновления. Попробуйте позже.',
-        detail: error?.message ?? '',
+        message: userError.message,
+        detail: userError.detail ?? '',
       });
       return;
     }
@@ -790,8 +827,8 @@ function setupAutoUpdate(window) {
     dialog.showMessageBox(target ?? null, {
       type: 'error',
       title: MANUAL_UPDATE_DIALOG_TITLE,
-      message: 'Не удалось проверить обновления. Попробуйте позже.',
-      detail: error?.message ?? '',
+      message: userError.message,
+      detail: userError.detail ?? '',
       noLink: true,
     });
   });
@@ -843,19 +880,20 @@ async function checkForUpdates(options = {}) {
     return { started: true };
   } catch (error) {
     log.error('Failed to check for updates', error);
+    const userError = formatAutoUpdateErrorForUser(error);
     if (userInitiated) {
       resolveManualUpdateRequest({
         type: 'error',
-        message: 'Не удалось проверить обновления. Попробуйте позже.',
-        detail: error?.message ?? '',
+        message: userError.message,
+        detail: userError.detail ?? '',
       });
     } else if (!autoUpdateErrorNotified) {
       const target = getDialogTarget();
       dialog.showMessageBox(target ?? null, {
         type: 'error',
         title: MANUAL_UPDATE_DIALOG_TITLE,
-        message: 'Не удалось проверить обновления. Попробуйте позже.',
-        detail: error?.message ?? '',
+        message: userError.message,
+        detail: userError.detail ?? '',
         noLink: true,
       });
       autoUpdateErrorNotified = true;

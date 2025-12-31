@@ -19,7 +19,6 @@ __pycache__/
 *.local
 python-env/
 backend_env/
-build/
 out/
 test_images/
 
