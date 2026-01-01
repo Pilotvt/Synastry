@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,10 @@ const ROOT = path.join(__dirname, "..");
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf-8"));
+}
+
+function readText(filePath) {
+  return readFileSync(filePath, "utf-8");
 }
 
 function firstExisting(paths) {
@@ -62,6 +66,27 @@ function findWinUnpackedDir(outputDir, productName) {
   return "";
 }
 
+function extractOutputBaseFromVersionIss(versionIssPath) {
+  try {
+    const raw = readText(versionIssPath);
+    const match = raw.match(/#define\s+MyAppOutputBase\s+"([^"]+)"/i);
+    return match?.[1] ? String(match[1]) : "";
+  } catch {
+    return "";
+  }
+}
+
+function safeUnlink(filePath) {
+  try {
+    if (existsSync(filePath)) {
+      unlinkSync(filePath);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+
 function main() {
   const pkg = readJson(path.join(ROOT, "package.json"));
   const version = String(pkg.version || "").trim();
@@ -72,6 +97,7 @@ function main() {
   const build = pkg.build || {};
   const productName = String(build.productName || "Synastry");
   const outputDir = path.join(ROOT, String(build.directories?.output || "release"));
+  const fallbackOutDir = path.join(outputDir, "inno");
 
   if (!existsSync(outputDir) || !statSync(outputDir).isDirectory()) {
     throw new Error(`electron-builder output dir not found: ${outputDir}`);
@@ -99,19 +125,57 @@ function main() {
     throw new Error(`setup.iss not found: ${issPath}`);
   }
 
-  const args = [
-    "/Qp",
-    `/DMyAppSourceDir=${winUnpacked}`,
-    `/O${outputDir}`,
-    issPath,
-  ];
+  // Prefer icon2 if present (non-destructive A/B testing for setup icon).
+  const icon2 = path.join(ROOT, "build", "icons", "icon2.ico");
+  if (existsSync(icon2)) {
+    process.env.SYN_SETUP_ICON = icon2;
+  }
 
-  const res = spawnSync(iscc, args, { stdio: "inherit", windowsHide: false });
+  const versionIssPath = path.join(ROOT, "build", "version.iss");
+  const outputBase = extractOutputBaseFromVersionIss(versionIssPath) || `Synastry-${version}-setup`;
+  const expectedExeName = `${outputBase}.exe`;
+  const expectedPrimaryPath = path.join(outputDir, expectedExeName);
+  const expectedFallbackPath = path.join(fallbackOutDir, expectedExeName);
+
+  const compileTo = (outDir) => {
+    const args = [
+      "/Qp",
+      // Do not add manual quotes here; Node will quote args as needed on Windows.
+      // Manual quotes may end up inside the preprocessor value and break paths in setup.iss.
+      `/DMyAppSourceDir=${winUnpacked}`,
+      `/O${outDir}`,
+      issPath,
+    ];
+    return spawnSync(iscc, args, { stdio: "inherit", windowsHide: false, cwd: ROOT });
+  };
+
+  // Prefer building directly into `release/` so there's only one installer.
+  safeUnlink(expectedPrimaryPath);
+  let res = compileTo(outputDir);
+
+  // If output folder is locked (Explorer/AV), retry into `release/inno/`.
+  if (res.status !== 0) {
+    mkdirSync(fallbackOutDir, { recursive: true });
+    safeUnlink(expectedFallbackPath);
+    res = compileTo(fallbackOutDir);
+  }
+
   if (res.status !== 0) {
     process.exit(res.status || 1);
   }
 
+  const installerPath = existsSync(expectedPrimaryPath)
+    ? expectedPrimaryPath
+    : existsSync(expectedFallbackPath)
+      ? expectedFallbackPath
+      : "";
+
   console.log(`[inno] OK: ${productName} ${version}`);
+  if (installerPath) {
+    console.log(`[inno] installer: ${installerPath}`);
+  } else {
+    console.log(`[inno] WARNING: installer path not found (check output folders)`);
+  }
 }
 
 main();

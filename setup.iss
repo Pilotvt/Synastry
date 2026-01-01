@@ -26,6 +26,12 @@
 #define MyAppOutputBase "Synastry-1.0.6-setup"
 #endif
 
+; Allow overriding installer icon from environment (for CI / A-B testing).
+#define MySetupIconFile GetEnv("SYN_SETUP_ICON")
+#if MySetupIconFile == ""
+#define MySetupIconFile "build\\icons\\icon.ico"
+#endif
+
 [Setup]
 AppId=com.synastry.desktop
 AppName={#MyAppName}
@@ -35,6 +41,8 @@ DefaultDirName={localappdata}\Programs\{#MyAppName}
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 DefaultGroupName={#MyAppName}
+SetupIconFile={#MySetupIconFile}
+UninstallDisplayIcon={app}\{#MyAppName}.exe
 OutputBaseFilename={#MyAppOutputBase}
 Compression=lzma2
 SolidCompression=yes
