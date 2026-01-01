@@ -84,6 +84,7 @@ let isCheckingForUpdates = false;
 let isDownloadingUpdate = false;
 let autoUpdateErrorNotified = false;
 let updateDownloadWindow = null;
+let lastUpdateStatusPayload = null;
 const manualUpdateState = {
   pending: false,
   window: null,
@@ -531,6 +532,7 @@ function formatAutoUpdateErrorForUser(error) {
 }
 
 function broadcastUpdateStatus(payload) {
+  lastUpdateStatusPayload = payload;
   BrowserWindow.getAllWindows().forEach((win) => {
     if (win && !win.isDestroyed()) {
       win.webContents.send(UPDATE_STATUS_CHANNEL, payload);
@@ -551,6 +553,14 @@ function getUpdaterCacheDir() {
     const helper = autoUpdater?.downloadedUpdateHelper;
     if (helper?.cacheDir && typeof helper.cacheDir === 'string') {
       return helper.cacheDir;
+    }
+  } catch {}
+  // electron-updater (NSIS) обычно кладёт установщик в %LOCALAPPDATA%\<app>-updater\pending
+  try {
+    const name = autoUpdater?.updaterCacheDirName || `${APP_DISPLAY_NAME.toLowerCase()}-updater`;
+    const base = process.env.LOCALAPPDATA || '';
+    if (name && base) {
+      return path.join(base, name, 'pending');
     }
   } catch {}
   try {
@@ -622,6 +632,13 @@ function ensureUpdateDownloadWindow(parentWindow) {
     log.error('Failed to load update-download window', error);
   });
 
+  win.webContents.on('did-finish-load', () => {
+    if (!lastUpdateStatusPayload) return;
+    try {
+      win.webContents.send(UPDATE_STATUS_CHANNEL, lastUpdateStatusPayload);
+    } catch {}
+  });
+
   win.once('ready-to-show', () => {
     try {
       win.show();
@@ -636,21 +653,66 @@ function formatReleaseNotes(releaseNotes) {
   if (!releaseNotes) {
     return '';
   }
-  if (typeof releaseNotes === 'string') {
-    return releaseNotes;
+
+  const raw =
+    typeof releaseNotes === 'string'
+      ? releaseNotes
+      : Array.isArray(releaseNotes)
+        ? releaseNotes
+            .map((entry) => {
+              if (!entry) return '';
+              if (typeof entry === 'string') return entry;
+              if (typeof entry.note === 'string') return entry.note;
+              return '';
+            })
+            .filter(Boolean)
+            .join('\n\n')
+        : '';
+
+  if (!raw) return '';
+
+  const decodeEntities = (input) =>
+    input
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'");
+
+  const stripHtml = (input) => {
+    let text = String(input);
+    text = text.replace(/\r\n/g, '\n');
+    text = text.replace(/<\s*br\s*\/?\s*>/gi, '\n');
+    text = text.replace(/<\/\s*p\s*>/gi, '\n\n');
+    text = text.replace(/<\s*p(\s+[^>]*)?>/gi, '');
+    text = text.replace(/<\/\s*div\s*>/gi, '\n');
+    text = text.replace(/<\s*div(\s+[^>]*)?>/gi, '');
+    text = text.replace(/<\s*li(\s+[^>]*)?>/gi, '• ');
+    text = text.replace(/<\/\s*li\s*>/gi, '\n');
+    text = text.replace(/<\/?\s*ul(\s+[^>]*)?\s*>/gi, '\n');
+    text = text.replace(/<\/?\s*ol(\s+[^>]*)?\s*>/gi, '\n');
+    text = text.replace(/<\/?\s*h[1-6](\s+[^>]*)?\s*>/gi, '\n');
+    text = text.replace(/<[^>]*>/g, '');
+    return decodeEntities(text);
+  };
+
+  let text = stripHtml(raw).trim();
+  text = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .filter((line) => !/^full changelog\s*:/i.test(line))
+    .filter((line) => !/^assets\s*:/i.test(line))
+    .join('\n');
+
+  const MAX_CHARS = 900;
+  if (text.length > MAX_CHARS) {
+    const cutAt = text.lastIndexOf('\n', MAX_CHARS);
+    text = `${text.slice(0, cutAt > 200 ? cutAt : MAX_CHARS).trim()}\n\n(Полный текст — на GitHub Releases)`;
   }
-  if (Array.isArray(releaseNotes)) {
-    return releaseNotes
-      .map((entry) => {
-        if (!entry) return '';
-        if (typeof entry === 'string') return entry;
-        if (typeof entry.note === 'string') return entry.note;
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n\n');
-  }
-  return '';
+
+  return text;
 }
 
 function setupAutoUpdate(window) {
@@ -683,18 +745,13 @@ function setupAutoUpdate(window) {
     if (info?.version && info.version === app.getVersion()) {
       broadcastUpdateStatus({ type: 'not-available', info });
       resolveManualUpdateRequest({
-        message: 'Обновление не требуется: установлена последняя версия.',
+        message: `Обновление не требуется: установлена последняя версия (${app.getVersion()}).`,
       });
       return;
     }
     broadcastUpdateStatus({ type: 'available', info });
     const target = getDialogTarget();
     const versionLabel = info?.version ? `версия ${info.version}` : 'обновление';
-    const releaseNotes = formatReleaseNotes(info?.releaseNotes);
-    const detailParts = ['Приложение скачает установщик из GitHub Releases и предложит перезапуск после загрузки.'];
-    if (releaseNotes) {
-      detailParts.push('', releaseNotes);
-    }
 
     try {
       const { response } = await dialog.showMessageBox(target ?? null, {
@@ -704,7 +761,7 @@ function setupAutoUpdate(window) {
         cancelId: 1,
         title: 'Доступно обновление',
         message: `Доступна ${versionLabel}.`,
-        detail: detailParts.join('\n'),
+        detail: '',
         noLink: true,
       });
 
@@ -713,9 +770,9 @@ function setupAutoUpdate(window) {
           return;
         }
         isDownloadingUpdate = true;
+        ensureUpdateDownloadWindow(target);
         const cacheDir = getUpdaterCacheDir();
         broadcastUpdateStatus({ type: 'download-started', info: { version: info?.version, cacheDir } });
-        ensureUpdateDownloadWindow(target);
         try {
           await autoUpdater.downloadUpdate();
         } catch (error) {
@@ -739,8 +796,10 @@ function setupAutoUpdate(window) {
 
   autoUpdater.on('update-not-available', (info) => {
     broadcastUpdateStatus({ type: 'not-available', info });
+    const shownVersion =
+      typeof info?.version === 'string' && info.version.trim() ? info.version.trim() : app.getVersion();
     resolveManualUpdateRequest({
-      message: 'Установлена последняя версия.',
+      message: `Установлена последняя версия (${shownVersion}).`,
     });
   });
 
@@ -952,7 +1011,12 @@ async function performDataMigrations(fromVersion, toVersion) {
 
 async function cleanupUpdaterCache() {
   try {
-    const names = [`${app.getName().toLowerCase()}-updater`, 'synastry-ui-updater'];
+    const names = [
+      `${String(app.getName?.() ?? '').toLowerCase()}-updater`,
+      `${APP_DISPLAY_NAME.toLowerCase()}-updater`,
+      'synastry-updater',
+      'synastry-ui-updater',
+    ].filter(Boolean);
     const appDataPaths = new Set([
       app.getPath('appData'), // Roaming
       process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'),
@@ -998,6 +1062,77 @@ async function cleanupUpdaterCache() {
     }
   } catch (error) {
     log.warn('Failed to clean updater cache', error);
+  }
+}
+
+function parseSimpleVersion(value) {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.trim().replace(/^v/i, '');
+  const match = cleaned.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function compareSimpleVersions(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return 0;
+  for (let i = 0; i < 3; i += 1) {
+    const av = Number(a[i] ?? 0);
+    const bv = Number(b[i] ?? 0);
+    if (av > bv) return 1;
+    if (av < bv) return -1;
+  }
+  return 0;
+}
+
+async function cleanupStaleUpdateInstallers() {
+  if (!app.isPackaged || !ALLOW_AUTO_UPDATE) {
+    return;
+  }
+
+  const currentVersion = parseSimpleVersion(app.getVersion?.() ?? '');
+  if (!currentVersion) {
+    return;
+  }
+
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  const dirCandidates = [
+    autoUpdater?.updaterCacheDirName,
+    `${APP_DISPLAY_NAME.toLowerCase()}-updater`,
+    'synastry-updater',
+  ]
+    .filter((v) => typeof v === 'string' && v.trim())
+    .map((v) => v.trim());
+
+  for (const dirName of dirCandidates) {
+    const pendingDir = path.join(localAppData, dirName, 'pending');
+    let entries = [];
+    try {
+      entries = await fsPromises.readdir(pendingDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry?.isFile?.()) continue;
+      const fileName = String(entry.name || '');
+      if (!fileName.toLowerCase().endsWith('.exe')) continue;
+
+      const match = fileName.match(/Synastry-(\d+\.\d+\.\d+)-update\.exe/i);
+      const fileVersion = parseSimpleVersion(match?.[1] ?? '');
+      if (!fileVersion) continue;
+
+      // Удаляем установщики текущей/старых версий — они уже не нужны.
+      if (compareSimpleVersions(fileVersion, currentVersion) <= 0) {
+        const fullPath = path.join(pendingDir, fileName);
+        try {
+          await fsPromises.rm(fullPath, { force: true });
+        } catch {
+          if (process.platform === 'win32') {
+            spawnSync('cmd', ['/c', 'del', '/f', '/q', fullPath], { shell: false, stdio: 'ignore' });
+          }
+        }
+      }
+    }
   }
 }
 const singleInstanceLock = app.requestSingleInstanceLock();
@@ -1550,12 +1685,12 @@ async function refreshLicenseStatus() {
 
 function resolveNudeNetModelPath(isPackaged) {
   if (isPackaged) {
-    const bundled = path.join(process.resourcesPath, 'nudenet', '320n.onnx');
+    const bundled = path.join(process.resourcesPath, 'nudenet', '640m.onnx');
     if (fs.existsSync(bundled)) return bundled;
     return null;
   }
   const projectRoot = path.join(__dirname, '..');
-  const devModel = path.join(projectRoot, 'app', 'nudenet', '320n.onnx');
+  const devModel = path.join(projectRoot, 'app', 'nudenet', '640m.onnx');
   if (fs.existsSync(devModel)) return devModel;
   return null;
 }
@@ -2137,7 +2272,11 @@ app.whenReady().then(async () => {
 
   await ensureCacheDirs();
   await runPendingDataMigrations();
-  await cleanupUpdaterCache();
+  // Чистим только "старые" установщики обновлений, чтобы не ломать отложенную установку.
+  await cleanupStaleUpdateInstallers();
+  setTimeout(() => {
+    cleanupStaleUpdateInstallers().catch(() => undefined);
+  }, 7000);
 
   const launchConfig = getBackendLaunchConfig();
   if (!launchConfig) {

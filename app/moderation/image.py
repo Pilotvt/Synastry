@@ -104,20 +104,17 @@ def _resolve_model_path() -> Optional[str]:
     if dev_model.exists():
         print(f"[NUDENET] Using dev model: {dev_model}")
         return str(dev_model)
-    print("[NUDENET] WARNING: No model found, using default NudeNet download")
+    print("[NUDENET] ERROR: NudeNet 640m.onnx model not found")
     return None
 
 
 @lru_cache
 def _detector() -> NudeDetector:
     model_path = _resolve_model_path()
-    if model_path:
-        detector = NudeDetector(model_path=model_path, inference_resolution=640)
-        print(f"[NUDENET] Detector initialized with 640m model: {model_path}")
-    else:
-        # Fallback to NudeNet bundled default model (320n.onnx). It expects 320x320 inputs.
-        detector = NudeDetector(inference_resolution=320)
-        print("[NUDENET] Detector initialized with default 320n model (bundled in nudenet package)")
+    if not model_path:
+        raise RuntimeError("NudeNet model 640m.onnx is missing")
+    detector = NudeDetector(model_path=model_path, inference_resolution=640)
+    print(f"[NUDENET] Detector initialized with 640m model: {model_path}")
     return detector
 
 
@@ -161,7 +158,17 @@ def analyze_image(image_bytes: bytes, filename: Optional[str] = None) -> ImageMo
             tmp.flush()
             tmp_path = tmp.name
 
-        detections = _detector().detect(tmp_path) or []
+        try:
+            detections = _detector().detect(tmp_path) or []
+        except Exception as exc:
+            print(f"[NUDENET] ERROR: detector unavailable: {exc}")
+            return ImageModerationResult(
+                label="unsafe",
+                confidence=1.0,
+                is_clean=False,
+                raw_scores={"MODEL_MISSING": 1.0},
+                reason="NudeNet model (640m.onnx) not installed; image blocked",
+            )
     finally:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)

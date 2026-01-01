@@ -29,7 +29,7 @@
         background: var(--bg);
         color: var(--text);
         font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
-        padding: 14px;
+        padding: 14px 14px 18px;
       }
 
       .card {
@@ -112,10 +112,10 @@
         <span>Куда скачивается:</span>
       </div>
       <div class="path" id="cacheDir">—</div>
-      <div class="row" style="margin-top: 10px;">
+      <div class="row" id="downloadedRow" style="margin-top: 10px; display: none;">
         <span>Файл (после загрузки):</span>
       </div>
-      <div class="path" id="downloadedFile">—</div>
+      <div class="path" id="downloadedFile" style="display: none;">—</div>
       <div class="error" id="error" style="display: none;"></div>
     </div>
 
@@ -124,6 +124,7 @@
       const percent = document.getElementById("percent");
       const cacheDir = document.getElementById("cacheDir");
       const downloadedFile = document.getElementById("downloadedFile");
+      const downloadedRow = document.getElementById("downloadedRow");
       const version = document.getElementById("version");
       const errorBox = document.getElementById("error");
 
@@ -150,6 +151,19 @@
         errorBox.style.display = "";
       };
 
+      const setDownloaded = (value) => {
+        const text = String(value ?? "").trim();
+        if (!text || text === "—") {
+          downloadedRow.style.display = "none";
+          downloadedFile.style.display = "none";
+          downloadedFile.textContent = "—";
+          return;
+        }
+        downloadedRow.style.display = "";
+        downloadedFile.style.display = "";
+        downloadedFile.textContent = text;
+      };
+
       const applyStatus = (payload) => {
         if (!payload || typeof payload !== "object") return;
         const type = payload.type;
@@ -162,6 +176,7 @@
         if (type === "download-started") {
           if (info?.version) version.textContent = String(info.version);
           if (info?.cacheDir) cacheDir.textContent = String(info.cacheDir);
+          setDownloaded("");
         }
 
         if (type === "download-progress" && info) {
@@ -189,7 +204,7 @@
 
         if (type === "downloaded" && info) {
           if (info.version) version.textContent = String(info.version);
-          if (info.downloadedFile) downloadedFile.textContent = String(info.downloadedFile);
+          if (info.downloadedFile) setDownloaded(info.downloadedFile);
           bar.value = 100;
           percent.textContent = "100% • загружено";
         }
@@ -205,4 +220,3 @@
     </script>
   </body>
 </html>
-

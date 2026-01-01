@@ -1,7 +1,7 @@
 {
   "name": "synastry",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "Desktop application for Jyotish natal charts, synastry, and muhurtas with real IAU constellations.",
   "type": "module",
   "main": "electron/main.js",
@@ -25,7 +25,8 @@
     "generate:license": "node scripts/generate-license-key.mjs",
     "generate:cities": "node scripts/split_cities_by_country.cjs",
     "generate:third-party-notices": "node scripts/generate-third-party-notices.mjs",
-    "merge:profanity:safetext": "node scripts/merge-profanity-safetext-filtered.mjs"
+    "merge:profanity:safetext": "node scripts/merge-profanity-safetext-filtered.mjs",
+    "download:nudenet:640m": "python scripts/download_nudenet_640m.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.80.0",
