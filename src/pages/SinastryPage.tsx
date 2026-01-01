@@ -5,8 +5,7 @@ import { supabase } from "../lib/supabase";
 import { readSavedChart, SAVED_CHART_KEY, type SavedChartMetadata } from "../utils/savedChartStorage";
 import { useChartCache } from "../store/chartCache";
 import { finalStrength, type Inputs, type FuncRole, type SignFriendLevel } from "../lib/strength";
-import atmaKarakaDescriptions from "../../data/atma_karaka_descriptions_ru.json";
-import daraKarakaDescriptions from "../../data/dara_karaka_descriptions_ru.json";
+import { loadKarakaDescriptions, type KarakaDescriptions } from "../lib/textResources";
 import { getAscCompatibility } from "../lib/synastry-compat";
 import { getAscCompatScore, ASC_COMPAT_SCORES, type SignName } from "../synastry/ascCompatScores";
 import { scoreSynastry, getPlanetHouse, affinityBySignDistance, scoreNumerology, type PlanetCode } from "../synastry/scoring";
@@ -529,8 +528,6 @@ const PLANET_NAMES_RU: Record<string, string> = {
   Ke: "Кету",
 };
 
-const ATMA_KARAKA_DESCRIPTIONS_RU: Record<string, string> = atmaKarakaDescriptions as Record<string, string>;
-const DARA_KARAKA_DESCRIPTIONS_RU: Record<string, string> = daraKarakaDescriptions as Record<string, string>;
 const SIGN_NAME_SET = new Set(Object.keys(ASC_COMPAT_SCORES) as SignName[]);
 
 function toSignName(value: string | null | undefined): SignName | null {
@@ -750,17 +747,34 @@ type ProfilePanelProps = {
 
 function ProfilePanel({ heading, description, state, isLoading, onUploadRequest, onFileChange, inputRef, otherAscSign, otherState }: ProfilePanelProps & { otherAscSign?: string }) {
   const { profile, screenshotUrl, ascSign, chart } = state;
+  const [karakaDescriptions, setKarakaDescriptions] = useState<KarakaDescriptions | null>(null);
   const birthDate = formatBirthDate(profile?.birth);
   const birthAge = calculateAge(profile?.birth);
   const birthTime = formatBirthTime(profile?.birth);
-  const city = profile?.cityNameRu || profile?.selectedCity || profile?.cityQuery || "—";
-  const dateLine = birthDate ? (birthAge ? `${birthDate} (${birthAge})` : birthDate) : "—";
+  const city = profile?.cityNameRu || profile?.selectedCity || profile?.cityQuery || "-";
+  const dateLine = birthDate ? (birthAge ? `${birthDate} (${birthAge})` : birthDate) : "-";
   const timePlaceLine = [birthTime, city && city !== "—" ? city : null].filter(Boolean).join(", ") || "—";
   const displayName = [profile?.personName, profile?.lastName].filter(Boolean).join(" ") || "Имя Фамилия";
 
   const kujaDosha = analyzeKujaDosha(chart);
   const veInputs = planetToInputs(chart, "Ve");
   const moInputs = planetToInputs(chart, "Mo");
+
+  useEffect(() => {
+    let cancelled = false;
+    loadKarakaDescriptions()
+      .then((payload) => {
+        if (!cancelled) {
+          setKarakaDescriptions(payload);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load karaka descriptions', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // helpers for directional synastry snippets
   const to01 = (x: number) => Math.max(0, Math.min(1, (x + 1) / 2));
@@ -973,7 +987,7 @@ function ProfilePanel({ heading, description, state, isLoading, onUploadRequest,
                   const parts = prebuilt && (prebuilt.heading || prebuilt.body)
                     ? { heading: prebuilt.heading ?? '', body: prebuilt.body ?? '' }
                     : (() => {
-                        const desc = ATMA_KARAKA_DESCRIPTIONS_RU[k.atma!.code] ?? '';
+                        const desc = karakaDescriptions?.atma?.[k.atma!.code] ?? '';
                         return splitDescription(cleanKarakaDescription(desc, k.atma!.name));
                       })();
                   return (
@@ -989,7 +1003,7 @@ function ProfilePanel({ heading, description, state, isLoading, onUploadRequest,
                   const parts = prebuilt && (prebuilt.heading || prebuilt.body)
                     ? { heading: prebuilt.heading ?? '', body: prebuilt.body ?? '' }
                     : (() => {
-                        const desc = DARA_KARAKA_DESCRIPTIONS_RU[k.dara!.code] ?? '';
+                        const desc = karakaDescriptions?.dara?.[k.dara!.code] ?? '';
                         return splitDescription(cleanKarakaDescription(desc, k.dara!.name));
                       })();
                   return (

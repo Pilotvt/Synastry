@@ -5,6 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
+import https from 'node:https';
 import { fileURLToPath } from 'node:url';
 import log from 'electron-log';
 import updaterPkg from 'electron-updater';
@@ -85,6 +86,150 @@ function quoteCmdArg(value) {
   return s;
 }
 
+function httpGetJson(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = https.request(
+        url,
+        {
+          method: 'GET',
+          headers: {
+            'User-Agent': `${APP_DISPLAY_NAME}/${APP_VERSION}`,
+            Accept: 'application/vnd.github+json',
+            ...headers,
+          },
+        },
+        (res) => {
+          const status = Number(res.statusCode || 0);
+          if (status >= 300 && status < 400 && res.headers.location) {
+            res.resume();
+            resolve(httpGetJson(res.headers.location, headers));
+            return;
+          }
+          if (status < 200 || status >= 300) {
+            const chunks = [];
+            res.on('data', (d) => chunks.push(d));
+            res.on('end', () => {
+              reject(new Error(`HTTP ${status}: ${(Buffer.concat(chunks).toString('utf-8') || '').slice(0, 400)}`));
+            });
+            return;
+          }
+          const chunks = [];
+          res.on('data', (d) => chunks.push(d));
+          res.on('end', () => {
+            try {
+              const raw = Buffer.concat(chunks).toString('utf-8');
+              resolve(JSON.parse(raw));
+            } catch (e) {
+              reject(e);
+            }
+          });
+        }
+      );
+      req.on('error', reject);
+      req.end();
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+function downloadToFile(url, destinationPath, onProgress) {
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    let lastTickAt = startedAt;
+    let lastTransferred = 0;
+
+    const requestOnce = (targetUrl) => {
+      const req = https.request(
+        targetUrl,
+        {
+          method: 'GET',
+          headers: {
+            'User-Agent': `${APP_DISPLAY_NAME}/${APP_VERSION}`,
+            Accept: '*/*',
+          },
+        },
+        (res) => {
+          const status = Number(res.statusCode || 0);
+          if (status >= 300 && status < 400 && res.headers.location) {
+            res.resume();
+            requestOnce(res.headers.location);
+            return;
+          }
+          if (status < 200 || status >= 300) {
+            const chunks = [];
+            res.on('data', (d) => chunks.push(d));
+            res.on('end', () => {
+              reject(new Error(`HTTP ${status}: ${(Buffer.concat(chunks).toString('utf-8') || '').slice(0, 400)}`));
+            });
+            return;
+          }
+
+          const total = Number(res.headers['content-length'] || 0) || 0;
+          let transferred = 0;
+          const out = fs.createWriteStream(destinationPath);
+
+          const cleanupAndReject = (err) => {
+            try {
+              out.close();
+            } catch {}
+            try {
+              fs.unlinkSync(destinationPath);
+            } catch {}
+            reject(err);
+          };
+
+          out.on('error', cleanupAndReject);
+          res.on('error', cleanupAndReject);
+
+          res.on('data', (chunk) => {
+            transferred += chunk.length;
+            const now = Date.now();
+            if (typeof onProgress === 'function' && now - lastTickAt >= 250) {
+              const dt = Math.max(1, now - lastTickAt);
+              const dBytes = transferred - lastTransferred;
+              const bytesPerSecond = Math.round((dBytes * 1000) / dt);
+              lastTickAt = now;
+              lastTransferred = transferred;
+              const percent = total > 0 ? (transferred / total) * 100 : 0;
+              onProgress({
+                percent,
+                transferred,
+                total,
+                bytesPerSecond,
+              });
+            }
+          });
+
+          res.pipe(out);
+          out.on('finish', () => {
+            try {
+              out.close();
+            } catch {}
+            const elapsed = Math.max(1, Date.now() - startedAt);
+            const avgBps = Math.round((transferred * 1000) / elapsed);
+            if (typeof onProgress === 'function') {
+              const percent = total > 0 ? (transferred / total) * 100 : 100;
+              onProgress({
+                percent: Math.max(percent, 100),
+                transferred,
+                total: total || transferred,
+                bytesPerSecond: avgBps,
+              });
+            }
+            resolve(destinationPath);
+          });
+        }
+      );
+      req.on('error', reject);
+      req.end();
+    };
+
+    requestOnce(url);
+  });
+}
+
 const APP_DISPLAY_NAME = 'Synastry';
 const APP_ICON = path.join(__dirname, '../build/icons/icon.ico');
 const APP_VERSION = resolveAppVersion();
@@ -117,6 +262,10 @@ const manualUpdateState = {
   pending: false,
   window: null,
 };
+
+const UPDATE_REPO_OWNER = process.env.SYN_UPDATE_OWNER || 'Pilotvt';
+const UPDATE_REPO_NAME = process.env.SYN_UPDATE_REPO || 'Synastry';
+const UPDATE_MODE = String(process.env.SYN_UPDATE_MODE || 'inno').toLowerCase(); // 'inno' | 'nsis'
 
 let currentLicenseStatus = null;
 let licensePromptWindow = null;
@@ -743,8 +892,247 @@ function formatReleaseNotes(releaseNotes) {
   return text;
 }
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractSimpleVersion(value) {
+  if (typeof value !== 'string') return '';
+  const match = value.match(/(\d+\.\d+\.\d+)/);
+  return match?.[1] || '';
+}
+
+function getInnoUpdaterCacheDir() {
+  try {
+    const base = typeof app.getPath === 'function' ? app.getPath('cache') : '';
+    if (base) return path.join(base, 'synastry-inno-updater');
+  } catch {}
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  return path.join(localAppData, 'synastry-inno-updater');
+}
+
+function pickInnoInstallerAsset(assets, version) {
+  const list = Array.isArray(assets) ? assets : [];
+  const ver = String(version || '').trim();
+  const exact = ver
+    ? new RegExp(`^${escapeRegex(APP_DISPLAY_NAME)}[\\s_-]*${escapeRegex(ver)}[\\s_-]*setup\\.exe$`, 'i')
+    : null;
+
+  const exeAssets = list
+    .filter((a) => a && typeof a === 'object')
+    .map((a) => ({
+      name: typeof a.name === 'string' ? a.name : '',
+      url: typeof a.browser_download_url === 'string' ? a.browser_download_url : '',
+      size: Number(a.size || 0) || 0,
+    }))
+    .filter((a) => a.name && a.url && a.name.toLowerCase().endsWith('.exe'));
+
+  if (exact) {
+    const found = exeAssets.find((a) => exact.test(a.name));
+    if (found) return found;
+  }
+
+  // fallback: any "setup.exe" for Synastry
+  const soft = exeAssets.find((a) => /setup\.exe$/i.test(a.name) && new RegExp(escapeRegex(APP_DISPLAY_NAME), 'i').test(a.name));
+  if (soft) return soft;
+
+  return null;
+}
+
+async function fetchLatestReleaseFromGithub() {
+  const url = `https://api.github.com/repos/${UPDATE_REPO_OWNER}/${UPDATE_REPO_NAME}/releases/latest`;
+  const release = await httpGetJson(url);
+  const tagName = typeof release?.tag_name === 'string' ? release.tag_name : '';
+  const name = typeof release?.name === 'string' ? release.name : '';
+  const body = typeof release?.body === 'string' ? release.body : '';
+  const htmlUrl = typeof release?.html_url === 'string' ? release.html_url : '';
+  const version = extractSimpleVersion(tagName) || extractSimpleVersion(name);
+  const assets = Array.isArray(release?.assets) ? release.assets : [];
+  return { version, tagName, name, body, htmlUrl, assets };
+}
+
+async function checkForUpdatesInno(options = {}) {
+  const { userInitiated = false, browserWindow = null } = options;
+
+  const currentVersion = parseSimpleVersion(app.getVersion?.() ?? '');
+  if (!currentVersion) {
+    if (userInitiated) {
+      dialog.showMessageBox(getDialogTarget(browserWindow) ?? null, {
+        type: 'error',
+        title: MANUAL_UPDATE_DIALOG_TITLE,
+        message: 'Не удалось определить текущую версию приложения.',
+        noLink: true,
+      });
+    }
+    return { started: false, reason: 'bad-current-version' };
+  }
+
+  const release = await fetchLatestReleaseFromGithub();
+  const latestVersion = parseSimpleVersion(release.version);
+  if (!latestVersion) {
+    if (userInitiated) {
+      dialog.showMessageBox(getDialogTarget(browserWindow) ?? null, {
+        type: 'error',
+        title: MANUAL_UPDATE_DIALOG_TITLE,
+        message: 'Не удалось определить версию последнего релиза на GitHub.',
+        detail: release.htmlUrl || '',
+        noLink: true,
+      });
+    }
+    return { started: false, reason: 'bad-latest-version' };
+  }
+
+  if (compareSimpleVersions(latestVersion, currentVersion) <= 0) {
+    broadcastUpdateStatus({ type: 'not-available', info: { version: app.getVersion() } });
+    if (userInitiated) {
+      resolveManualUpdateRequest({
+        message: `Установлена последняя версия (${app.getVersion()}).`,
+      });
+    }
+    return { started: true, available: false };
+  }
+
+  const asset = pickInnoInstallerAsset(release.assets, release.version);
+  if (!asset) {
+    const detail = [
+      `Релиз: ${release.htmlUrl || '(unknown)'}`,
+      `Ожидалось имя установщика: ${APP_DISPLAY_NAME}-${release.version}-setup.exe`,
+    ].join('\n');
+    if (userInitiated) {
+      resolveManualUpdateRequest({
+        type: 'error',
+        message: 'Не найден Inno Setup установщик в релизе.',
+        detail,
+      });
+    } else {
+      broadcastUpdateError({ message: 'no-inno-installer', detail });
+    }
+    return { started: false, reason: 'no-asset' };
+  }
+
+  const target = getDialogTarget(browserWindow);
+  const versionLabel = release.version ? `версия ${release.version}` : 'обновление';
+  const notes = formatReleaseNotes(release.body);
+
+  broadcastUpdateStatus({ type: 'available', info: { version: release.version, releaseNotes: notes } });
+  clearManualUpdateRequest();
+
+  const { response } = await dialog.showMessageBox(target ?? null, {
+    type: 'info',
+    buttons: ['Скачать и установить', 'Позже'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Доступно обновление',
+    message: `Доступна ${versionLabel}.`,
+    detail: notes || '',
+    noLink: true,
+  });
+
+  if (response !== 0) {
+    return { started: true, available: true, downloaded: false };
+  }
+
+  if (isDownloadingUpdate) {
+    return { started: true, available: true, downloaded: false, reason: 'already-downloading' };
+  }
+
+  isDownloadingUpdate = true;
+  ensureUpdateDownloadWindow(target);
+
+  const cacheDir = getInnoUpdaterCacheDir();
+  try {
+    await fsPromises.mkdir(cacheDir, { recursive: true });
+  } catch {}
+
+  broadcastUpdateStatus({ type: 'download-started', info: { version: release.version, cacheDir } });
+
+  const downloadedPath = path.join(cacheDir, asset.name || `${APP_DISPLAY_NAME}-${release.version}-setup.exe`);
+  try {
+    await downloadToFile(asset.url, downloadedPath, (progress) => {
+      broadcastUpdateStatus({ type: 'download-progress', info: progress });
+      const p = Number(progress?.percent);
+      const win = getDialogTarget();
+      if (win && !win.isDestroyed()) {
+        try {
+          if (Number.isFinite(p)) {
+            win.setProgressBar(Math.max(0, Math.min(1, p / 100)));
+          }
+        } catch {}
+      }
+    });
+
+    broadcastUpdateStatus({ type: 'downloaded', info: { version: release.version, downloadedFile: downloadedPath } });
+    closeUpdateDownloadWindow();
+    const win = getDialogTarget();
+    if (win && !win.isDestroyed()) {
+      try {
+        win.setProgressBar(-1);
+      } catch {}
+    }
+
+    const detailLines = ['Откроется установщик обновления (Inno Setup).', '', `Файл: ${downloadedPath}`];
+    if (cacheDir) detailLines.push('', `Папка загрузки: ${cacheDir}`);
+
+    const { response: installResponse } = await dialog.showMessageBox(target ?? null, {
+      type: 'info',
+      buttons: ['Запустить установщик', 'Позже'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Обновление загружено',
+      message: 'Новая версия загружена. Установить сейчас?',
+      detail: detailLines.join('\n'),
+      noLink: true,
+    });
+
+    if (installResponse !== 0) {
+      isDownloadingUpdate = false;
+      return { started: true, available: true, downloaded: true, installed: false };
+    }
+
+    try {
+      spawn(downloadedPath, [], { detached: true, stdio: 'ignore', windowsHide: false });
+    } catch (error) {
+      isDownloadingUpdate = false;
+      dialog.showMessageBox(target ?? null, {
+        type: 'error',
+        title: 'Установка обновления',
+        message: 'Не удалось запустить установщик обновления.',
+        detail: error instanceof Error ? error.message : String(error),
+        noLink: true,
+      });
+      return { started: true, available: true, downloaded: true, installed: false, reason: 'spawn-failed' };
+    }
+
+    setImmediate(() => {
+      try {
+        app.quit();
+      } catch {}
+    });
+
+    return { started: true, available: true, downloaded: true, installed: true };
+  } catch (error) {
+    isDownloadingUpdate = false;
+    closeUpdateDownloadWindow();
+    log.error('Failed to download Inno installer', error);
+    const target2 = getDialogTarget(browserWindow);
+    dialog.showMessageBox(target2 ?? null, {
+      type: 'error',
+      title: 'Загрузка обновления',
+      message: 'Не удалось скачать обновление. Попробуйте позже.',
+      detail: error instanceof Error ? error.message : String(error),
+      noLink: true,
+    });
+    return { started: false, reason: 'download-error', error: error?.message ?? String(error) };
+  } finally {
+    isDownloadingUpdate = false;
+  }
+}
+
 function setupAutoUpdate(window) {
   if (!ALLOW_AUTO_UPDATE) {
+    return;
+  }
+  if (UPDATE_MODE !== 'nsis') {
     return;
   }
   if (!app.isPackaged) {
@@ -937,6 +1325,52 @@ async function checkForUpdates(options = {}) {
       });
     }
     return { started: false, reason: 'development' };
+  }
+
+  if (UPDATE_MODE !== 'nsis') {
+    if (userInitiated) {
+      rememberManualUpdateRequest(browserWindow);
+    }
+    if (isCheckingForUpdates) {
+      if (userInitiated) {
+        dialog.showMessageBox(getDialogTarget(browserWindow) ?? null, {
+          type: 'info',
+          title: MANUAL_UPDATE_DIALOG_TITLE,
+          message: 'Проверка обновлений уже выполняется.',
+          noLink: true,
+        });
+      }
+      return { started: false, reason: 'in-progress' };
+    }
+    isCheckingForUpdates = true;
+    broadcastUpdateStatus({ type: 'checking' });
+    try {
+      const res = await checkForUpdatesInno({ userInitiated, browserWindow });
+      return { ...res, mode: 'inno' };
+    } catch (error) {
+      log.error('Failed to check for updates (Inno mode)', error);
+      const userError = formatAutoUpdateErrorForUser(error);
+      if (userInitiated) {
+        resolveManualUpdateRequest({
+          type: 'error',
+          message: userError.message,
+          detail: userError.detail ?? '',
+        });
+      } else if (!autoUpdateErrorNotified) {
+        const target = getDialogTarget();
+        dialog.showMessageBox(target ?? null, {
+          type: 'error',
+          title: MANUAL_UPDATE_DIALOG_TITLE,
+          message: userError.message,
+          detail: userError.detail ?? '',
+          noLink: true,
+        });
+        autoUpdateErrorNotified = true;
+      }
+      return { started: false, reason: 'error', error: error?.message ?? String(error) };
+    } finally {
+      isCheckingForUpdates = false;
+    }
   }
 
   if (!autoUpdateListenersBound) {
@@ -1158,6 +1592,49 @@ async function cleanupStaleUpdateInstallers() {
           if (process.platform === 'win32') {
             spawnSync('cmd', ['/c', 'del', '/f', '/q', fullPath], { shell: false, stdio: 'ignore' });
           }
+        }
+      }
+    }
+  }
+}
+
+async function cleanupStaleInnoInstallers() {
+  if (!app.isPackaged || !ALLOW_AUTO_UPDATE) {
+    return;
+  }
+  if (UPDATE_MODE === 'nsis') {
+    return;
+  }
+
+  const currentVersion = parseSimpleVersion(app.getVersion?.() ?? '');
+  if (!currentVersion) {
+    return;
+  }
+
+  const cacheDir = getInnoUpdaterCacheDir();
+  let entries = [];
+  try {
+    entries = await fsPromises.readdir(cacheDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry?.isFile?.()) continue;
+    const fileName = String(entry.name || '');
+    if (!fileName.toLowerCase().endsWith('.exe')) continue;
+
+    const match = fileName.match(/Synastry[\s_-]*(\d+\.\d+\.\d+)[\s_-]*setup\.exe/i);
+    const fileVersion = parseSimpleVersion(match?.[1] ?? '');
+    if (!fileVersion) continue;
+
+    if (compareSimpleVersions(fileVersion, currentVersion) <= 0) {
+      const fullPath = path.join(cacheDir, fileName);
+      try {
+        await fsPromises.rm(fullPath, { force: true });
+      } catch {
+        if (process.platform === 'win32') {
+          spawnSync('cmd', ['/c', 'del', '/f', '/q', fullPath], { shell: false, stdio: 'ignore' });
         }
       }
     }
@@ -2427,8 +2904,10 @@ app.whenReady().then(async () => {
   await runPendingDataMigrations();
   // Чистим только "старые" установщики обновлений, чтобы не ломать отложенную установку.
   await cleanupStaleUpdateInstallers();
+  await cleanupStaleInnoInstallers();
   setTimeout(() => {
     cleanupStaleUpdateInstallers().catch(() => undefined);
+    cleanupStaleInnoInstallers().catch(() => undefined);
   }, 7000);
 
   const launchConfig = getBackendLaunchConfig();

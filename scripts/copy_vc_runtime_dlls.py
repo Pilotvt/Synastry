@@ -32,6 +32,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Copy VC++ runtime DLLs into python-embed for clean machines.")
     parser.add_argument("--dest", required=True, help="Destination folder (e.g. electron/resources/python-embed)")
     parser.add_argument("--strict", action="store_true", help="Fail if any DLL is missing on this build machine.")
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing DLLs in destination (by default only missing DLLs are copied).",
+    )
     args = parser.parse_args()
 
     if os.environ.get("SYN_SKIP_VC_DLLS") == "1":
@@ -50,11 +55,15 @@ def main() -> None:
         if not src or not src.exists():
             missing.append(name)
             continue
+        dst = dest / name
+        if dst.exists() and not args.overwrite:
+            print(f"[vc-dlls] exists, keep: {dst}")
+            continue
         try:
-            shutil.copy2(src, dest / name)
+            shutil.copy2(src, dst)
             print(f"[vc-dlls] {name} <- {src}")
         except OSError as exc:
-            raise SystemExit(f"[vc-dlls] failed to copy {src} -> {dest / name}: {exc}") from exc
+            raise SystemExit(f"[vc-dlls] failed to copy {src} -> {dst}: {exc}") from exc
 
     if missing:
         msg = (
@@ -70,4 +79,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -13,10 +13,10 @@ if (typeof version !== 'string' || !version.trim()) {
   throw new Error('package.json не содержит корректного поля "version".');
 }
 
-const friendlyVersion = version.replace(/-/g, ' ');
+const outputBase = `Synastry-${version}-setup`;
 const issContent = [
   `#define MyAppVersion "${version}"`,
-  `#define MyAppOutputBase "Synastry ${friendlyVersion}-setup"`,
+  `#define MyAppOutputBase "${outputBase}"`,
 ].join('\n');
 
 const buildDir = path.join(projectRoot, 'build');
@@ -48,7 +48,7 @@ const patchedSetup = patchFileIfExists('setup.iss', (text) => {
   );
   next = next.replace(
     /(#ifndef\s+MyAppOutputBase\s*\r?\n\s*#define\s+MyAppOutputBase\s+")[^"]*("\s*\r?\n\s*#endif)/m,
-    `$1Synastry ${friendlyVersion}-setup$2`,
+    `$1${outputBase}$2`,
   );
   return next;
 });
