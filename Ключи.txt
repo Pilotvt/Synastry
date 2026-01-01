@@ -1,7 +1,0 @@
-npm run generate:license -- patriotvt@yandex.ru 5 
-
-vitalya.vt@mail.ru
-eyJvIjoidml0YWx5YS52dEBtYWlsLnJ1IiwiZSI6IjIwMjYtMTEtMTdUMTc6NDQ6NDcuMzYwWiJ9.S0_UWSAgjSdIY8VpnHkWC8BsUzaiW9hAUnM6MZufpBQ
-
-Да, “исходный источник” — это package.json → поле "version".
-Меняешь его, потом запускаешь npm run sync:version.
