@@ -66,6 +66,19 @@ const patchedLock = patchFileIfExists('package-lock.json', (text) => {
   return next;
 });
 
+const patchedDocs = patchFileIfExists('docs/index.html', (text) => {
+  let next = text.replace(
+    /(releases\/tag\/)v\d+\.\d+\.\d+/,
+    `$1v${version}`,
+  );
+  next = next.replace(
+    /GitHub Release v\d+\.\d+\.\d+/,
+    `GitHub Release v${version}`,
+  );
+  return next;
+});
+
 console.log(`[sync-version] build/version.iss обновлён до ${version}`);
 if (patchedSetup) console.log(`[sync-version] setup.iss fallback-версия обновлена до ${version}`);
 if (patchedLock) console.log(`[sync-version] package-lock.json версия проекта обновлена до ${version}`);
+if (patchedDocs) console.log(`[sync-version] docs/index.html ссылка на релиз обновлена до ${version}`);

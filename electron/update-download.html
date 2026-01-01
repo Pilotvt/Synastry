@@ -29,7 +29,7 @@
         background: var(--bg);
         color: var(--text);
         font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
-        padding: 14px 14px 18px;
+        padding: 14px;
       }
 
       .card {
@@ -97,12 +97,45 @@
         font-size: 12px;
         white-space: pre-wrap;
       }
+
+      .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      button {
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text);
+        padding: 8px 12px;
+        border-radius: 10px;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      button:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      button.danger {
+        border-color: rgba(239, 68, 68, 0.45);
+        background: rgba(239, 68, 68, 0.18);
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
     </style>
   </head>
   <body>
     <div class="card">
       <h1>Загрузка обновления</h1>
-      <div class="row"><span>Версия:</span> <strong id="version">—</strong></div>
+      <div class="row"><span>Версия:</span> <strong id="version">-</strong></div>
       <progress id="bar" max="100" value="0"></progress>
       <div class="row">
         <span>Прогресс:</span>
@@ -111,12 +144,15 @@
       <div class="row" style="margin-top: 10px;">
         <span>Куда скачивается:</span>
       </div>
-      <div class="path" id="cacheDir">—</div>
+      <div class="path" id="cacheDir">-</div>
       <div class="row" id="downloadedRow" style="margin-top: 10px; display: none;">
         <span>Файл (после загрузки):</span>
       </div>
-      <div class="path" id="downloadedFile" style="display: none;">—</div>
+      <div class="path" id="downloadedFile" style="display: none;">-</div>
       <div class="error" id="error" style="display: none;"></div>
+      <div class="actions">
+        <button id="cancelBtn" class="danger" type="button">Отменить загрузку</button>
+      </div>
     </div>
 
     <script>
@@ -127,6 +163,7 @@
       const downloadedRow = document.getElementById("downloadedRow");
       const version = document.getElementById("version");
       const errorBox = document.getElementById("error");
+      const cancelBtn = document.getElementById("cancelBtn");
 
       const fmtBytes = (n) => {
         const num = Number(n);
@@ -153,10 +190,10 @@
 
       const setDownloaded = (value) => {
         const text = String(value ?? "").trim();
-        if (!text || text === "—") {
+        if (!text || text === "-") {
           downloadedRow.style.display = "none";
           downloadedFile.style.display = "none";
-          downloadedFile.textContent = "—";
+          downloadedFile.textContent = "-";
           return;
         }
         downloadedRow.style.display = "";
@@ -207,6 +244,12 @@
           if (info.downloadedFile) setDownloaded(info.downloadedFile);
           bar.value = 100;
           percent.textContent = "100% • загружено";
+          cancelBtn.disabled = true;
+        }
+
+        if (type === "download-cancelled") {
+          setError("Загрузка обновления отменена.");
+          cancelBtn.disabled = true;
         }
       };
 
@@ -214,6 +257,17 @@
         const api = window.electronAPI?.updates;
         if (api?.onStatus) api.onStatus(applyStatus);
         if (api?.onError) api.onError((payload) => setError(payload?.detail || payload?.message || payload));
+        if (cancelBtn && api?.cancelDownload) {
+          cancelBtn.addEventListener("click", async () => {
+            cancelBtn.disabled = true;
+            try {
+              await api.cancelDownload({ closeWindow: true });
+            } catch (e) {
+              setError(e?.message || String(e));
+              cancelBtn.disabled = false;
+            }
+          });
+        }
       } catch (e) {
         setError(e?.message || String(e));
       }

@@ -19,11 +19,11 @@
 
 ; Fallback values used only if build/version.iss is missing.
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.6"
+#define MyAppVersion "1.0.7"
 #endif
 
 #ifndef MyAppOutputBase
-#define MyAppOutputBase "Synastry-1.0.6-setup"
+#define MyAppOutputBase "Synastry-1.0.7-setup"
 #endif
 
 ; Allow overriding installer icon from environment (for CI / A-B testing).
@@ -47,9 +47,13 @@ OutputBaseFilename={#MyAppOutputBase}
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
+LicenseFile=LICENCE.txt
+
+[Languages]
+Name: "ru"; MessagesFile: "compiler:Languages\\Russian.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; Flags: unchecked
+Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"
 
 [Files]
 Source: "{#MyAppSourceDir}\\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion

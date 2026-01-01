@@ -255,6 +255,8 @@ let primaryWindow = null;
 let autoUpdateListenersBound = false;
 let isCheckingForUpdates = false;
 let isDownloadingUpdate = false;
+let updateDownloadCancelRequestedAt = 0;
+let updateDownloadBackgroundNoticeShown = false;
 let autoUpdateErrorNotified = false;
 let updateDownloadWindow = null;
 let lastUpdateStatusPayload = null;
@@ -757,12 +759,84 @@ function getUpdaterCacheDir() {
   return '';
 }
 
+function isLikelyCancelledDownloadError(error) {
+  const message = String(error?.message ?? error ?? '').toLowerCase();
+  if (!message) return false;
+  return (
+    message.includes('cancel') ||
+    message.includes('canceled') ||
+    message.includes('cancelled') ||
+    message.includes('abort') ||
+    message.includes('aborted') ||
+    message.includes('err_aborted')
+  );
+}
+
+function isUserInitiatedUpdateCancel(error) {
+  if (!updateDownloadCancelRequestedAt) return false;
+  if (Date.now() - updateDownloadCancelRequestedAt > 15000) return false;
+  return isLikelyCancelledDownloadError(error) || !error;
+}
+
+async function cancelUpdateDownload(options = {}) {
+  const { closeWindow = false } = options && typeof options === 'object' ? options : {};
+
+  if (!ALLOW_AUTO_UPDATE || UPDATE_MODE !== 'nsis' || !app.isPackaged) {
+    return { ok: false, reason: 'disabled' };
+  }
+
+  if (!isDownloadingUpdate) {
+    if (closeWindow) closeUpdateDownloadWindow();
+    return { ok: false, reason: 'not-downloading' };
+  }
+
+  const canCancel = typeof autoUpdater?.cancelDownload === 'function';
+  if (!canCancel) {
+    dialog.showMessageBox(getDialogTarget() ?? null, {
+      type: 'info',
+      title: 'Загрузка обновления',
+      message: 'Отмена загрузки не поддерживается в этой сборке.',
+      detail: 'Загрузка продолжится.',
+      noLink: true,
+    });
+    return { ok: false, reason: 'unsupported' };
+  }
+
+  updateDownloadCancelRequestedAt = Date.now();
+  isDownloadingUpdate = false;
+  broadcastUpdateStatus({ type: 'download-cancelling' });
+
+  try {
+    await Promise.resolve(autoUpdater.cancelDownload());
+  } catch (error) {
+    log.warn('Failed to cancel update download', error);
+  } finally {
+    broadcastUpdateStatus({ type: 'download-cancelled' });
+    const win = getDialogTarget();
+    if (win && !win.isDestroyed()) {
+      try {
+        win.setProgressBar(-1);
+      } catch {}
+    }
+
+    if (closeWindow) {
+      if (updateDownloadWindow && !updateDownloadWindow.isDestroyed()) {
+        updateDownloadWindow.__synastrySkipCloseConfirm = true;
+      }
+      closeUpdateDownloadWindow();
+    }
+  }
+
+  return { ok: true };
+}
+
 function closeUpdateDownloadWindow() {
   if (!updateDownloadWindow || updateDownloadWindow.isDestroyed()) {
     updateDownloadWindow = null;
     return;
   }
   try {
+    updateDownloadWindow.__synastrySkipCloseConfirm = true;
     updateDownloadWindow.close();
   } catch {
     // ignore close errors
@@ -774,6 +848,9 @@ function ensureUpdateDownloadWindow(parentWindow) {
   if (!ALLOW_AUTO_UPDATE || !app.isPackaged) return null;
   if (updateDownloadWindow && !updateDownloadWindow.isDestroyed()) {
     try {
+      if (!updateDownloadWindow.isVisible()) {
+        updateDownloadWindow.show();
+      }
       updateDownloadWindow.focus();
     } catch {}
     return updateDownloadWindow;
@@ -799,6 +876,36 @@ function ensureUpdateDownloadWindow(parentWindow) {
     },
   });
   win.setMenu(null);
+  win.__synastrySkipCloseConfirm = false;
+  win.on('close', (event) => {
+    if (!isDownloadingUpdate) return;
+    if (win.__synastrySkipCloseConfirm) return;
+    event.preventDefault();
+    try {
+      win.hide();
+    } catch {}
+    if (updateDownloadBackgroundNoticeShown) return;
+    updateDownloadBackgroundNoticeShown = true;
+    dialog
+      .showMessageBox(getDialogTarget() ?? null, {
+        type: 'info',
+        title: 'Загрузка обновления',
+        message: 'Загрузка продолжается в фоне.',
+        detail: 'Можно снова открыть окно прогресса в любой момент.',
+        buttons: ['Показать прогресс', 'OK'],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      })
+      .then(({ response }) => {
+        if (response !== 0) return;
+        try {
+          if (!win.isDestroyed()) win.show();
+          if (!win.isDestroyed()) win.focus();
+        } catch {}
+      })
+      .catch(() => undefined);
+  });
   win.on('closed', () => {
     if (updateDownloadWindow === win) {
       updateDownloadWindow = null;
@@ -874,19 +981,29 @@ function formatReleaseNotes(releaseNotes) {
     return decodeEntities(text);
   };
 
-  let text = stripHtml(raw).trim();
-  text = text
+  const lines = stripHtml(raw)
+    .trim()
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '')
     .filter((line) => !/^full changelog\s*:/i.test(line))
     .filter((line) => !/^assets\s*:/i.test(line))
-    .join('\n');
+    .filter((line) => !/^https?:\/\//i.test(line)) // скрываем длинные ссылки
+    .filter((line) => !/^!\[.*\]\(.*\)$/i.test(line)) // скрываем картинки
+    .filter((line) => !/^#/i.test(line)); // убираем markdown-заголовки
 
-  const MAX_CHARS = 900;
+  const MAX_LINES = 8;
+  let text = lines.slice(0, MAX_LINES).join('\n');
+
+  const MAX_CHARS = 600;
   if (text.length > MAX_CHARS) {
-    const cutAt = text.lastIndexOf('\n', MAX_CHARS);
-    text = `${text.slice(0, cutAt > 200 ? cutAt : MAX_CHARS).trim()}\n\n(Полный текст — на GitHub Releases)`;
+    const cutAt = text.lastIndexOf(' ', MAX_CHARS);
+    const safeCut = cutAt > 200 ? cutAt : MAX_CHARS;
+    text = text.slice(0, safeCut).trim();
+  }
+
+  if (text.length < raw.length || lines.length > MAX_LINES) {
+    text = `${text}\n\n(Полный текст — на GitHub Releases)`;
   }
 
   return text;
@@ -1185,6 +1302,7 @@ function setupAutoUpdate(window) {
         if (isDownloadingUpdate) {
           return;
         }
+        updateDownloadBackgroundNoticeShown = false;
         isDownloadingUpdate = true;
         ensureUpdateDownloadWindow(target);
         const cacheDir = getUpdaterCacheDir();
@@ -1192,6 +1310,11 @@ function setupAutoUpdate(window) {
         try {
           await autoUpdater.downloadUpdate();
         } catch (error) {
+          if (isUserInitiatedUpdateCancel(error)) {
+            closeUpdateDownloadWindow();
+            updateDownloadCancelRequestedAt = 0;
+            return;
+          }
           isDownloadingUpdate = false;
           closeUpdateDownloadWindow();
           log.error('Failed to download update', error);
@@ -1275,6 +1398,18 @@ function setupAutoUpdate(window) {
   autoUpdater.on('error', (error) => {
     isDownloadingUpdate = false;
     log.error('Auto update error', error);
+    if (isUserInitiatedUpdateCancel(error)) {
+      updateDownloadCancelRequestedAt = 0;
+      closeUpdateDownloadWindow();
+      const win = getDialogTarget();
+      if (win && !win.isDestroyed()) {
+        try {
+          win.setProgressBar(-1);
+        } catch {}
+      }
+      broadcastUpdateStatus({ type: 'download-cancelled' });
+      return;
+    }
     const userError = formatAutoUpdateErrorForUser(error);
     broadcastUpdateError({ message: 'auto-update-error', detail: userError.detail ?? '' });
     closeUpdateDownloadWindow();
@@ -2847,6 +2982,12 @@ ipcMain.handle('blocklist:open', (event) => {
 ipcMain.handle('updates:check-now', async (event) => {
   const sourceWindow = BrowserWindow.fromWebContents(event?.sender);
   return checkForUpdates({ userInitiated: true, browserWindow: sourceWindow });
+});
+
+ipcMain.handle('updates:cancel-download', async (event, options) => {
+  const payload = options && typeof options === 'object' ? options : {};
+  const closeWindow = Boolean(payload.closeWindow);
+  return cancelUpdateDownload({ closeWindow });
 });
 
 function createWindow() {

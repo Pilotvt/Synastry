@@ -110,6 +110,7 @@ const updatesChannel = {
     return () => ipcRenderer.removeListener('updates:error', subscription);
   },
   checkNow: () => ipcRenderer.invoke('updates:check-now'),
+  cancelDownload: (options) => ipcRenderer.invoke('updates:cancel-download', options ?? null),
 };
 
 const authChannel = {
