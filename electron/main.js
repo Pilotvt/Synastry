@@ -57,6 +57,34 @@ const BACKEND_PORT = process.env.SYN_BACKEND_PORT || '8000';
 // Use piped IO by default to avoid terminal escape codes polluting logs; can override via ENV if needed.
 const BACKEND_STDIO = process.env.ELECTRON_BACKEND_STDIO || 'pipe';
 
+function normalizeQuotedPath(value) {
+  if (typeof value !== 'string') return '';
+  let trimmed = value.trim();
+  if (!trimmed) return '';
+  // strip repeated wrapping quotes (common when env vars/registry store `"C:\Path\python.exe"`)
+  for (let i = 0; i < 3; i += 1) {
+    const next = trimmed.replace(/^['"](.+)['"]$/, '$1').trim();
+    if (next === trimmed) break;
+    trimmed = next;
+  }
+  return trimmed;
+}
+
+function resolveElectronLogFilePath() {
+  try {
+    const file = log?.transports?.file?.getFile?.();
+    if (file?.path) return String(file.path);
+  } catch {}
+  return '';
+}
+
+function quoteCmdArg(value) {
+  const s = String(value ?? '');
+  if (!s) return '""';
+  if (s.includes(' ') || s.includes('\t')) return `"${s}"`;
+  return s;
+}
+
 const APP_DISPLAY_NAME = 'Synastry';
 const APP_ICON = path.join(__dirname, '../build/icons/icon.ico');
 const APP_VERSION = resolveAppVersion();
@@ -1117,7 +1145,7 @@ async function cleanupStaleUpdateInstallers() {
       const fileName = String(entry.name || '');
       if (!fileName.toLowerCase().endsWith('.exe')) continue;
 
-      const match = fileName.match(/Synastry-(\d+\.\d+\.\d+)-update\.exe/i);
+      const match = fileName.match(/Synastry-(\d+\.\d+\.\d+)-update(?:\s*\(\d+\))?\.exe/i);
       const fileVersion = parseSimpleVersion(match?.[1] ?? '');
       if (!fileVersion) continue;
 
@@ -1674,8 +1702,13 @@ async function refreshLicenseStatus() {
   }
 
   function resolvePythonExecutable() {
-    const envOverride = process.env[PYTHON_ENV_VAR]?.trim();
-    if (envOverride && fs.existsSync(envOverride)) return envOverride;
+    const envRaw = process.env[PYTHON_ENV_VAR];
+    const envOverride = normalizeQuotedPath(envRaw);
+    if (envOverride) {
+      if (fs.existsSync(envOverride)) return envOverride;
+      // allow values like `py -3` / `python`
+      if (/^(py(\s|$)|python(\s|$)|python3(\s|$))/i.test(envOverride)) return envOverride;
+    }
     const embedded = resolveEmbeddedPython();
     if (embedded) return embedded;
     const systemPy = findSystemPython();
@@ -1696,6 +1729,36 @@ function resolveNudeNetModelPath(isPackaged) {
 }
 
   function ensureBackendDependencies(pythonExecutable) {
+    const debug = {
+      pythonExecutable,
+      wheelsRoot: '',
+      requirementsPath: '',
+      sitePackagesDir: '',
+      pipCommand: '',
+      depsCheckStderr: '',
+      depsCheckStdout: '',
+      pipStdout: '',
+      pipStderr: '',
+      error: '',
+    };
+
+    if (app.isPackaged) {
+      try {
+        const embedExe = path.join(process.resourcesPath, 'python-embed', 'python.exe');
+        const normalizedExec = normalizeQuotedPath(pythonExecutable);
+        if (normalizedExec && path.normalize(normalizedExec) === path.normalize(embedExe)) {
+          const embedDir = path.dirname(embedExe);
+          const mustHave = ['vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'concrt140.dll'];
+          const missing = mustHave.filter((name) => !fs.existsSync(path.join(embedDir, name)));
+          if (missing.length > 0) {
+            debug.error = `Missing VC++ runtime DLL(s) in python-embed: ${missing.join(', ')}`;
+            return { ok: false, reason: 'vc-dlls-missing', debug };
+          }
+        }
+      } catch {
+        // ignore bundle preflight errors
+      }
+    }
     const checkScript = `
 import importlib, sys
 mods = ["nudenet", "uvicorn", "fastapi", "numpy", "scipy", "astropy", "skyfield", "swisseph", "PIL"]
@@ -1703,20 +1766,47 @@ missing = []
 for m in mods:
     try:
         importlib.import_module(m)
-    except Exception:
-        missing.append(m)
+    except Exception as exc:
+        missing.append((m, exc))
 if missing:
+    for name, exc in missing:
+        print(f"[deps-check] {name}: {exc}", file=sys.stderr)
     sys.exit(99)
 `;
 
-    const checkResult = spawnSync(pythonExecutable, ['-c', checkScript], { shell: false, windowsHide: true });
+    const checkResult = spawnSync(pythonExecutable, ['-c', checkScript], {
+      shell: false,
+      windowsHide: true,
+      stdio: 'pipe',
+    });
+    if (checkResult?.error) {
+      debug.error = checkResult.error instanceof Error ? checkResult.error.message : String(checkResult.error);
+    }
     if (checkResult.status === 0) {
-      return true;
+      return { ok: true, debug };
+    }
+    const checkStdout = (checkResult.stdout || '').toString().trim();
+    const checkStderr = (checkResult.stderr || '').toString().trim();
+    debug.depsCheckStdout = checkStdout;
+    debug.depsCheckStderr = checkStderr;
+    if (checkStdout) {
+      log.warn(`[backend] deps check stdout: ${checkStdout}`);
+    }
+    if (checkStderr) {
+      log.warn(`[backend] deps check stderr: ${checkStderr}`);
+    }
+
+    const dllRelated = /dll load failed|could not find|msvcp\d+|vcruntime\d+|concrt\d+|vcomp\d+/i.test(
+      `${checkStdout}\n${checkStderr}`
+    );
+    if (dllRelated) {
+      return { ok: false, reason: 'vc-runtime', debug };
     }
 
     const requirementsPath = app.isPackaged
       ? path.join(process.resourcesPath, 'requirements.txt')
       : path.join(__dirname, '..', 'requirements.txt');
+    debug.requirementsPath = requirementsPath;
 
     let tmpReqPath = requirementsPath;
     if (app.isPackaged) {
@@ -1732,11 +1822,13 @@ if missing:
     const wheelsRoot = app.isPackaged
       ? path.join(process.resourcesPath, 'wheels')
       : path.join(__dirname, 'resources', 'wheels');
+    debug.wheelsRoot = wheelsRoot;
 
     const useOffline = fs.existsSync(wheelsRoot);
     const sitePackagesDir = app.isPackaged
       ? path.join(process.resourcesPath, 'python-embed', 'Lib', 'site-packages')
       : null;
+    debug.sitePackagesDir = sitePackagesDir || '';
     if (sitePackagesDir) {
       try {
         fs.mkdirSync(sitePackagesDir, { recursive: true });
@@ -1746,7 +1838,18 @@ if missing:
     }
     const wheelsExists = useOffline && fs.existsSync(wheelsRoot);
     // распакуем pip whl, если pip отсутствует
-    if (wheelsExists && sitePackagesDir) {
+    let pipAvailable = false;
+    try {
+      const pipProbe = spawnSync(pythonExecutable, ['-m', 'pip', '--version'], {
+        shell: false,
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+      pipAvailable = pipProbe.status === 0;
+    } catch {
+      pipAvailable = false;
+    }
+    if (!pipAvailable && wheelsExists && sitePackagesDir) {
       try {
         const pipWheel = fs.readdirSync(wheelsRoot).find((f) => f.startsWith('pip-') && f.endsWith('.whl'));
         if (pipWheel) {
@@ -1756,31 +1859,21 @@ import zipfile
 zipfile.ZipFile(r"${pipPath.replace(/\\\\/g, '\\\\\\\\')}").extractall(r"${sitePackagesDir.replace(/\\\\/g, '\\\\\\\\')}")
 `;
           spawnSync(pythonExecutable, ['-c', unzipScript], { shell: false, stdio: 'pipe', windowsHide: true });
+          const pipProbe2 = spawnSync(pythonExecutable, ['-m', 'pip', '--version'], {
+            shell: false,
+            windowsHide: true,
+            stdio: 'ignore',
+          });
+          pipAvailable = pipProbe2.status === 0;
         }
       } catch (err) {
         console.error('Failed to unzip pip wheel', err);
       }
     }
-
-    // ensure pip exists (skip when ensurepip module is absent in the embedded build)
-    let ensurepipAvailable = false;
-    try {
-      const probe = spawnSync(pythonExecutable, ['-c', 'import ensurepip'], { shell: false, windowsHide: true });
-      ensurepipAvailable = probe.status === 0;
-    } catch {
-      ensurepipAvailable = false;
-    }
-    if (ensurepipAvailable) {
-      try {
-        spawnSync(pythonExecutable, ['-m', 'ensurepip', '--default-pip'], { shell: false, stdio: 'pipe', windowsHide: true });
-      } catch (err) {
-        console.error('ensurepip failed', err);
-      }
-    } else if (!wheelsExists) {
-      console.warn('ensurepip module not available and no bundled pip wheel found');
+    if (!pipAvailable) {
+      return { ok: false, reason: 'pip-missing', debug };
     }
 
-    // offline pip install
     const baseInstallArgs = [
       '-m',
       'pip',
@@ -1788,10 +1881,15 @@ zipfile.ZipFile(r"${pipPath.replace(/\\\\/g, '\\\\\\\\')}").extractall(r"${siteP
       '--no-warn-script-location',
       '--disable-pip-version-check',
       '--upgrade',
-      '--no-index', '--find-links', wheelsRoot,
-      '--target', sitePackagesDir || '',
-      '-r', tmpReqPath,
     ];
+    if (useOffline) {
+      baseInstallArgs.push('--no-index', '--find-links', wheelsRoot);
+    }
+    if (sitePackagesDir) {
+      baseInstallArgs.push('--target', sitePackagesDir);
+    }
+    baseInstallArgs.push('-r', tmpReqPath);
+    debug.pipCommand = [quoteCmdArg(pythonExecutable), ...baseInstallArgs.map(quoteCmdArg)].join(' ');
     const env = {
       ...process.env,
       PYTHONPATH: sitePackagesDir
@@ -1804,16 +1902,58 @@ zipfile.ZipFile(r"${pipPath.replace(/\\\\/g, '\\\\\\\\')}").extractall(r"${siteP
       baseInstallArgs,
       { shell: false, stdio: 'pipe', env, windowsHide: true }
     );
-    return installResult.status === 0;
+    const installStdout = (installResult.stdout || '').toString().trim();
+    const installStderr = (installResult.stderr || '').toString().trim();
+    debug.pipStdout = installStdout;
+    debug.pipStderr = installStderr;
+    if (installStdout) {
+      log.warn(`[backend] pip stdout: ${installStdout}`);
+    }
+    if (installStderr) {
+      log.warn(`[backend] pip stderr: ${installStderr}`);
+    }
+    if (installResult.status === 0) {
+      return { ok: true, debug };
+    }
+
+    // Fallback: if bundled wheels are incomplete, allow downloading from the internet.
+    if (useOffline) {
+      const onlineArgs = baseInstallArgs.filter((arg) => arg !== '--no-index' && arg !== '--find-links' && arg !== wheelsRoot);
+      const onlineResult = spawnSync(pythonExecutable, onlineArgs, { shell: false, stdio: 'pipe', env, windowsHide: true });
+      const onlineStdout = (onlineResult.stdout || '').toString().trim();
+      const onlineStderr = (onlineResult.stderr || '').toString().trim();
+      if (onlineStdout) log.warn(`[backend] pip (online) stdout: ${onlineStdout}`);
+      if (onlineStderr) log.warn(`[backend] pip (online) stderr: ${onlineStderr}`);
+      if (onlineResult.status === 0) {
+        return { ok: true, debug: { ...debug, pipStdout: onlineStdout, pipStderr: onlineStderr } };
+      }
+    }
+
+    return { ok: false, reason: 'pip-failed', debug };
   }
 
   function parsePythonCommand(command) {
     if (!command) return { exec: null, extraArgs: [] };
-    const parts = command
-      .trim()
-      .replace(/^"(.*)"$/, '$1')
-      .split(/\s+/)
-      .filter(Boolean);
+    const trimmed = String(command).trim();
+    if (!trimmed) return { exec: null, extraArgs: [] };
+
+    const asPath = normalizeQuotedPath(trimmed);
+    if (asPath && fs.existsSync(asPath)) {
+      return { exec: asPath, extraArgs: [] };
+    }
+
+    if (trimmed.startsWith('"') || trimmed.startsWith("'")) {
+      const quote = trimmed[0];
+      const end = trimmed.indexOf(quote, 1);
+      if (end > 0) {
+        const exec = trimmed.slice(1, end);
+        const rest = trimmed.slice(end + 1).trim();
+        const extraArgs = rest ? rest.split(/\s+/).filter(Boolean) : [];
+        return { exec, extraArgs };
+      }
+    }
+
+    const parts = trimmed.split(/\s+/).filter(Boolean);
     const exec = parts.shift() ?? null;
     return { exec, extraArgs: parts };
   }
@@ -1821,6 +1961,9 @@ zipfile.ZipFile(r"${pipPath.replace(/\\\\/g, '\\\\\\\\')}").extractall(r"${siteP
   function getBackendLaunchConfig() {
     const pythonExecutable = resolvePythonExecutable();
     if (!pythonExecutable) {
+      const embedExpectedPath = app.isPackaged
+        ? path.join(process.resourcesPath, 'python-embed', 'python.exe')
+        : path.join(__dirname, 'resources', 'python-embed', 'python.exe');
       const installerPath = app.isPackaged
         ? path.join(process.resourcesPath, 'python-installer', 'python-3.13.9-amd64.exe')
         : path.join(__dirname, 'resources', 'python-3.13.9-amd64.exe');
@@ -1834,11 +1977,21 @@ zipfile.ZipFile(r"${pipPath.replace(/\\\\/g, '\\\\\\\\')}").extractall(r"${siteP
         buttons,
         defaultId: 0,
         cancelId: 1,
-        title: 'Требуется Python 3.12+',
-        message: 'Не найден системный Python 3.12+. Без него Synastry не запустится.',
+        title: 'Не найден Python',
+        message: 'Не удалось найти Python для запуска бэкенда Synastry.',
         detail: fs.existsSync(installerPath)
-          ? 'Нажмите "Установить Python", чтобы установить Python 3.13.9 (x64) в автоматическом режиме.'
-          : 'Откроется страница python.org, скачайте и установите Python 3.12+ (x64), затем перезапустите Synastry.',
+          ? [
+              `Встроенный Python (python-embed) не найден по пути:\n${embedExpectedPath}\n`,
+              'Нажмите "Установить Python", чтобы установить Python 3.13.9 (x64) в автоматическом режиме.\n',
+              'Также можно указать явный путь через переменную окружения:',
+              `${PYTHON_ENV_VAR}="C:\\\\Path\\\\to\\\\python.exe"`,
+            ].join('\n')
+          : [
+              `Встроенный Python (python-embed) не найден по пути:\n${embedExpectedPath}\n`,
+              'Откроется страница python.org: скачайте и установите Python 3.12+ (x64), затем перезапустите Synastry.\n',
+              'Также можно указать явный путь через переменную окружения:',
+              `${PYTHON_ENV_VAR}="C:\\\\Path\\\\to\\\\python.exe"`,
+            ].join('\n'),
         noLink: true,
       });
 
@@ -2283,11 +2436,46 @@ app.whenReady().then(async () => {
     return;
   }
 
-  if (!ensureBackendDependencies(launchConfig.command)) {
-    dialog.showErrorBox(
-      'Ошибка зависимостей Python',
-      'Не удалось установить нужные пакеты (nudenet/uvicorn и др.). Проверьте интернет или установите вручную: pip install -r requirements.txt'
-    );
+  const depsResult = ensureBackendDependencies(launchConfig.command);
+  if (!depsResult?.ok) {
+    const embedPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'python-embed', 'python.exe')
+      : path.join(__dirname, 'resources', 'python-embed', 'python.exe');
+    const logPath = resolveElectronLogFilePath();
+    const debug = depsResult?.debug || {};
+
+    const parts = [];
+    parts.push(`Python: ${launchConfig.command}`);
+    parts.push(`Embedded: ${embedPath}`);
+    if (debug.requirementsPath) parts.push(`requirements.txt: ${debug.requirementsPath}`);
+    if (debug.wheelsRoot) parts.push(`wheels: ${debug.wheelsRoot}`);
+    if (debug.sitePackagesDir) parts.push(`site-packages: ${debug.sitePackagesDir}`);
+    if (debug.pipCommand) parts.push(`\nКоманда установки:\n${debug.pipCommand}`);
+
+    if (depsResult.reason === 'vc-runtime') {
+      parts.push(
+        '\nПохоже, не установлен Microsoft Visual C++ Redistributable 2015–2022 (x64).\n' +
+          'Скачайте и установите, затем перезапустите Synastry:\n' +
+          'https://aka.ms/vs/17/release/vc_redist.x64.exe'
+      );
+    } else if (depsResult.reason === 'vc-dlls-missing') {
+      parts.push(
+        '\nВ сборке отсутствуют VC++ runtime DLL рядом с python-embed.\n' +
+          'Пересоберите установщик с `npm run runtime:prepare` или установите VC++ Runtime:\n' +
+          'https://aka.ms/vs/17/release/vc_redist.x64.exe'
+      );
+    } else if (depsResult.reason === 'pip-missing') {
+      parts.push('\nВстроенный Python запустился, но модуль pip не найден.');
+    } else if (depsResult.reason === 'pip-failed') {
+      parts.push('\nУстановка зависимостей через pip завершилась с ошибкой.');
+    }
+
+    if (debug.depsCheckStderr) parts.push(`\nПроверка зависимостей:\n${debug.depsCheckStderr}`);
+    if (debug.pipStderr) parts.push(`\npip stderr:\n${debug.pipStderr}`);
+    if (debug.error) parts.push(`\nОшибка запуска:\n${debug.error}`);
+    if (logPath) parts.push(`\nЛоги: ${logPath}`);
+
+    dialog.showErrorBox('Ошибка зависимостей Python', parts.join('\n'));
     return;
   }
 
@@ -2299,11 +2487,19 @@ app.whenReady().then(async () => {
     attachBackendProcessLogging(backendProcess);
     backendProcess.on('error', (error) => {
       console.error('Failed to launch backend process:', error);
+      const embedPath = app.isPackaged
+        ? path.join(process.resourcesPath, 'python-embed', 'python.exe')
+        : path.join(__dirname, 'resources', 'python-embed', 'python.exe');
+      const logPath = resolveElectronLogFilePath();
       dialog.showErrorBox(
         'Ошибка запуска бэкенда',
         `Не удалось запустить Python по пути:\n${launchConfig.command}\n\n` +
-          'Установите или переустановите Python 3.12+ (x64). ' +
-          'В дистрибутив включён python-3.13.9-amd64.exe в папке resources/python-installer.'
+          `Embedded (ожидается):\n${embedPath}\n\n` +
+          `Можно указать Python вручную через переменную окружения:\n${PYTHON_ENV_VAR}="C:\\\\Path\\\\to\\\\python.exe"\n\n` +
+          'Если ошибка связана с DLL (VC++ Runtime), установите Microsoft Visual C++ Redistributable 2015–2022 (x64):\n' +
+          'https://aka.ms/vs/17/release/vc_redist.x64.exe\n\n' +
+          (logPath ? `Логи: ${logPath}\n\n` : '') +
+          `Текст ошибки:\n${error instanceof Error ? error.message : String(error)}`
       );
     });
   } catch (error) {

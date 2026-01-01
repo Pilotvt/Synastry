@@ -34,4 +34,10 @@ test_images/
 *.sw?
 release/
 .Лекции/
-Ключию.txt
+Ключи.txt
+electron/resources/wheels/*.whl
+electron/resources/wheels/*.zip
+electron/resources/wheels/*.tar.gz
+electron/resources/python-embed/msvcp140*.dll
+electron/resources/python-embed/concrt140.dll
+electron/resources/python-embed/vcomp140.dll

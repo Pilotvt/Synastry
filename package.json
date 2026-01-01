@@ -18,8 +18,10 @@
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
     "desktop:dev": "npm run build && electron electron/main.js",
-    "desktop:pack": "npm run sync:version && electron-builder --dir",
-    "desktop:build": "npm run sync:version && npm run build && electron-builder",
+    "runtime:prepare": "python scripts/copy_vc_runtime_dlls.py --dest electron/resources/python-embed",
+    "wheels:prepare": "python scripts/build_wheelhouse.py --dest electron/resources/wheels --requirements requirements.txt",
+    "desktop:pack": "npm run sync:version && npm run runtime:prepare && npm run wheels:prepare && electron-builder --dir",
+    "desktop:build": "npm run sync:version && npm run runtime:prepare && npm run wheels:prepare && npm run build && electron-builder",
     "dist": "npm run desktop:build",
     "pack": "npm run desktop:pack",
     "generate:license": "node scripts/generate-license-key.mjs",
@@ -106,6 +108,10 @@
       {
         "from": "electron/resources/python-embed",
         "to": "python-embed"
+      },
+      {
+        "from": "electron/resources/wheels",
+        "to": "wheels"
       },
       {
         "from": "THIRD_PARTY_NOTICES.txt",
