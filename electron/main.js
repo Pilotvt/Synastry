@@ -168,6 +168,36 @@ function disableEmbeddedAsyncioPyd(embedDir, reason) {
   }
 }
 
+function sanitizeEmbeddedSitecustomize(embedDir) {
+  try {
+    if (process.platform !== 'win32') return { changed: false };
+    const filePath = path.join(embedDir, 'Lib', 'site-packages', 'sitecustomize.py');
+    if (!fs.existsSync(filePath)) return { changed: false };
+    const raw = fs.readFileSync(filePath, 'utf8');
+    // Older builds shipped a heavy asyncio monkeypatch that can break AnyIO/Uvicorn with:
+    // "Future attached to a different loop" => results in 500 on /api/chart, /api/tithi, etc.
+    if (!raw.includes('_force_asyncio_pure_python')) return { changed: false };
+
+    const fixed = [
+      'import os',
+      '',
+      '',
+      'def _fallback_walk_symlinks_as_files(top, onerror=None, followlinks=False):',
+      '    return os.walk(top, topdown=True, onerror=onerror, followlinks=followlinks)',
+      '',
+      '',
+      'if not hasattr(os, \"_walk_symlinks_as_files\"):',
+      '    os._walk_symlinks_as_files = _fallback_walk_symlinks_as_files  # type: ignore[attr-defined]',
+      '',
+    ].join('\\n');
+
+    fs.writeFileSync(filePath, fixed, 'utf8');
+    return { changed: true, path: filePath };
+  } catch (err) {
+    return { changed: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 function resolveEmbeddedPythonExePath() {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'python-embed', 'python.exe')
@@ -2597,6 +2627,14 @@ function resolveNudeNetModelPath(isPackaged) {
             return { ok: false, reason: 'vc-dlls-missing', debug };
           }
 
+          // Self-heal for older installs: remove risky asyncio monkeypatch from sitecustomize.py.
+          const siteFix = sanitizeEmbeddedSitecustomize(embedDir);
+          if (siteFix?.error) {
+            log.warn('[backend] failed to sanitize sitecustomize.py', siteFix.error);
+          } else if (siteFix?.changed) {
+            log.warn(`[backend] sanitized sitecustomize.py: ${siteFix.path}`);
+          }
+
           // If we already detected a crash on this machine, apply compat fix proactively.
           const flags = loadBackendCompatFlags();
           if (process.platform === 'win32' && flags.disableAsyncioPyd) {
@@ -2904,6 +2942,7 @@ function resolveNudeNetModelPath(isPackaged) {
     // Helps capture Python tracebacks on native crashes where possible.
     PYTHONFAULTHANDLER: process.env.PYTHONFAULTHANDLER || '1',
     PYTHONUNBUFFERED: process.env.PYTHONUNBUFFERED || '1',
+    PYTHONIOENCODING: process.env.PYTHONIOENCODING || 'utf-8',
   };
   const nudenetModelPath = resolveNudeNetModelPath(app.isPackaged);
   const nudenetEnv = nudenetModelPath ? { NUDENET_MODEL_PATH: nudenetModelPath } : {};
@@ -2929,9 +2968,33 @@ function resolveNudeNetModelPath(isPackaged) {
         ? baseEnv.PYTHONPATH.split(path.delimiter).filter((entry) => entry && entry.trim().length > 0)
         : [];
       const pyPath = [...existingEntries, ...inheritedEntries].filter((entry, index, arr) => arr.indexOf(entry) === index).join(path.delimiter);
+
+      // Force pure-Python protocol stack for stability (avoid `httptools_impl` on Windows embedded builds).
+      const httpImpl = process.env.SYN_BACKEND_HTTP || 'h11';
+      const wsImpl = process.env.SYN_BACKEND_WS || 'websockets';
+      const loopImpl = process.env.SYN_BACKEND_LOOP || 'asyncio';
+      const logLevel = process.env.SYN_BACKEND_LOG || 'warning';
+
       return {
       command: effectiveExec,
-      args: [...parsedArgs, '-m', 'app'],
+      args: [
+        ...parsedArgs,
+        '-m',
+        'uvicorn',
+        'app.main:app',
+        '--host',
+        BACKEND_HOST,
+        '--port',
+        String(BACKEND_PORT),
+        '--log-level',
+        logLevel,
+        '--http',
+        httpImpl,
+        '--ws',
+        wsImpl,
+        '--loop',
+        loopImpl,
+      ],
       options: {
         cwd: resourceRoot,
         shell: false,
@@ -2951,9 +3014,30 @@ function resolveNudeNetModelPath(isPackaged) {
 
   const projectRoot = path.join(__dirname, '..');
   const devPyPath = baseEnv.PYTHONPATH ? `${projectRoot}${path.delimiter}${baseEnv.PYTHONPATH}` : projectRoot;
+  const httpImpl = process.env.SYN_BACKEND_HTTP || 'h11';
+  const wsImpl = process.env.SYN_BACKEND_WS || 'websockets';
+  const loopImpl = process.env.SYN_BACKEND_LOOP || 'asyncio';
+  const logLevel = process.env.SYN_BACKEND_LOG || 'warning';
     return {
       command: effectiveExec,
-      args: [...parsedArgs, '-m', 'app'],
+      args: [
+        ...parsedArgs,
+        '-m',
+        'uvicorn',
+        'app.main:app',
+        '--host',
+        BACKEND_HOST,
+        '--port',
+        String(BACKEND_PORT),
+        '--log-level',
+        logLevel,
+        '--http',
+        httpImpl,
+        '--ws',
+        wsImpl,
+        '--loop',
+        loopImpl,
+      ],
       options: {
         cwd: projectRoot,
       shell: false,
