@@ -89,6 +89,17 @@ def main() -> None:
                     f"[vc-dlls] failed to copy {python_runtime_src} -> {python_runtime_dst}: {exc}"
                 ) from exc
 
+    # Optional: strip `_asyncio.pyd` if you want to force pure-Python asyncio everywhere.
+    # Default: keep as-is and let the app auto-disable it only on machines where it crashes.
+    if os.environ.get("SYN_STRIP_ASYNCIO_PYD") == "1":
+        crashing_asyncio = dest / "_asyncio.pyd"
+        if crashing_asyncio.exists():
+            try:
+                crashing_asyncio.unlink()
+                print(f"[vc-dlls] removed: {crashing_asyncio}")
+            except OSError as exc:
+                raise SystemExit(f"[vc-dlls] failed to remove {crashing_asyncio}: {exc}") from exc
+
     if missing:
         msg = (
             "[vc-dlls] missing on this machine:\n- "

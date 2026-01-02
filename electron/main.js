@@ -52,11 +52,16 @@ let cacheImagesDir = '';
 
 let backendProcess = null;
 let currentOnlineStatus = true;
+let backendLaunchConfig = null;
+let isQuitting = false;
 const PYTHON_ENV_VAR = 'SYN_PYTHON_PATH';
 const BACKEND_HOST = '127.0.0.1';
 const BACKEND_PORT = process.env.SYN_BACKEND_PORT || '8000';
 // Use piped IO by default to avoid terminal escape codes polluting logs; can override via ENV if needed.
 const BACKEND_STDIO = process.env.ELECTRON_BACKEND_STDIO || 'pipe';
+const BACKEND_COMPAT_FLAGS_FILE = 'backend-compat.json';
+let backendCompatFlags = null;
+let backendRestartAttempted = false;
 
 function normalizeQuotedPath(value) {
   if (typeof value !== 'string') return '';
@@ -86,11 +91,167 @@ function quoteCmdArg(value) {
   return s;
 }
 
+function formatWindowsExitCode(code) {
+  if (code == null) return '';
+  const n = Number(code);
+  if (!Number.isFinite(n)) return '';
+  // Convert to unsigned 32-bit hex (Windows NTSTATUS-style exit codes).
+  const hex = (n >>> 0).toString(16).toUpperCase().padStart(8, '0');
+  return `0x${hex}`;
+}
+
+function isWindowsAccessViolationExitCode(code) {
+  if (code == null) return false;
+  const n = Number(code);
+  // 0xC0000005 / STATUS_ACCESS_VIOLATION
+  return n === -1073741819 || n === 3221225477;
+}
+
 function isWindowsMissingDllExitCode(code) {
   if (code == null) return false;
   const n = Number(code);
   // 0xC0000135 / STATUS_DLL_NOT_FOUND (often means missing UCRT/VC++ runtime)
   return n === -1073741515 || n === 3221225781;
+}
+
+function loadBackendCompatFlags() {
+  if (backendCompatFlags) return backendCompatFlags;
+  try {
+    const filePath = path.join(app.getPath('userData'), BACKEND_COMPAT_FLAGS_FILE);
+    if (!fs.existsSync(filePath)) {
+      backendCompatFlags = {};
+      return backendCompatFlags;
+    }
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    backendCompatFlags = parsed && typeof parsed === 'object' ? parsed : {};
+    return backendCompatFlags;
+  } catch {
+    backendCompatFlags = {};
+    return backendCompatFlags;
+  }
+}
+
+function saveBackendCompatFlags(next) {
+  backendCompatFlags = next && typeof next === 'object' ? next : {};
+  try {
+    const filePath = path.join(app.getPath('userData'), BACKEND_COMPAT_FLAGS_FILE);
+    fs.writeFileSync(filePath, JSON.stringify(backendCompatFlags, null, 2), 'utf8');
+  } catch {}
+  return backendCompatFlags;
+}
+
+function disableEmbeddedAsyncioPyd(embedDir, reason) {
+  try {
+    const src = path.join(embedDir, '_asyncio.pyd');
+    if (!fs.existsSync(src)) return { changed: false, path: src };
+    const disabledPath = `${src}.disabled`;
+    if (!fs.existsSync(disabledPath)) {
+      fs.renameSync(src, disabledPath);
+      return { changed: true, path: disabledPath };
+    }
+    return { changed: false, path: disabledPath };
+  } catch (err) {
+    return { changed: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    if (reason) {
+      const flags = loadBackendCompatFlags();
+      if (!flags.disableAsyncioPyd) {
+        saveBackendCompatFlags({
+          ...flags,
+          disableAsyncioPyd: true,
+          disableAsyncioPydReason: reason,
+          disableAsyncioPydAt: new Date().toISOString(),
+        });
+      }
+    }
+  }
+}
+
+function resolveEmbeddedPythonExePath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'python-embed', 'python.exe')
+    : path.join(__dirname, 'resources', 'python-embed', 'python.exe');
+}
+
+function getEmbeddedPythonDirForExec(pythonExecutable) {
+  try {
+    const embedExe = resolveEmbeddedPythonExePath();
+    const normalizedExec = normalizeQuotedPath(pythonExecutable);
+    if (!normalizedExec) return null;
+    if (path.normalize(normalizedExec) !== path.normalize(embedExe)) return null;
+    return path.dirname(embedExe);
+  } catch {
+    return null;
+  }
+}
+
+function startBackendProcess(launchConfig) {
+  backendLaunchConfig = launchConfig;
+  try {
+    backendProcess = spawn(launchConfig.command, launchConfig.args, {
+      ...launchConfig.options,
+      shell: false,
+    });
+    attachBackendProcessLogging(backendProcess, {
+      onExit: (code, signal) => {
+        if (isQuitting) return;
+        if (signal) return;
+        if (!isWindowsAccessViolationExitCode(code)) return;
+        if (backendRestartAttempted) return;
+        backendRestartAttempted = true;
+
+        const embedDir = getEmbeddedPythonDirForExec(launchConfig.command);
+        if (!embedDir) return;
+
+        const hex = formatWindowsExitCode(code);
+        const res = disableEmbeddedAsyncioPyd(embedDir, `crash-${hex || code}`);
+        if (res?.error) {
+          log.error('[backend] failed to disable _asyncio.pyd after crash', res.error);
+          return;
+        }
+        if (res?.path) {
+          log.warn(`[backend] crash detected (${hex || code}); disabled _asyncio and restarting: ${res.path}`);
+        }
+
+        setTimeout(() => {
+          try {
+            if (isQuitting) return;
+            if (backendProcess) return;
+            backendProcess = spawn(launchConfig.command, launchConfig.args, {
+              ...launchConfig.options,
+              shell: false,
+            });
+            attachBackendProcessLogging(backendProcess);
+          } catch (err) {
+            log.error('[backend] failed to restart after disabling _asyncio.pyd', err);
+          }
+        }, 350);
+      },
+    });
+
+    backendProcess.on('error', (error) => {
+      console.error('Failed to launch backend process:', error);
+      const embedPath = resolveEmbeddedPythonExePath();
+      const logPath = resolveElectronLogFilePath();
+      dialog.showErrorBox(
+        'Ошибка запуска бэкенда',
+        `Не удалось запустить Python по пути:\n${launchConfig.command}\n\n` +
+          `Embedded (ожидается):\n${embedPath}\n\n` +
+          `Можно указать Python вручную через переменную окружения:\n${PYTHON_ENV_VAR}="C:\\\\Path\\\\to\\\\python.exe"\n\n` +
+          'Если ошибка связана с DLL (VC++ Runtime), установите Microsoft Visual C++ Redistributable 2015-2022 (x64):\n' +
+          'https://aka.ms/vs/17/release/vc_redist.x64.exe\n\n' +
+          (logPath ? `Логи: ${logPath}\n\n` : '') +
+          `Текст ошибки:\n${error instanceof Error ? error.message : String(error)}`
+      );
+    });
+  } catch (error) {
+    console.error('Unexpected error while spawning backend process:', error);
+    dialog.showErrorBox(
+      'Ошибка запуска бэкенда',
+      `Не удалось запустить Python.\n\n${error instanceof Error ? error.message : String(error)}`
+    );
+  }
 }
 
   function httpGetJson(url, headers = {}) {
@@ -2435,32 +2596,48 @@ function resolveNudeNetModelPath(isPackaged) {
             debug.error = `Missing VC++ runtime DLL(s) in python-embed: ${missing.join(', ')}`;
             return { ok: false, reason: 'vc-dlls-missing', debug };
           }
+
+          // If we already detected a crash on this machine, apply compat fix proactively.
+          const flags = loadBackendCompatFlags();
+          if (process.platform === 'win32' && flags.disableAsyncioPyd) {
+            const res = disableEmbeddedAsyncioPyd(embedDir, flags.disableAsyncioPydReason || 'flagged');
+            if (res?.error) {
+              debug.error = `Failed to disable _asyncio.pyd: ${res.error}`;
+              return { ok: false, reason: 'python-crashed', debug };
+            }
+            if (res?.changed) {
+              log.warn(`[backend] disabled crashing module (flag): ${res.path}`);
+            }
+          }
         }
       } catch {
         // ignore bundle preflight errors
       }
     }
-    const checkScript = `
-import importlib, sys
-mods = ["nudenet", "uvicorn", "fastapi", "numpy", "scipy", "astropy", "skyfield", "swisseph", "PIL"]
-missing = []
- for m in mods:
-     try:
-         importlib.import_module(m)
-     except Exception as exc:
-        missing.append((m, exc))
-if missing:
-    for name, exc in missing:
-        print(f"[deps-check] {name}: {exc}", file=sys.stderr)
-    sys.exit(99)
- `;
+    const checkScript = [
+      'import importlib, sys',
+      'mods = ["nudenet", "uvicorn", "fastapi", "numpy", "scipy", "astropy", "skyfield", "swisseph", "PIL"]',
+      'missing = []',
+      'for m in mods:',
+      '    try:',
+      '        importlib.import_module(m)',
+      '    except Exception as exc:',
+      '        missing.append((m, exc))',
+      'if missing:',
+      '    for name, exc in missing:',
+      '        print(f"[deps-check] {name}: {exc}", file=sys.stderr)',
+      '    sys.exit(99)',
+    ].join('\n');
 
-    const checkResult = spawnSync(pythonExecutable, ['-c', checkScript], {
-      shell: false,
-      windowsHide: true,
-      stdio: 'pipe',
-      env: pythonEnv,
-    });
+    const runDepsCheck = () =>
+      spawnSync(pythonExecutable, ['-c', checkScript], {
+        shell: false,
+        windowsHide: true,
+        stdio: 'pipe',
+        env: pythonEnv,
+      });
+
+    const checkResult = runDepsCheck();
     debug.lastExitCode = checkResult.status;
     if (checkResult?.error) {
       debug.error = checkResult.error instanceof Error ? checkResult.error.message : String(checkResult.error);
@@ -2596,6 +2773,19 @@ if missing:
       return { ok: true, debug };
     }
 
+    // Some embedded stdlib builds can cause pip to crash during cleanup (e.g. shutil/os mismatch),
+    // even though packages were installed successfully. Re-check imports before failing hard.
+    try {
+      const recheck = runDepsCheck();
+      const recheckStdout = (recheck.stdout || '').toString().trim();
+      const recheckStderr = (recheck.stderr || '').toString().trim();
+      if (recheck.status === 0) {
+        if (recheckStdout) log.warn(`[backend] deps recheck stdout: ${recheckStdout}`);
+        if (recheckStderr) log.warn(`[backend] deps recheck stderr: ${recheckStderr}`);
+        return { ok: true, debug: { ...debug, depsCheckStdout: recheckStdout, depsCheckStderr: recheckStderr } };
+      }
+    } catch {}
+
     // Fallback: if bundled wheels are incomplete, allow downloading from the internet.
     if (useOffline) {
       const onlineArgs = baseInstallArgs.filter((arg) => arg !== '--no-index' && arg !== '--find-links' && arg !== wheelsRoot);
@@ -2709,9 +2899,14 @@ if missing:
       return null;
     }
 
-    const baseEnv = { ...process.env, SYN_BACKEND_HOST: BACKEND_HOST, SYN_BACKEND_PORT: BACKEND_PORT };
-    const nudenetModelPath = resolveNudeNetModelPath(app.isPackaged);
-    const nudenetEnv = nudenetModelPath ? { NUDENET_MODEL_PATH: nudenetModelPath } : {};
+  const baseEnv = { ...process.env, SYN_BACKEND_HOST: BACKEND_HOST, SYN_BACKEND_PORT: BACKEND_PORT };
+  const debugPythonEnv = {
+    // Helps capture Python tracebacks on native crashes where possible.
+    PYTHONFAULTHANDLER: process.env.PYTHONFAULTHANDLER || '1',
+    PYTHONUNBUFFERED: process.env.PYTHONUNBUFFERED || '1',
+  };
+  const nudenetModelPath = resolveNudeNetModelPath(app.isPackaged);
+  const nudenetEnv = nudenetModelPath ? { NUDENET_MODEL_PATH: nudenetModelPath } : {};
     const { exec: parsedExec, extraArgs: parsedArgs } = parsePythonCommand(pythonExecutable);
     const effectiveExec = parsedExec || pythonExecutable;
     const sitePackagesDir = app.isPackaged
@@ -2745,6 +2940,7 @@ if missing:
           windowsHide: true,
           env: {
             ...baseEnv,
+            ...debugPythonEnv,
             ...nudenetEnv,
             SYN_RESOURCE_ROOT: resourceRoot,
             PYTHONPATH: pyPath,
@@ -2766,6 +2962,7 @@ if missing:
       windowsHide: true,
         env: {
           ...baseEnv,
+          ...debugPythonEnv,
           ...nudenetEnv,
           SYN_RESOURCE_ROOT: projectRoot,
           PYTHONPATH: devPyPath,
@@ -2782,8 +2979,9 @@ function broadcastOnlineStatus(status) {
   });
 }
 
-function attachBackendProcessLogging(proc) {
+function attachBackendProcessLogging(proc, options = {}) {
   if (!proc) return;
+  const { onExit } = options || {};
 
   const logStream = (stream, level) => {
     if (!stream) return;
@@ -2799,10 +2997,15 @@ function attachBackendProcessLogging(proc) {
   };
 
   proc.on('exit', (code, signal) => {
-    log.warn(`[backend] exited with code=${code} signal=${signal ?? 'none'}`);
+    const hex = formatWindowsExitCode(code);
+    const suffix = hex ? ` (${hex})` : '';
+    log.warn(`[backend] exited with code=${code}${suffix} signal=${signal ?? 'none'}`);
     if (proc === backendProcess) {
       backendProcess = null;
     }
+    try {
+      if (typeof onExit === 'function') onExit(code, signal);
+    } catch {}
   });
 
   proc.on('error', (error) => {
@@ -3124,6 +3327,22 @@ app.whenReady().then(async () => {
     return;
   }
 
+  try {
+    const embedPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'python-embed', 'python.exe')
+      : path.join(__dirname, 'resources', 'python-embed', 'python.exe');
+    const envOverride = normalizeQuotedPath(process.env[PYTHON_ENV_VAR]);
+    const normalizedExec = normalizeQuotedPath(launchConfig.command);
+    const isEmbedded =
+      Boolean(normalizedExec) && path.normalize(normalizedExec) === path.normalize(embedPath);
+    log.info('[backend] python selected', {
+      python: launchConfig.command,
+      embeddedExpected: embedPath,
+      source: envOverride ? 'env' : isEmbedded ? 'embedded' : 'system',
+      env: envOverride || '',
+    });
+  } catch {}
+
   const depsResult = ensureBackendDependencies(launchConfig.command);
   if (!depsResult?.ok) {
     const embedPath = app.isPackaged
@@ -3185,6 +3404,21 @@ app.whenReady().then(async () => {
       parts.push('\nУстановка зависимостей через pip завершилась с ошибкой.');
     }
 
+    const depsCheckIndentationError = /IndentationError:\s*unexpected indent/i.test(String(debug.depsCheckStderr || ''));
+    if (depsCheckIndentationError) {
+      parts.push(
+        '\nОбнаружена ошибка IndentationError в проверке зависимостей (deps-check).\n' +
+          'Это баг конкретной версии приложения. Обновите Synastry до последней версии и перезапустите.'
+      );
+    }
+    const pipOsWalkAttrError = /os has no attribute '_walk_symlinks_as_files'/i.test(String(debug.pipStderr || ''));
+    if (pipOsWalkAttrError) {
+      parts.push(
+        '\nОбнаружена ошибка совместимости встроенного Python (os._walk_symlinks_as_files).\n' +
+          'Обычно помогает обновление/переустановка Synastry (файлы Python-embed могли быть неполными).'
+      );
+    }
+
     if (debug.depsCheckStderr) parts.push(`\nПроверка зависимостей:\n${debug.depsCheckStderr}`);
     if (debug.pipBootstrapStderr) parts.push(`\npip bootstrap stderr:\n${debug.pipBootstrapStderr}`);
     if (debug.pipBootstrapStdout) parts.push(`\npip bootstrap stdout:\n${debug.pipBootstrapStdout}`);
@@ -3217,36 +3451,7 @@ app.whenReady().then(async () => {
     return;
   }
 
-  try {
-    backendProcess = spawn(launchConfig.command, launchConfig.args, {
-      ...launchConfig.options,
-      shell: false,
-    });
-    attachBackendProcessLogging(backendProcess);
-    backendProcess.on('error', (error) => {
-      console.error('Failed to launch backend process:', error);
-      const embedPath = app.isPackaged
-        ? path.join(process.resourcesPath, 'python-embed', 'python.exe')
-        : path.join(__dirname, 'resources', 'python-embed', 'python.exe');
-      const logPath = resolveElectronLogFilePath();
-      dialog.showErrorBox(
-        'Ошибка запуска бэкенда',
-        `Не удалось запустить Python по пути:\n${launchConfig.command}\n\n` +
-          `Embedded (ожидается):\n${embedPath}\n\n` +
-          `Можно указать Python вручную через переменную окружения:\n${PYTHON_ENV_VAR}="C:\\\\Path\\\\to\\\\python.exe"\n\n` +
-          'Если ошибка связана с DLL (VC++ Runtime), установите Microsoft Visual C++ Redistributable 2015–2022 (x64):\n' +
-          'https://aka.ms/vs/17/release/vc_redist.x64.exe\n\n' +
-          (logPath ? `Логи: ${logPath}\n\n` : '') +
-          `Текст ошибки:\n${error instanceof Error ? error.message : String(error)}`
-      );
-    });
-  } catch (error) {
-    console.error('Unexpected error while spawning backend process:', error);
-    dialog.showErrorBox(
-      'Ошибка запуска бэкенда',
-      `Не удалось запустить Python.\n\n${error instanceof Error ? error.message : String(error)}`
-    );
-  }
+  startBackendProcess(launchConfig);
 
   const mainWindow = createWindow();
   primaryWindow = mainWindow;
@@ -3289,6 +3494,7 @@ function shutdownBackend() {
 }
 
 app.on('before-quit', () => {
+  isQuitting = true;
   shutdownBackend();
 });
 
