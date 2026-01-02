@@ -101,7 +101,9 @@ export default function AuthPage() {
         redirectTo: AUTH_REDIRECT_URI,
       });
       if (error) throw error;
-      setResetStatus("Мы отправили письмо для сброса пароля. Проверьте почту и следуйте инструкции.");
+      setResetStatus(
+        "Мы отправили письмо для сброса пароля. В письме не будет временного пароля — откройте ссылку и задайте новый пароль.",
+      );
     } catch (resetError) {
       const message = resetError instanceof Error ? resetError.message : String(resetError);
       setErr(message || "Не удалось отправить письмо для сброса.");

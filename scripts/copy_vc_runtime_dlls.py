@@ -18,6 +18,8 @@ DLL_NAMES = [
     "vcomp140.dll",
 ]
 
+PYTHON_RUNTIME_DLL = "python312.dll"
+
 
 def find_system_dirs() -> list[Path]:
     sysroot = os.environ.get("SystemRoot") or os.environ.get("WINDIR") or r"C:\Windows"
@@ -65,11 +67,33 @@ def main() -> None:
         except OSError as exc:
             raise SystemExit(f"[vc-dlls] failed to copy {src} -> {dst}: {exc}") from exc
 
+    # Ensure the actual CPython runtime DLL is bundled next to python.exe.
+    # Without it, embedded python will crash on startup on machines without a system Python installation.
+    python_runtime_srcs: list[Path] = [
+        root / "python-env" / PYTHON_RUNTIME_DLL,
+        *[d / PYTHON_RUNTIME_DLL for d in src_dirs],
+    ]
+    python_runtime_src = next((p for p in python_runtime_srcs if p.exists()), None)
+    python_runtime_dst = dest / PYTHON_RUNTIME_DLL
+    if python_runtime_dst.exists() and not args.overwrite:
+        print(f"[vc-dlls] exists, keep: {python_runtime_dst}")
+    else:
+        if not python_runtime_src or not python_runtime_src.exists():
+            missing.append(PYTHON_RUNTIME_DLL)
+        else:
+            try:
+                shutil.copy2(python_runtime_src, python_runtime_dst)
+                print(f"[vc-dlls] {PYTHON_RUNTIME_DLL} <- {python_runtime_src}")
+            except OSError as exc:
+                raise SystemExit(
+                    f"[vc-dlls] failed to copy {python_runtime_src} -> {python_runtime_dst}: {exc}"
+                ) from exc
+
     if missing:
         msg = (
             "[vc-dlls] missing on this machine:\n- "
             + "\n- ".join(missing)
-            + "\nInstall Microsoft Visual C++ Redistributable 2015–2022 (x64) and rebuild:\n"
+            + "\nIf the missing DLL is a VC++ runtime, install Microsoft Visual C++ Redistributable 2015-2022 (x64):\n"
             + "https://aka.ms/vs/17/release/vc_redist.x64.exe"
         )
         if args.strict:
