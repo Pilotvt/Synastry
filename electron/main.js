@@ -1039,6 +1039,24 @@ function getInnoUpdaterCacheDir() {
   return path.join(localAppData, 'synastry-inno-updater');
 }
 
+function getInnoUpdaterCacheDirCandidates() {
+  const dirs = [];
+  try {
+    dirs.push(getInnoUpdaterCacheDir());
+  } catch {}
+  try {
+    const appData = typeof app.getPath === 'function' ? app.getPath('appData') : '';
+    if (appData) dirs.push(path.join(appData, 'synastry-inno-updater'));
+  } catch {}
+  if (process.env.APPDATA) {
+    dirs.push(path.join(process.env.APPDATA, 'synastry-inno-updater'));
+  }
+  if (process.env.LOCALAPPDATA) {
+    dirs.push(path.join(process.env.LOCALAPPDATA, 'synastry-inno-updater'));
+  }
+  return [...new Set(dirs.filter((d) => typeof d === 'string' && d.trim()))];
+}
+
 function pickInnoInstallerAsset(assets, version) {
   const list = Array.isArray(assets) ? assets : [];
   const ver = String(version || '').trim();
@@ -1757,30 +1775,32 @@ async function cleanupStaleInnoInstallers() {
     return;
   }
 
-  const cacheDir = getInnoUpdaterCacheDir();
-  let entries = [];
-  try {
-    entries = await fsPromises.readdir(cacheDir, { withFileTypes: true });
-  } catch {
-    return;
-  }
+  const cacheDirs = getInnoUpdaterCacheDirCandidates();
+  for (const cacheDir of cacheDirs) {
+    let entries = [];
+    try {
+      entries = await fsPromises.readdir(cacheDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
 
-  for (const entry of entries) {
-    if (!entry?.isFile?.()) continue;
-    const fileName = String(entry.name || '');
-    if (!fileName.toLowerCase().endsWith('.exe')) continue;
+    for (const entry of entries) {
+      if (!entry?.isFile?.()) continue;
+      const fileName = String(entry.name || '');
+      if (!fileName.toLowerCase().endsWith('.exe')) continue;
 
-    const match = fileName.match(/Synastry[\s_-]*(\d+\.\d+\.\d+)[\s_-]*setup\.exe/i);
-    const fileVersion = parseSimpleVersion(match?.[1] ?? '');
-    if (!fileVersion) continue;
+      const match = fileName.match(/Synastry[\s_-]*(\d+\.\d+\.\d+)[\s_-]*setup\.exe/i);
+      const fileVersion = parseSimpleVersion(match?.[1] ?? '');
+      if (!fileVersion) continue;
 
-    if (compareSimpleVersions(fileVersion, currentVersion) <= 0) {
-      const fullPath = path.join(cacheDir, fileName);
-      try {
-        await fsPromises.rm(fullPath, { force: true });
-      } catch {
-        if (process.platform === 'win32') {
-          spawnSync('cmd', ['/c', 'del', '/f', '/q', fullPath], { shell: false, stdio: 'ignore' });
+      if (compareSimpleVersions(fileVersion, currentVersion) <= 0) {
+        const fullPath = path.join(cacheDir, fileName);
+        try {
+          await fsPromises.rm(fullPath, { force: true });
+        } catch {
+          if (process.platform === 'win32') {
+            spawnSync('cmd', ['/c', 'del', '/f', '/q', fullPath], { shell: false, stdio: 'ignore' });
+          }
         }
       }
     }
