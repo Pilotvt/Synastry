@@ -1,14 +1,14 @@
 {
   "name": "synastry",
   "private": true,
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Desktop application for Jyotish natal charts, synastry, and muhurtas with real IAU constellations.",
   "type": "module",
   "main": "electron/main.js",
   "author": "Vitaliy Alekseev",
   "scripts": {
     "dev": "cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true vite",
-    "build": "node scripts/patch-baseline.js && cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true tsc -b && cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true vite build",
+    "build": "node scripts/patcnpm run sync:versionh-baseline.js && cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true tsc -b && cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true vite build",
     "postinstall": "node scripts/patch-baseline.js && node scripts/generate-third-party-notices.mjs",
     "backend:setup": "python scripts/build_backend_env.py",
     "sync:version": "node scripts/sync_version.mjs && node scripts/generate-third-party-notices.mjs",
