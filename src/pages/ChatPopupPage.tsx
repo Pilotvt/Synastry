@@ -126,6 +126,17 @@ const ChatPopupPage: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const currentProfileGender = useProfile((state) => state.profile.gender ?? null);
   const [input, setInput] = useState('');
+  const [sendOnEnter, setSendOnEnter] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const stored = window.localStorage.getItem('synastry.chat.sendOnEnter');
+      if (stored === '0') return false;
+      if (stored === '1') return true;
+    } catch {
+      // ignore
+    }
+    return true;
+  });
   const [historyLoading, setHistoryLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +149,8 @@ const ChatPopupPage: React.FC = () => {
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const [blockStatus, setBlockStatus] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const incomingSoundRef = useRef<HTMLAudioElement | null>(null);
+  const lastSoundAtRef = useRef(0);
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -149,6 +162,54 @@ const ChatPopupPage: React.FC = () => {
   useEffect(() => {
     setTarget(decodeTargetPayload(location.search));
   }, [location.search]);
+
+  const playIncomingSound = useCallback(() => {
+    const now = Date.now();
+    if (now - lastSoundAtRef.current < 800) return;
+    lastSoundAtRef.current = now;
+    const audio = incomingSoundRef.current;
+    if (!audio) return;
+    try {
+      audio.currentTime = 0;
+      const result = audio.play();
+      if (result && typeof (result as Promise<void>).catch === 'function') {
+        (result as Promise<void>).catch(() => {
+          // ignore autoplay / device errors
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const src = window.location.protocol === 'file:' ? 'sounds/message.mp3' : '/sounds/message.mp3';
+      const audio = new Audio(src);
+      audio.preload = 'auto';
+      incomingSoundRef.current = audio;
+      return () => {
+        try {
+          audio.pause();
+        } catch {
+          // ignore
+        }
+        incomingSoundRef.current = null;
+      };
+    } catch {
+      incomingSoundRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('synastry.chat.sendOnEnter', sendOnEnter ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }, [sendOnEnter]);
 
   useEffect(() => {
     setBlockStatus(null);
@@ -259,6 +320,9 @@ const ChatPopupPage: React.FC = () => {
           if (!resolved) {
             upsertMessage(message);
           }
+          if (isTheirs && !isTargetBlocked) {
+            playIncomingSound();
+          }
         }
       });
     channel.subscribe();
@@ -269,7 +333,7 @@ const ChatPopupPage: React.FC = () => {
         console.warn('Не удалось удалить канал чата', error);
       }
     };
-  }, [target, currentUserId, resolvePendingMessage, upsertMessage]);
+  }, [target, currentUserId, resolvePendingMessage, upsertMessage, playIncomingSound, isTargetBlocked]);
 
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -550,18 +614,38 @@ const ChatPopupPage: React.FC = () => {
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (!sendOnEnter) return;
+                if ((event.nativeEvent as unknown as { isComposing?: boolean }).isComposing) return;
+                if (event.key !== 'Enter') return;
+                if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
+                event.preventDefault();
+                if (!allowMessaging || sending || !input.trim()) return;
+                void handleSend();
+              }}
               placeholder={allowMessaging ? "Введите сообщение..." : "Войдите в профиль, чтобы писать сообщения"}
               className="flex-1 min-h-[80px] max-h-40 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:opacity-50 resize-none"
               disabled={!allowMessaging || sending}
             />
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={!allowMessaging || !input.trim() || sending}
-              className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {sending ? "Отправка…" : "Отправить"}
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={!allowMessaging || !input.trim() || sending}
+                className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sending ? "Отправка…" : "Отправить"}
+              </button>
+              <label className="flex items-center gap-2 text-xs text-white/70 select-none">
+                <input
+                  type="checkbox"
+                  checked={sendOnEnter}
+                  onChange={(e) => setSendOnEnter(e.target.checked)}
+                  className="h-4 w-4 accent-blue-500"
+                />
+                Enter отправляет
+              </label>
+            </div>
           </div>
         </div>
       </div>
