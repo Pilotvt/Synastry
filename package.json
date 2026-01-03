@@ -157,6 +157,7 @@
       "allowElevation": false,
       "allowToChangeInstallationDirectory": false,
       "unicode": true,
+      "deleteAppDataOnUninstall": true,
       "license": "LICENCE.txt",
       "differentialPackage": false,
       "include": "build/installer.nsh",

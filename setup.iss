@@ -61,3 +61,11 @@ Source: "{#MyAppSourceDir}\\*"; DestDir: "{app}"; Flags: recursesubdirs createal
 [Icons]
 Name: "{autoprograms}\\{#MyAppName}"; Filename: "{app}\\{#MyAppName}.exe"
 Name: "{autodesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppName}.exe"; Tasks: desktopicon
+
+[UninstallDelete]
+; Wipe app data on uninstall to avoid keeping stale sessions/cache across reinstalls.
+; Trial start time is stored in registry (HKCU\Software\Synastry\FirstLaunchMs) and is preserved.
+Type: filesandordirs; Name: "{userappdata}\\Synastry"
+Type: filesandordirs; Name: "{userappdata}\\synastry"
+Type: filesandordirs; Name: "{localappdata}\\Synastry"
+Type: filesandordirs; Name: "{localappdata}\\synastry"

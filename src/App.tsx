@@ -1052,7 +1052,7 @@ useEffect(() => {
 
     (async () => {
       const userId = sessionUserId;
-      const { data, error } = await supabase.from("profiles").select("data").eq("id", userId).single();
+      const { data, error } = await supabase.from("profiles").select("data").eq("id", userId).maybeSingle();
 
       if (cancelled) return;
 
@@ -1086,7 +1086,7 @@ useEffect(() => {
           // Temporarily disable auto-hydration from cloud to avoid overriding user selection
           // applyProfileObject(mergedSnapshot);
         }
-      } else if (error?.code === "PGRST116") {
+      } else if (!error && !data) {
         const payload = { id: userId, data: buildProfileObjectRef.current() };
         await supabase.from("profiles").upsert(payload);
       } else if (error) {
