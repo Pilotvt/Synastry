@@ -332,13 +332,59 @@ function startBackendProcess(launchConfig) {
   });
 }
 
-function downloadToFile(url, destinationPath, onProgress) {
+function downloadToFile(url, destinationPath, onProgress, options = null) {
+  const signal = options && typeof options === 'object' ? options.signal : null;
+
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
+      return;
+    }
+
     const startedAt = Date.now();
     let lastTickAt = startedAt;
     let lastTransferred = 0;
+    let settled = false;
+    let activeReq = null;
+    let activeOut = null;
+
+    const finish = (fn) => {
+      if (settled) return;
+      settled = true;
+      try {
+        signal?.removeEventListener?.('abort', onAbort);
+      } catch {}
+      fn();
+    };
+
+    const abortError = () => Object.assign(new Error('cancelled'), { name: 'AbortError' });
+
+    const onAbort = () => {
+      finish(() => {
+        const err = abortError();
+        try {
+          activeReq?.destroy?.(err);
+        } catch {}
+        try {
+          activeOut?.close?.();
+        } catch {}
+        try {
+          fs.unlinkSync(destinationPath);
+        } catch {}
+        reject(err);
+      });
+    };
+
+    try {
+      signal?.addEventListener?.('abort', onAbort, { once: true });
+    } catch {}
 
     const requestOnce = (targetUrl) => {
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+
       const req = https.request(
         targetUrl,
         {
@@ -359,7 +405,9 @@ function downloadToFile(url, destinationPath, onProgress) {
             const chunks = [];
             res.on('data', (d) => chunks.push(d));
             res.on('end', () => {
-              reject(new Error(`HTTP ${status}: ${(Buffer.concat(chunks).toString('utf-8') || '').slice(0, 400)}`));
+              finish(() => {
+                reject(new Error(`HTTP ${status}: ${(Buffer.concat(chunks).toString('utf-8') || '').slice(0, 400)}`));
+              });
             });
             return;
           }
@@ -367,15 +415,18 @@ function downloadToFile(url, destinationPath, onProgress) {
           const total = Number(res.headers['content-length'] || 0) || 0;
           let transferred = 0;
           const out = fs.createWriteStream(destinationPath);
+          activeOut = out;
 
           const cleanupAndReject = (err) => {
-            try {
-              out.close();
-            } catch {}
-            try {
-              fs.unlinkSync(destinationPath);
-            } catch {}
-            reject(err);
+            finish(() => {
+              try {
+                out.close();
+              } catch {}
+              try {
+                fs.unlinkSync(destinationPath);
+              } catch {}
+              reject(err);
+            });
           };
 
           out.on('error', cleanupAndReject);
@@ -402,25 +453,30 @@ function downloadToFile(url, destinationPath, onProgress) {
 
           res.pipe(out);
           out.on('finish', () => {
-            try {
-              out.close();
-            } catch {}
-            const elapsed = Math.max(1, Date.now() - startedAt);
-            const avgBps = Math.round((transferred * 1000) / elapsed);
-            if (typeof onProgress === 'function') {
-              const percent = total > 0 ? (transferred / total) * 100 : 100;
-              onProgress({
-                percent: Math.max(percent, 100),
-                transferred,
-                total: total || transferred,
-                bytesPerSecond: avgBps,
-              });
-            }
-            resolve(destinationPath);
+            finish(() => {
+              try {
+                out.close();
+              } catch {}
+              const elapsed = Math.max(1, Date.now() - startedAt);
+              const avgBps = Math.round((transferred * 1000) / elapsed);
+              if (typeof onProgress === 'function') {
+                const percent = total > 0 ? (transferred / total) * 100 : 100;
+                onProgress({
+                  percent: Math.max(percent, 100),
+                  transferred,
+                  total: total || transferred,
+                  bytesPerSecond: avgBps,
+                });
+              }
+              resolve(destinationPath);
+            });
           });
         }
       );
-      req.on('error', reject);
+      activeReq = req;
+      req.on('error', (err) => {
+        finish(() => reject(err));
+      });
       req.end();
     };
 
@@ -457,6 +513,7 @@ let updateDownloadCancelRequestedAt = 0;
 let updateDownloadBackgroundNoticeShown = false;
 let autoUpdateErrorNotified = false;
 let updateDownloadWindow = null;
+let innoDownloadAbortController = null;
 let lastUpdateStatusPayload = null;
 const manualUpdateState = {
   pending: false,
@@ -983,7 +1040,7 @@ function isUserInitiatedUpdateCancel(error) {
 async function cancelUpdateDownload(options = {}) {
   const { closeWindow = false } = options && typeof options === 'object' ? options : {};
 
-  if (!ALLOW_AUTO_UPDATE || UPDATE_MODE !== 'nsis' || !app.isPackaged) {
+  if (!ALLOW_AUTO_UPDATE || !app.isPackaged) {
     return { ok: false, reason: 'disabled' };
   }
 
@@ -992,15 +1049,19 @@ async function cancelUpdateDownload(options = {}) {
     return { ok: false, reason: 'not-downloading' };
   }
 
-  const canCancel = typeof autoUpdater?.cancelDownload === 'function';
-  if (!canCancel) {
-    dialog.showMessageBox(getDialogTarget() ?? null, {
-      type: 'info',
-      title: 'Загрузка обновления',
-      message: 'Отмена загрузки не поддерживается в этой сборке.',
-      detail: 'Загрузка продолжится.',
-      noLink: true,
-    });
+  if (UPDATE_MODE === 'nsis') {
+    const canCancel = typeof autoUpdater?.cancelDownload === 'function';
+    if (!canCancel) {
+      dialog.showMessageBox(getDialogTarget() ?? null, {
+        type: 'info',
+        title: 'Загрузка обновления',
+        message: 'Отмена загрузки не поддерживается в этой сборке.',
+        detail: 'Загрузка продолжится.',
+        noLink: true,
+      });
+      return { ok: false, reason: 'unsupported' };
+    }
+  } else if (UPDATE_MODE !== 'inno') {
     return { ok: false, reason: 'unsupported' };
   }
 
@@ -1009,7 +1070,13 @@ async function cancelUpdateDownload(options = {}) {
   broadcastUpdateStatus({ type: 'download-cancelling' });
 
   try {
-    await Promise.resolve(autoUpdater.cancelDownload());
+    if (UPDATE_MODE === 'nsis') {
+      await Promise.resolve(autoUpdater.cancelDownload());
+    } else if (UPDATE_MODE === 'inno') {
+      try {
+        innoDownloadAbortController?.abort?.();
+      } catch {}
+    }
   } catch (error) {
     log.warn('Failed to cancel update download', error);
   } finally {
@@ -1385,18 +1452,27 @@ async function checkForUpdatesInno(options = {}) {
 
   const downloadedPath = path.join(cacheDir, asset.name || `${APP_DISPLAY_NAME}-${release.version}-setup.exe`);
   try {
-    await downloadToFile(asset.url, downloadedPath, (progress) => {
-      broadcastUpdateStatus({ type: 'download-progress', info: progress });
-      const p = Number(progress?.percent);
-      const win = getDialogTarget();
-      if (win && !win.isDestroyed()) {
-        try {
-          if (Number.isFinite(p)) {
-            win.setProgressBar(Math.max(0, Math.min(1, p / 100)));
-          }
-        } catch {}
-      }
-    });
+    innoDownloadAbortController = typeof AbortController === 'function' ? new AbortController() : null;
+    const signal = innoDownloadAbortController?.signal ?? null;
+
+    await downloadToFile(
+      asset.url,
+      downloadedPath,
+      (progress) => {
+        if (updateDownloadCancelRequestedAt) return;
+        broadcastUpdateStatus({ type: 'download-progress', info: progress });
+        const p = Number(progress?.percent);
+        const win = getDialogTarget();
+        if (win && !win.isDestroyed()) {
+          try {
+            if (Number.isFinite(p)) {
+              win.setProgressBar(Math.max(0, Math.min(1, p / 100)));
+            }
+          } catch {}
+        }
+      },
+      signal ? { signal } : null,
+    );
 
     broadcastUpdateStatus({ type: 'downloaded', info: { version: release.version, downloadedFile: downloadedPath } });
     closeUpdateDownloadWindow();
@@ -1448,6 +1524,11 @@ async function checkForUpdatesInno(options = {}) {
 
     return { started: true, available: true, downloaded: true, installed: true };
   } catch (error) {
+    if (isUserInitiatedUpdateCancel(error)) {
+      closeUpdateDownloadWindow();
+      updateDownloadCancelRequestedAt = 0;
+      return { started: true, available: true, downloaded: false, cancelled: true };
+    }
     isDownloadingUpdate = false;
     closeUpdateDownloadWindow();
     log.error('Failed to download Inno installer', error);
@@ -1462,6 +1543,7 @@ async function checkForUpdatesInno(options = {}) {
     return { started: false, reason: 'download-error', error: error?.message ?? String(error) };
   } finally {
     isDownloadingUpdate = false;
+    innoDownloadAbortController = null;
   }
 }
 

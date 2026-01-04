@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { BUTTON_SECONDARY } from "../constants/buttonPalette";
 
 const MIN_PASSWORD_LENGTH = 8;
+const AUTH_WIDTH = 280;
 
 const ChangePasswordPage: React.FC = () => {
   const navigate = useNavigate();
@@ -40,6 +41,10 @@ const ChangePasswordPage: React.FC = () => {
       active = false;
     };
   }, []);
+
+  const handleBack = useCallback(() => {
+    navigate("/", { replace: true });
+  }, [navigate]);
 
   const passwordHint = useMemo(
     () => [
@@ -110,9 +115,9 @@ const ChangePasswordPage: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white px-4 py-10">
-      <div className="max-w-xl mx-auto">
-        <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`} onClick={() => navigate(-1)}>
+    <div className="min-h-screen bg-slate-950 text-white flex items-start justify-center px-4 py-12 sm:py-16">
+      <div className="w-full" style={{ width: AUTH_WIDTH, maxWidth: AUTH_WIDTH }}>
+        <button type="button" className={`${BUTTON_SECONDARY} px-3 py-1.5 text-sm`} onClick={handleBack}>
           ← Назад
         </button>
         <h1 className="text-2xl font-semibold mt-4 mb-3">Смена пароля</h1>
