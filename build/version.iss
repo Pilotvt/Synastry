@@ -1,2 +1,2 @@
-#define MyAppVersion "1.0.9"
-#define MyAppOutputBase "Synastry-1.0.9-setup"
+#define MyAppVersion "1.1"
+#define MyAppOutputBase "Synastry-1.1-setup"
