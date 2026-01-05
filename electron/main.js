@@ -511,7 +511,6 @@ let isCheckingForUpdates = false;
 let isDownloadingUpdate = false;
 let updateDownloadCancelRequestedAt = 0;
 let updateDownloadBackgroundNoticeShown = false;
-let autoUpdateErrorNotified = false;
 let updateDownloadWindow = null;
 let innoDownloadAbortController = null;
 let lastUpdateStatusPayload = null;
@@ -1724,25 +1723,12 @@ function setupAutoUpdate(window) {
 
     if (manualUpdateState.pending) {
       resolveManualUpdateRequest({
-        type: 'error',
+        type: 'info',
         message: userError.message,
         detail: userError.detail ?? '',
       });
       return;
     }
-
-    if (autoUpdateErrorNotified) {
-      return;
-    }
-    autoUpdateErrorNotified = true;
-    const target = getDialogTarget();
-    dialog.showMessageBox(target ?? null, {
-      type: 'error',
-      title: MANUAL_UPDATE_DIALOG_TITLE,
-      message: userError.message,
-      detail: userError.detail ?? '',
-      noLink: true,
-    });
   });
 }
 
@@ -1789,20 +1775,10 @@ async function checkForUpdates(options = {}) {
       const userError = formatAutoUpdateErrorForUser(error);
       if (userInitiated) {
         resolveManualUpdateRequest({
-          type: 'error',
+          type: 'info',
           message: userError.message,
           detail: userError.detail ?? '',
         });
-      } else if (!autoUpdateErrorNotified) {
-        const target = getDialogTarget();
-        dialog.showMessageBox(target ?? null, {
-          type: 'error',
-          title: MANUAL_UPDATE_DIALOG_TITLE,
-          message: userError.message,
-          detail: userError.detail ?? '',
-          noLink: true,
-        });
-        autoUpdateErrorNotified = true;
       }
       return { started: false, reason: 'error', error: error?.message ?? String(error) };
     } finally {
@@ -1841,20 +1817,10 @@ async function checkForUpdates(options = {}) {
     const userError = formatAutoUpdateErrorForUser(error);
     if (userInitiated) {
       resolveManualUpdateRequest({
-        type: 'error',
+        type: 'info',
         message: userError.message,
         detail: userError.detail ?? '',
       });
-    } else if (!autoUpdateErrorNotified) {
-      const target = getDialogTarget();
-      dialog.showMessageBox(target ?? null, {
-        type: 'error',
-        title: MANUAL_UPDATE_DIALOG_TITLE,
-        message: userError.message,
-        detail: userError.detail ?? '',
-        noLink: true,
-      });
-      autoUpdateErrorNotified = true;
     }
     return { started: false, reason: 'error', error: error?.message ?? String(error) };
   } finally {

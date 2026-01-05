@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
@@ -11,7 +11,8 @@ export default function AuthPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
   const [offlineModeEnabled] = useOfflineMode();
-  const [mode, setMode] = useState<"signup" | "login">("signup");
+  const [mode, setMode] = useState<"signup" | "login" | "recovery">("signup");
+  const previousModeRef = useRef<"signup" | "login">("signup");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
@@ -66,6 +67,7 @@ export default function AuthPage() {
     e.preventDefault();
     setErr("");
     try {
+      if (mode === "recovery") return;
       if (mode === "signup") {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
@@ -112,6 +114,21 @@ export default function AuthPage() {
     }
   }
 
+  const enterRecoveryMode = () => {
+    previousModeRef.current = mode === "login" ? "login" : "signup";
+    setMode("recovery");
+    setPass("");
+    setResetStatus(null);
+    setErr("Введите e-mail, чтобы отправить ссылку для сброса.");
+  };
+
+  const exitRecoveryMode = () => {
+    setMode(previousModeRef.current);
+    setPass("");
+    setResetStatus(null);
+    setErr("");
+  };
+
   const AUTH_WIDTH = 280;
 
   return (
@@ -122,36 +139,42 @@ export default function AuthPage() {
           Укажите e-mail и пароль. После регистрации подтвердите e-mail по ссылке из письма.
         </p>
 
-        <div className="mb-3 flex gap-2 text-xs">
-          <button
-            type="button"
-            onClick={() => setMode("signup")}
-            className={`${mode === "signup" ? BUTTON_PRIMARY : BUTTON_SECONDARY} px-3 py-1 text-sm cursor-default`}
-            disabled={mode === "signup"}
-          >
-            Регистрация
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("login")}
-            className={`${mode === "login" ? BUTTON_PRIMARY : BUTTON_SECONDARY} px-3 py-1 text-sm cursor-default`}
-            disabled={mode === "login"}
-          >
-            Вход
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setOfflineMode(true);
-              navigate("/chart/additional", { replace: true });
-            }}
-            className={`${BUTTON_SECONDARY} px-3 py-1 text-sm`}
-            disabled={Boolean(session?.user)}
-            title={session?.user ? "Офлайн режим доступен только без входа" : ""}
-          >
-            Офлайн режим
-          </button>
-        </div>
+        {mode !== "recovery" ? (
+          <div className="mb-3 flex gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => setMode("signup")}
+              className={`${mode === "signup" ? BUTTON_PRIMARY : BUTTON_SECONDARY} px-3 py-1 text-sm cursor-default`}
+              disabled={mode === "signup"}
+            >
+              Регистрация
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("login")}
+              className={`${mode === "login" ? BUTTON_PRIMARY : BUTTON_SECONDARY} px-3 py-1 text-sm cursor-default`}
+              disabled={mode === "login"}
+            >
+              Вход
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOfflineMode(true);
+                navigate("/chart/additional", { replace: true });
+              }}
+              className={`${BUTTON_SECONDARY} px-3 py-1 text-sm`}
+              disabled={Boolean(session?.user)}
+              title={session?.user ? "Офлайн режим доступен только без входа" : ""}
+            >
+              Офлайн режим
+            </button>
+          </div>
+        ) : (
+          <div className="mb-3 flex justify-center">
+            <div className="text-xs text-white/70">Восстановление пароля</div>
+          </div>
+        )}
 
         <form
           onSubmit={onSubmit}
@@ -174,30 +197,54 @@ export default function AuthPage() {
             <input
               type="password"
               required
-              className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none"
+              className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-white/50"
               value={pass}
               onChange={(e) => setPass(e.target.value)}
               placeholder="********"
+              disabled={mode === "recovery"}
             />
           </div>
           {err && <div className="text-xs text-red-400">{err}</div>}
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 px-3 py-2"
-          >
-            {mode === "signup" ? "Зарегистрироваться" : "Войти"}
-          </button>
-          <div className="pt-2 space-y-2">
-            <button
-              type="button"
-              className="w-full rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-60"
-              onClick={() => void requestPasswordReset()}
-              disabled={resetInFlight}
-            >
-              {resetInFlight ? "Отправляем ссылку..." : "Забыли пароль?"}
-            </button>
-            {resetStatus ? <div className="text-xs text-center text-emerald-400">{resetStatus}</div> : null}
-          </div>
+          {mode !== "recovery" ? (
+            <>
+              <button
+                type="submit"
+                className="w-full rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 px-3 py-2"
+              >
+                {mode === "signup" ? "Зарегистрироваться" : "Войти"}
+              </button>
+              <div className="pt-2 space-y-2">
+                <button
+                  type="button"
+                  className="w-full rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-60"
+                  onClick={enterRecoveryMode}
+                  disabled={resetInFlight}
+                >
+                  Забыли пароль?
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="pt-2 space-y-2">
+              <button
+                type="button"
+                className="w-full rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-60"
+                onClick={() => void requestPasswordReset()}
+                disabled={resetInFlight}
+              >
+                {resetInFlight ? "Отправляем ссылку..." : "Отправить ссылку"}
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 px-3 py-2 text-sm font-semibold transition-colors"
+                onClick={exitRecoveryMode}
+                disabled={resetInFlight}
+              >
+                Назад к регистрации
+              </button>
+            </div>
+          )}
+          {resetStatus ? <div className="text-xs text-center text-emerald-400">{resetStatus}</div> : null}
         </form>
       </div>
     </div>

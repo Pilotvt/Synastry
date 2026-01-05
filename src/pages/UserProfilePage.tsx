@@ -720,33 +720,15 @@ function formatAgeRu(age: number): string {
         .is('read_at', null);
       if (error) throw error;
       const next: Record<string, number> = {};
-      const seenSenders = new Set<string>();
       const clearedMap = clearedUnreadRef.current;
       for (const row of (data ?? []) as Array<{ sender_id: string | null; created_at: string | null }>) {
         if (typeof row.sender_id !== 'string') continue;
-        seenSenders.add(row.sender_id);
         const createdAt = parseTimestamp(row.created_at);
         const clearedAt = clearedMap[row.sender_id];
         if (clearedAt && createdAt > 0 && createdAt <= clearedAt) {
           continue;
         }
         next[row.sender_id] = (next[row.sender_id] ?? 0) + 1;
-      }
-      if (currentUserId) {
-        const existing = clearedUnreadRef.current;
-        let mutated = false;
-        const nextCleared: Record<string, number> = {};
-        for (const [key, value] of Object.entries(existing)) {
-          if (seenSenders.has(key)) {
-            nextCleared[key] = value;
-          } else {
-            mutated = true;
-          }
-        }
-        if (mutated) {
-          clearedUnreadRef.current = nextCleared;
-          writeClearedUnreadToStorage(currentUserId, nextCleared);
-        }
       }
       setUnreadCounts(next);
     } catch (error) {
