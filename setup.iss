@@ -62,6 +62,13 @@ Source: "{#MyAppSourceDir}\\*"; DestDir: "{app}"; Flags: recursesubdirs createal
 Name: "{autoprograms}\\{#MyAppName}"; Filename: "{app}\\{#MyAppName}.exe"
 Name: "{autodesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppName}.exe"; Tasks: desktopicon
 
+[Registry]
+; Register synastry:// protocol handler for deep links from Supabase emails.
+Root: HKCU; Subkey: "Software\\Classes\\synastry"; ValueType: string; ValueName: ""; ValueData: "URL:Synastry Protocol"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\\Classes\\synastry"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\\Classes\\synastry\\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\\{#MyAppName}.exe,0"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\\Classes\\synastry\\shell\\open\\command"; ValueType: string; ValueName: ""; ValueData: "\"{app}\\{#MyAppName}.exe\" \"%1\""; Flags: uninsdeletekey
+
 [UninstallDelete]
 ; Wipe app data on uninstall to avoid keeping stale sessions/cache across reinstalls.
 ; Trial start time is stored in registry (HKCU\Software\Synastry\FirstLaunchMs) and is preserved.

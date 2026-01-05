@@ -391,9 +391,6 @@ export default function App() {
   const [buildingChart, setBuildingChart] = useState(false);
   const [buildError, setBuildError] = useState("");
   const [licenseStatus, setLicenseStatus] = useState<ElectronLicenseStatus | null>(null);
-  const [cloudLicenseKey, setCloudLicenseKey] = useState<string | null>(null);
-  const remoteLicenseAppliedRef = useRef(false);
-  const lastLicenseUserRef = useRef<string | null>(null);
   const { setProfile, loadFromLocal, logout } = useProfile();
   const sessionUserId = session?.user?.id ?? null;
   const navigate = useNavigate();
@@ -994,55 +991,6 @@ useEffect(() => {
   }, [sessionReady, session?.user, navigate]);
 
   useEffect(() => {
-    const currentId = session?.user?.id ?? null;
-    if (lastLicenseUserRef.current !== currentId) {
-      lastLicenseUserRef.current = currentId;
-      setCloudLicenseKey(null);
-      remoteLicenseAppliedRef.current = false;
-    }
-  }, [session?.user?.id]);
-
-  useEffect(() => {
-    if (!session?.user?.id) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('user_licenses')
-          .select('license_key')
-          .eq('user_id', session.user.id)
-          .maybeSingle();
-
-        if (cancelled) return;
-
-        if (error) {
-          // 42P01 — relation does not exist; treat as not configured
-          if (error.code && error.code !== '42P01') {
-            console.warn('Не удалось получить лицензию из Supabase:', error.message ?? error);
-          }
-          return;
-        }
-
-        const key = typeof data?.license_key === 'string' ? data.license_key.trim() : '';
-        if (key && key !== cloudLicenseKey) {
-          setCloudLicenseKey(key);
-          remoteLicenseAppliedRef.current = false;
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.warn('Ошибка загрузки лицензии из Supabase', error);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.user?.id, cloudLicenseKey]);
-
-  useEffect(() => {
     if (!sessionUserId) {
       setCloudHydrated(false);
       return;
@@ -1058,16 +1006,9 @@ useEffect(() => {
 
       if (!error && data?.data) {
         const rawRemote = data.data;
-        let remoteLicenseKey: string | null = null;
         let remoteSnapshot: Partial<ProfileSnapshot> | null = null;
 
         if (isRecord(rawRemote)) {
-          if (typeof rawRemote.licenseKey === "string") {
-            const keyCandidate = rawRemote.licenseKey.trim();
-            if (keyCandidate) {
-              remoteLicenseKey = keyCandidate;
-            }
-          }
           const sanitized = { ...rawRemote } as Record<string, unknown>;
           delete sanitized.licenseKey;
           if (isProfileLike(sanitized)) {
@@ -1075,11 +1016,6 @@ useEffect(() => {
           }
         } else if (isProfileLike(rawRemote)) {
           remoteSnapshot = rawRemote;
-        }
-
-        if (remoteLicenseKey && remoteLicenseKey !== cloudLicenseKey) {
-          setCloudLicenseKey(remoteLicenseKey);
-          remoteLicenseAppliedRef.current = false;
         }
 
         if (remoteSnapshot) {
@@ -1099,90 +1035,7 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [sessionUserId, cloudLicenseKey]);
-
-  useEffect(() => {
-    if (!cloudLicenseKey) return;
-    if (remoteLicenseAppliedRef.current) return;
-  if (!session?.user?.email || !session?.user?.id) return;
-  if (!licenseStatus?.identityEmail) return;
-    if (typeof window === "undefined") return;
-
-    const api = window.electronAPI?.license;
-    if (!api?.activate) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const result = await api.activate(cloudLicenseKey);
-        if (cancelled) return;
-        if (result?.success) {
-          remoteLicenseAppliedRef.current = true;
-        } else if (result?.message) {
-          console.warn("Удалённый ключ не прошёл проверку:", result.message);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.warn("Ошибка при активации ключа из Supabase", error);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cloudLicenseKey, session?.user?.email, session?.user?.id, licenseStatus?.identityEmail]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!licenseStatus?.licensed) return;
-    if (!session?.user?.id) return;
-
-    const api = window.electronAPI?.license;
-    if (!api?.getStoredKey) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const storedKey = await api.getStoredKey();
-        if (!storedKey) return;
-        if (cloudLicenseKey && cloudLicenseKey === storedKey) {
-          remoteLicenseAppliedRef.current = true;
-          return;
-        }
-
-        const { error } = await supabase
-          .from('user_licenses')
-          .upsert({
-            user_id: session.user.id,
-            license_key: storedKey,
-            owner_email: session.user.email ?? null,
-          }, { onConflict: 'user_id' });
-        if (error) {
-          if (error.code === '42P01') {
-            console.warn('Таблица user_licenses отсутствует в Supabase. Создайте её для синхронизации лицензий.');
-          } else if (error.code === '42703') {
-            console.warn('В таблице user_licenses отсутствует колонка owner_email. Добавьте её (TEXT) или обновите запрос.');
-          } else if (error.code) {
-            throw error;
-          } else {
-            throw error;
-          }
-        }
-        if (cancelled) return;
-        setCloudLicenseKey(storedKey);
-        remoteLicenseAppliedRef.current = true;
-      } catch (error) {
-        console.error("Не удалось сохранить лицензионный ключ в Supabase", error);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [licenseStatus?.licensed, session?.user?.id, session?.user?.email, cloudLicenseKey]);
+  }, [sessionUserId]);
 
   const buildProfileObject = useCallback((): ProfileSnapshot => {
     const base: ProfileSnapshot = {

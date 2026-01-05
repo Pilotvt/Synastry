@@ -19,6 +19,7 @@ import PasswordRecoveryPage from "./pages/PasswordRecoveryPage";
 import NetStatusBanner from "./components/NetStatusBanner";
 import { NetStatusProvider } from "./context/NetStatusProvider";
 import LicenseIdentityBridge from "./components/LicenseIdentityBridge";
+import LicenseCloudSyncBridge from "./components/LicenseCloudSyncBridge";
 import ElectronNavigationBridge from "./components/ElectronNavigationBridge";
 import AuthDeepLinkBridge from "./components/AuthDeepLinkBridge";
 import AppBoundary from "./components/AppBoundary";
@@ -68,6 +69,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <ElectronNavigationBridge />
         <AuthDeepLinkBridge />
         <LicenseIdentityBridge />
+        <LicenseCloudSyncBridge />
         <BlocklistBootstrapper />
         <OfflineModeEnforcer />
         <AppBoundary>

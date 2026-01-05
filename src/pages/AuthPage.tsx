@@ -4,8 +4,7 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 import { setOfflineMode, useOfflineMode } from "../utils/offlineMode";
-
-const AUTH_REDIRECT_URI = "synastry://auth-callback";
+import { getAuthRedirectUrl } from "../lib/authRedirect";
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -72,7 +71,7 @@ export default function AuthPage() {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password: pass,
-          options: { emailRedirectTo: AUTH_REDIRECT_URI },
+          options: { emailRedirectTo: getAuthRedirectUrl("signup") },
         });
         if (error) throw error;
         alert("Мы отправили письмо для подтверждения. Проверьте почту.");
@@ -100,7 +99,7 @@ export default function AuthPage() {
     setResetInFlight(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: AUTH_REDIRECT_URI,
+        redirectTo: getAuthRedirectUrl("recovery"),
       });
       if (error) throw error;
       setResetStatus(
