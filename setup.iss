@@ -19,11 +19,11 @@
 
 ; Fallback values used only if build/version.iss is missing.
 #ifndef MyAppVersion
-#define MyAppVersion "1.1"
+#define MyAppVersion "1.1.0"
 #endif
 
 #ifndef MyAppOutputBase
-#define MyAppOutputBase "Synastry-1.1-setup"
+#define MyAppOutputBase "Synastry-1.1.0-setup"
 #endif
 
 ; Allow overriding installer icon from environment (for CI / A-B testing).
@@ -67,7 +67,7 @@ Name: "{autodesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppName}.exe"; Tasks:
 Root: HKCU; Subkey: "Software\\Classes\\synastry"; ValueType: string; ValueName: ""; ValueData: "URL:Synastry Protocol"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\\Classes\\synastry"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\\Classes\\synastry\\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\\{#MyAppName}.exe,0"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\\Classes\\synastry\\shell\\open\\command"; ValueType: string; ValueName: ""; ValueData: "\"{app}\\{#MyAppName}.exe\" \"%1\""; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\\Classes\\synastry\\shell\\open\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppName}.exe"" ""%1"""; Flags: uninsdeletekey
 
 [UninstallDelete]
 ; Wipe app data on uninstall to avoid keeping stale sessions/cache across reinstalls.
