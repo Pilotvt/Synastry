@@ -22,6 +22,10 @@
 #define MyAppVersion "1.1.0"
 #endif
 
+#ifndef MyAppVersionFour
+#define MyAppVersionFour "1.1.0.0"
+#endif
+
 #ifndef MyAppOutputBase
 #define MyAppOutputBase "Synastry-1.1.0-setup"
 #endif
@@ -37,6 +41,9 @@ AppId=com.synastry.desktop
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=Vitaliy Alekseev
+VersionInfoVersion={#MyAppVersionFour}
+VersionInfoProductVersion={#MyAppVersionFour}
+VersionInfoCopyright=Copyright (C) Vitaly Alekseev
 DefaultDirName={localappdata}\Programs\{#MyAppName}
 DisableDirPage=yes
 DisableProgramGroupPage=yes
@@ -66,8 +73,8 @@ Name: "{autodesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppName}.exe"; Tasks:
 ; Register synastry:// protocol handler for deep links from Supabase emails.
 Root: HKCU; Subkey: "Software\\Classes\\synastry"; ValueType: string; ValueName: ""; ValueData: "URL:Synastry Protocol"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\\Classes\\synastry"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\\Classes\\synastry\\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\\{#MyAppName}.exe,0"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\\Classes\\synastry\\shell\\open\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\{#MyAppName}.exe"" ""%1"""; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\\Classes\\synastry\\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppName}.exe,0"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\\Classes\\synastry\\shell\\open\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppName}.exe"" ""%1"""; Flags: uninsdeletekey
 
 [UninstallDelete]
 ; Wipe app data on uninstall to avoid keeping stale sessions/cache across reinstalls.

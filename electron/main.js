@@ -334,6 +334,7 @@ function startBackendProcess(launchConfig) {
 
 function downloadToFile(url, destinationPath, onProgress, options = null) {
   const signal = options && typeof options === 'object' ? options.signal : null;
+  const shouldCancel = options && typeof options === 'object' ? options.shouldCancel : null;
 
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -347,6 +348,7 @@ function downloadToFile(url, destinationPath, onProgress, options = null) {
     let settled = false;
     let activeReq = null;
     let activeOut = null;
+    let activeRes = null;
 
     const finish = (fn) => {
       if (settled) return;
@@ -366,6 +368,9 @@ function downloadToFile(url, destinationPath, onProgress, options = null) {
           activeReq?.destroy?.(err);
         } catch {}
         try {
+          activeRes?.destroy?.(err);
+        } catch {}
+        try {
           activeOut?.close?.();
         } catch {}
         try {
@@ -380,6 +385,10 @@ function downloadToFile(url, destinationPath, onProgress, options = null) {
     } catch {}
 
     const requestOnce = (targetUrl) => {
+      if (typeof shouldCancel === 'function' && shouldCancel()) {
+        onAbort();
+        return;
+      }
       if (signal?.aborted) {
         onAbort();
         return;
@@ -395,6 +404,7 @@ function downloadToFile(url, destinationPath, onProgress, options = null) {
           },
         },
         (res) => {
+          activeRes = res;
           const status = Number(res.statusCode || 0);
           if (status >= 300 && status < 400 && res.headers.location) {
             res.resume();
@@ -433,6 +443,14 @@ function downloadToFile(url, destinationPath, onProgress, options = null) {
           res.on('error', cleanupAndReject);
 
           res.on('data', (chunk) => {
+            if (typeof shouldCancel === 'function' && shouldCancel()) {
+              onAbort();
+              return;
+            }
+            if (signal?.aborted) {
+              onAbort();
+              return;
+            }
             transferred += chunk.length;
             const now = Date.now();
             if (typeof onProgress === 'function' && now - lastTickAt >= 250) {
@@ -513,6 +531,7 @@ let updateDownloadCancelRequestedAt = 0;
 let updateDownloadBackgroundNoticeShown = false;
 let updateDownloadWindow = null;
 let innoDownloadAbortController = null;
+let innoDownloadCancelRequested = false;
 let lastUpdateStatusPayload = null;
 const manualUpdateState = {
   pending: false,
@@ -1072,6 +1091,7 @@ async function cancelUpdateDownload(options = {}) {
     if (UPDATE_MODE === 'nsis') {
       await Promise.resolve(autoUpdater.cancelDownload());
     } else if (UPDATE_MODE === 'inno') {
+      innoDownloadCancelRequested = true;
       try {
         innoDownloadAbortController?.abort?.();
       } catch {}
@@ -1127,7 +1147,7 @@ function ensureUpdateDownloadWindow(parentWindow) {
   const parent = getDialogTarget(parentWindow);
   const win = new BrowserWindow({
     width: 520,
-    height: 270,
+    height: 290,
     resizable: false,
     minimizable: true,
     maximizable: false,
@@ -1440,6 +1460,8 @@ async function checkForUpdatesInno(options = {}) {
   }
 
   isDownloadingUpdate = true;
+  updateDownloadCancelRequestedAt = 0;
+  innoDownloadCancelRequested = false;
   ensureUpdateDownloadWindow(target);
 
   const cacheDir = getInnoUpdaterCacheDir();
@@ -1470,7 +1492,9 @@ async function checkForUpdatesInno(options = {}) {
           } catch {}
         }
       },
-      signal ? { signal } : null,
+      signal
+        ? { signal, shouldCancel: () => innoDownloadCancelRequested }
+        : { shouldCancel: () => innoDownloadCancelRequested },
     );
 
     broadcastUpdateStatus({ type: 'downloaded', info: { version: release.version, downloadedFile: downloadedPath } });
@@ -1526,6 +1550,7 @@ async function checkForUpdatesInno(options = {}) {
     if (isUserInitiatedUpdateCancel(error)) {
       closeUpdateDownloadWindow();
       updateDownloadCancelRequestedAt = 0;
+      innoDownloadCancelRequested = false;
       return { started: true, available: true, downloaded: false, cancelled: true };
     }
     isDownloadingUpdate = false;
@@ -1543,6 +1568,7 @@ async function checkForUpdatesInno(options = {}) {
   } finally {
     isDownloadingUpdate = false;
     innoDownloadAbortController = null;
+    innoDownloadCancelRequested = false;
   }
 }
 

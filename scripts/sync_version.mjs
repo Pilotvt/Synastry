@@ -13,9 +13,19 @@ if (typeof version !== 'string' || !version.trim()) {
   throw new Error('package.json не содержит корректного поля "version".');
 }
 
-const outputBase = `Synastry-${version}-setup`;
+const rawParts = version.split('.');
+const numericParts = rawParts.map((part) => Number.parseInt(part, 10));
+if (numericParts.some((part) => Number.isNaN(part))) {
+  throw new Error('version должна быть в формате x.y.z (например, 1.1.0).');
+}
+const [major = 0, minor = 0, patch = 0] = numericParts;
+const normalizedVersion = `${major}.${minor}.${patch}`;
+const versionFour = `${major}.${minor}.${patch}.0`;
+
+const outputBase = `Synastry-${normalizedVersion}-setup`;
 const issContent = [
-  `#define MyAppVersion "${version}"`,
+  `#define MyAppVersion "${normalizedVersion}"`,
+  `#define MyAppVersionFour "${versionFour}"`,
   `#define MyAppOutputBase "${outputBase}"`,
 ].join('\n');
 
@@ -44,11 +54,15 @@ const patchedSetup = patchFileIfExists('setup.iss', (text) => {
   // Update fallback values used when build/version.iss is missing.
   let next = text.replace(
     /(#ifndef\s+MyAppVersion\s*\r?\n\s*#define\s+MyAppVersion\s+")[^"]*("\s*\r?\n\s*#endif)/m,
-    `$1${version}$2`,
+    `$1${normalizedVersion}$2`,
   );
   next = next.replace(
     /(#ifndef\s+MyAppOutputBase\s*\r?\n\s*#define\s+MyAppOutputBase\s+")[^"]*("\s*\r?\n\s*#endif)/m,
     `$1${outputBase}$2`,
+  );
+  next = next.replace(
+    /(#ifndef\s+MyAppVersionFour\s*\r?\n\s*#define\s+MyAppVersionFour\s+")[^"]*("\s*\r?\n\s*#endif)/m,
+    `$1${versionFour}$2`,
   );
   return next;
 });
@@ -57,11 +71,11 @@ const patchedLock = patchFileIfExists('package-lock.json', (text) => {
   // Patch only the root project version fields, keep the rest intact.
   let next = text.replace(
     /("name"\s*:\s*"synastry"\s*,\s*\r?\n\s*"version"\s*:\s*")[^"]*(")/m,
-    `$1${version}$2`,
+    `$1${normalizedVersion}$2`,
   );
   next = next.replace(
     /("packages"\s*:\s*\{\s*\r?\n\s*""\s*:\s*\{\s*\r?\n\s*"name"\s*:\s*"synastry"\s*,\s*\r?\n\s*"version"\s*:\s*")[^"]*(")/m,
-    `$1${version}$2`,
+    `$1${normalizedVersion}$2`,
   );
   return next;
 });
@@ -69,16 +83,16 @@ const patchedLock = patchFileIfExists('package-lock.json', (text) => {
 const patchedDocs = patchFileIfExists('docs/index.html', (text) => {
   let next = text.replace(
     /(releases\/tag\/)v\d+\.\d+\.\d+/,
-    `$1v${version}`,
+    `$1v${normalizedVersion}`,
   );
   next = next.replace(
     /GitHub Release v\d+\.\d+\.\d+/,
-    `GitHub Release v${version}`,
+    `GitHub Release v${normalizedVersion}`,
   );
   return next;
 });
 
-console.log(`[sync-version] build/version.iss обновлён до ${version}`);
-if (patchedSetup) console.log(`[sync-version] setup.iss fallback-версия обновлена до ${version}`);
-if (patchedLock) console.log(`[sync-version] package-lock.json версия проекта обновлена до ${version}`);
-if (patchedDocs) console.log(`[sync-version] docs/index.html ссылка на релиз обновлена до ${version}`);
+console.log(`[sync-version] build/version.iss обновлён до ${normalizedVersion}`);
+if (patchedSetup) console.log(`[sync-version] setup.iss fallback-версия обновлена до ${normalizedVersion}`);
+if (patchedLock) console.log(`[sync-version] package-lock.json версия проекта обновлена до ${normalizedVersion}`);
+if (patchedDocs) console.log(`[sync-version] docs/index.html ссылка на релиз обновлена до ${normalizedVersion}`);

@@ -363,6 +363,7 @@ const describeOnlineStatus = (
   };
 };
 const OTHER_PROFILES_CACHE_KEY = 'synastry_cached_other_profiles_v1';
+const PROFILE_LOAD_ERROR_MESSAGE = 'Не удалось загрузить профиль. Проверьте соединение или активность проекта Supabase.';
 const EMPTY_SMALL_PHOTOS: (string | null)[] = [null, null];
 function normalizeSmallPhotosField(value: unknown): (string | null)[] {
   if (!Array.isArray(value)) {
@@ -625,6 +626,7 @@ function formatAgeRu(age: number): string {
   const [otherLoading, setOtherLoading] = useState(true);
   const [selectedOtherProfileId, setSelectedOtherProfileId] = useState<string | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [profileRetryTick, setProfileRetryTick] = useState(0);
   const [compatibilityMap, setCompatibilityMap] = useState<Record<string, CompatibilityPreview>>({});
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const clearedUnreadRef = useRef<Record<string, number>>({});
@@ -647,6 +649,15 @@ function formatAgeRu(age: number): string {
     () => (selectedOtherProfileId ? otherProfiles.find((entry) => entry.id === selectedOtherProfileId) ?? null : null),
     [otherProfiles, selectedOtherProfileId],
   );
+
+  const isProfileLoadError = loadingError === PROFILE_LOAD_ERROR_MESSAGE;
+  useEffect(() => {
+    if (!isProfileLoadError) return;
+    const timer = window.setInterval(() => {
+      setProfileRetryTick((value) => value + 1);
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [isProfileLoadError]);
 
   useEffect(() => {
     setOtherProfilePhotoIndex(0);
@@ -1294,7 +1305,7 @@ function formatAgeRu(age: number): string {
       } catch (e) {
         console.error('Error loading profile:', e);
         if (!cancelled) {
-          setLoadingError('Не удалось загрузить профиль. Проверьте соединение или активность проекта Supabase.');
+          setLoadingError(PROFILE_LOAD_ERROR_MESSAGE);
         }
       }
     }
@@ -1302,7 +1313,7 @@ function formatAgeRu(age: number): string {
     return () => {
       cancelled = true;
     };
-  }, [userId, currentUserId, isOnline, sanitizeOwnProfile, viewingOwnProfile]);
+  }, [userId, currentUserId, isOnline, sanitizeOwnProfile, viewingOwnProfile, profileRetryTick]);
   useEffect(() => {
     const blockedSet = new Set(blockedKeys);
     async function loadOtherProfiles() {
@@ -1626,9 +1637,28 @@ function formatAgeRu(age: number): string {
   if (loadingError) {
     return (
       <div className="p-8 text-center text-red-400">
-        {loadingError}
+        <div>{loadingError}</div>
         <div className="mt-2 text-sm text-white/70">
           Если проект Supabase поставлен на паузу, возобновите его в консоли Supabase и обновите страницу.
+        </div>
+        {isProfileLoadError ? (
+          <div className="mt-1 text-xs text-white/50">Автоповтор через 10 секунд.</div>
+        ) : null}
+        <div className="mt-4 flex items-center justify-center gap-3">
+          <button
+            type="button"
+            className={`${BUTTON_SECONDARY} px-4 py-2 text-sm`}
+            onClick={() => navigate("/app", { replace: true })}
+          >
+            Назад
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm text-white/80 hover:bg-white/15"
+            onClick={() => window.location.reload()}
+          >
+            Обновить
+          </button>
         </div>
       </div>
     );

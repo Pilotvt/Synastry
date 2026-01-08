@@ -16,6 +16,7 @@ type BlocklistState = {
   error: string | null;
   lastLoadedAt: number | null;
   setEntries: (list: BlockedProfileSummary[]) => void;
+  setEntriesWithTimestamp: (list: BlockedProfileSummary[], loadedAt: number) => void;
   addEntry: (entry: BlockedProfileSummary) => void;
   removeEntry: (userId: string) => void;
   setLoading: (flag: boolean) => void;
@@ -35,6 +36,14 @@ export const useBlocklistStore = create<BlocklistState>((set) => ({
       return acc;
     }, {});
     set({ entries: nextEntries, initialized: true, loading: false, error: null, lastLoadedAt: Date.now() });
+  },
+  setEntriesWithTimestamp: (list, loadedAt) => {
+    const nextEntries = list.reduce<Record<string, BlockedProfileSummary>>((acc, entry) => {
+      acc[entry.id] = entry;
+      return acc;
+    }, {});
+    const timestamp = Number.isFinite(loadedAt) ? loadedAt : Date.now();
+    set({ entries: nextEntries, initialized: true, loading: false, error: null, lastLoadedAt: timestamp });
   },
   addEntry: (entry) => {
     set((state) => ({
