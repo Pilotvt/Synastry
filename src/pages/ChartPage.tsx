@@ -25,6 +25,7 @@ import {
   PROFILE_SNAPSHOT_STORAGE_KEY,
   LAST_SAVED_PROFILE_FINGERPRINT_KEY,
 } from "../constants/storageKeys";
+import { formatEphemerisRangeRu, isWithinEphemerisRange } from "../utils/ephemerisRange";
 // profile freshness handled locally to avoid cross-file type coupling
 
 // Keys and constants
@@ -1016,6 +1017,9 @@ function buildChartPayload(profile: ProfileSnapshot):
   const deltaMinutes = finalOffsetMinutes - baseOffsetMinutes;
   const adjustedMoment = birthMoment.clone().add(deltaMinutes, "minutes");
   const datetimeIso = adjustedMoment.format("YYYY-MM-DDTHH:mm:ssZ");
+  if (!isWithinEphemerisRange(datetimeIso)) {
+    return { ok: false, error: `Дата/время вне диапазона эфемерид (${formatEphemerisRangeRu()}). Проверьте год рождения.` };
+  }
 
     const req: ChartRequestPayload & { constellational?: boolean } = {
       datetime_iso: datetimeIso,
@@ -1777,8 +1781,26 @@ const ChartPage = () => {
         });
         setProgress({ percent: 65, message: "Получаем данные с сервера..." });
         if (!response.ok) {
-          const bodyText = await response.text();
-          throw new Error(`Запрос к серверу расчётов не удался (${response.status}): ${bodyText}`);
+          const contentType = response.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const parsed: unknown = await response.json().catch(() => null);
+            let message: string | null = null;
+            if (isRecord(parsed)) {
+              const detail = parsed.detail;
+              if (typeof detail === "string") {
+                message = detail;
+              } else if (isRecord(detail) && typeof detail.message === "string") {
+                message = detail.message;
+              } else if (typeof parsed.message === "string") {
+                message = parsed.message;
+              }
+            }
+            if (message) {
+              throw new Error(`Запрос к серверу расчётов не удался (${response.status}): ${message}`);
+            }
+          }
+          const bodyText = await response.text().catch(() => "");
+          throw new Error(`Запрос к серверу расчётов не удался (${response.status}): ${bodyText || response.statusText}`);
         }
         setProgress({ percent: 65, message: "Получаем расчёт домов и планет..." });
         const json = (await response.json()) as ChartResponse;

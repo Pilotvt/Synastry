@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from skyfield.errors import EphemerisRangeError
 
 from .schemas import (
     ChartRequest,
@@ -34,7 +35,18 @@ app.add_middleware(
 
 @app.post("/api/chart", response_model=ChartResponse)
 def chart_endpoint(data: ChartRequest):
-    return compute_chart(data)
+    try:
+        return compute_chart(data)
+    except EphemerisRangeError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "EPHEMERIS_RANGE",
+                "message": "Дата/время вне диапазона эфемерид (1849-12-26 … 2150-01-22). Проверьте год.",
+            },
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/calendar-year", response_model=CalendarYearResponse)

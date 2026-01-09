@@ -19,6 +19,12 @@ import {
   lookupForeignCityRuName,
   type ForeignCityRuMap,
 } from "../utils/foreignCitiesRuClient";
+import {
+  EPHEMERIS_END_UTC_MS,
+  EPHEMERIS_START_UTC_MS,
+  formatEphemerisRangeRu,
+  isWithinEphemerisRange,
+} from "../utils/ephemerisRange";
 import { formatArcMin, nakshatraFromLonJ2000 } from "../utils/nakshatraJ2000";
 import { requestNewChartReset } from "../utils/newChartRequest";
 import { useOfflineMode } from "../utils/offlineMode";
@@ -787,11 +793,6 @@ function formatArcDegree(value: number): string {
   return `${deg}\u00B0 ${minutes.toString().padStart(2, "0")}'`;
 }
 
-// Ephemeris validity window (DE440s short kernel is ~1849-12-25 .. 2150-01-21).
-// Backend also clamps to the actual bundled ephemeris, so this is only a UI-side guard.
-const EPHEMERIS_START_UTC_MS = moment.utc("1849-12-25T00:00:00Z").valueOf();
-const EPHEMERIS_END_UTC_MS = moment.utc("2150-01-21T23:59:59Z").valueOf();
-
 function normalizeCityQuery(value: string): string {
   return norm(value || "");
 }
@@ -1129,6 +1130,11 @@ const AdditionalChartPage: React.FC = () => {
       buildAbortRef.current = controller;
       const metaPayload = recomputeMeta(parts);
       if (!metaPayload) return;
+      if (!isWithinEphemerisRange(metaPayload.datetimeIso)) {
+        setError(`Дата/время вне диапазона эфемерид (${formatEphemerisRangeRu()}). Проверьте год.`);
+        setChart(null);
+        return;
+      }
       const payload: ChartRequestPayload = {
         datetime_iso: metaPayload.datetimeIso,
         latitude: lat,
@@ -3892,7 +3898,7 @@ const AdditionalChartPage: React.FC = () => {
                       Object.values(SIGN_INFO).find((s) => s.index === rule.gatakaRashi)?.ru ?? String(rule.gatakaRashi);
                     reasons.push(`Гатака раши: ${gatakaRashiName}`);
                   }
-                  if (typeof tithiNorm === "number" && rule.gatakaTithi.includes(tithiNorm as any)) {
+                  if (typeof tithiNorm === "number" && rule.gatakaTithi.some((value) => value === tithiNorm)) {
                     reasons.push(`Гатака титхи: ${tithiNorm}`);
                   }
                   if (weekdayNum === rule.gatakaVara) {

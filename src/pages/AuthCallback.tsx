@@ -1,5 +1,6 @@
-import { useMemo } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useRef } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 
 function parseParams(hash: string, search: string) {
   if (hash && hash.startsWith("#")) {
@@ -55,10 +56,41 @@ function resolveState(params: URLSearchParams) {
 
 export default function AuthCallbackPage() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const appliedRef = useRef(false);
   const state = useMemo(() => {
     const params = parseParams(location.hash, location.search);
     return resolveState(params);
   }, [location.hash, location.search]);
+
+  useEffect(() => {
+    if (appliedRef.current) return;
+    appliedRef.current = true;
+    const params = parseParams(location.hash, location.search);
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    if (!accessToken || !refreshToken) return;
+
+    (async () => {
+      try {
+        const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (error) return;
+        const eventType = (params.get("type") ?? params.get("event") ?? "").toLowerCase();
+        const isRecovery = eventType === "recovery" || eventType === "password_recovery";
+        try {
+          const url = new URL(window.location.href);
+          url.hash = "";
+          url.search = "";
+          window.history.replaceState(null, "", url.toString());
+        } catch {
+          // ignore history cleanup errors
+        }
+        navigate(isRecovery ? "/auth/password-reset" : "/app", { replace: true });
+      } catch {
+        // ignore session apply errors (page already shows a helpful message)
+      }
+    })();
+  }, [location.hash, location.search, navigate]);
 
   const colorClasses = {
     success: "bg-emerald-500/15 border-emerald-400/40 text-emerald-100",

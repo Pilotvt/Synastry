@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { BUTTON_SECONDARY } from "../constants/buttonPalette";
@@ -7,8 +7,15 @@ import { BUTTON_SECONDARY } from "../constants/buttonPalette";
 const MIN_PASSWORD_LENGTH = 8;
 const AUTH_WIDTH = 280;
 
+function paramsFromUrl(hash: string, search: string): URLSearchParams {
+  if (hash && hash.startsWith("#")) return new URLSearchParams(hash.slice(1));
+  if (search && search.startsWith("?")) return new URLSearchParams(search.slice(1));
+  return new URLSearchParams();
+}
+
 const PasswordRecoveryPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [newPassword, setNewPassword] = useState("");
@@ -19,9 +26,28 @@ const PasswordRecoveryPage: React.FC = () => {
 
   useEffect(() => {
     let active = true;
-    supabase.auth
-      .getUser()
-      .then(({ data, error: authError }) => {
+    (async () => {
+      try {
+        const params = paramsFromUrl(location.hash, location.search);
+        const accessToken = params.get("access_token");
+        const refreshToken = params.get("refresh_token");
+        if (accessToken && refreshToken) {
+          const { error: sessionError } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          if (sessionError) {
+            console.warn("Не удалось применить токены восстановления", sessionError);
+          } else {
+            try {
+              const url = new URL(window.location.href);
+              url.hash = "";
+              url.search = "";
+              window.history.replaceState(null, "", url.toString());
+            } catch {
+              // ignore history cleanup errors
+            }
+          }
+        }
+
+        const { data, error: authError } = await supabase.auth.getUser();
         if (!active) return;
         if (authError) {
           console.warn("Не удалось получить пользователя для восстановления", authError);
@@ -29,17 +55,17 @@ const PasswordRecoveryPage: React.FC = () => {
         }
         setUser(data?.user ?? null);
         setLoading(false);
-      })
-      .catch((authError) => {
+      } catch (authError) {
         if (!active) return;
         console.warn("Не удалось загрузить пользователя", authError);
         setError("Не удалось загрузить данные восстановления.");
         setLoading(false);
-      });
+      }
+    })();
     return () => {
       active = false;
     };
-  }, []);
+  }, [location.hash, location.search]);
 
   const handleBack = useCallback(() => {
     navigate("/", { replace: true });
