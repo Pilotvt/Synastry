@@ -18,6 +18,7 @@
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
     "desktop:dev": "npm run build && electron electron/main.js",
+    "desktop:preview:update-download": "electron electron/main.js --preview-update-download",
     "runtime:prepare": "python scripts/copy_vc_runtime_dlls.py --dest electron/resources/python-embed",
     "wheels:prepare": "python scripts/build_wheelhouse.py --dest electron/resources/wheels --requirements requirements.txt",
     "inno:build": "node scripts/build_inno_installer.mjs",

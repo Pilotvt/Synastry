@@ -507,6 +507,7 @@ const APP_ICON = path.join(__dirname, '../build/icons/icon.ico');
 const APP_VERSION = resolveAppVersion();
 // Автообновление включено по умолчанию; можно отключить через SYN_AUTOUPDATE=0 при необходимости.
 const ALLOW_AUTO_UPDATE = process.env.SYN_AUTOUPDATE !== '0';
+const PREVIEW_UPDATE_DOWNLOAD = process.argv.includes('--preview-update-download');
 const TRIAL_DAYS = 10;
 const TRIAL_FILE_NAME = 'trial-info.dat';
 const LICENSE_FILE_NAME = 'license-info.json';
@@ -533,6 +534,7 @@ let updateDownloadWindow = null;
 let innoDownloadAbortController = null;
 let innoDownloadCancelRequested = false;
 let lastUpdateStatusPayload = null;
+let updateDownloadPreviewTimer = null;
 const manualUpdateState = {
   pending: false,
   window: null,
@@ -1058,6 +1060,17 @@ function isUserInitiatedUpdateCancel(error) {
 async function cancelUpdateDownload(options = {}) {
   const { closeWindow = false } = options && typeof options === 'object' ? options : {};
 
+  if (PREVIEW_UPDATE_DOWNLOAD) {
+    if (updateDownloadPreviewTimer) {
+      clearInterval(updateDownloadPreviewTimer);
+      updateDownloadPreviewTimer = null;
+    }
+    isDownloadingUpdate = false;
+    broadcastUpdateStatus({ type: 'download-cancelled' });
+    if (closeWindow) closeUpdateDownloadWindow();
+    return { ok: true, preview: true };
+  }
+
   if (!ALLOW_AUTO_UPDATE || !app.isPackaged) {
     return { ok: false, reason: 'disabled' };
   }
@@ -1147,7 +1160,8 @@ function ensureUpdateDownloadWindow(parentWindow) {
   const parent = getDialogTarget(parentWindow);
   const win = new BrowserWindow({
     width: 520,
-    height: 290,
+    height: 320,
+    useContentSize: true,
     resizable: false,
     minimizable: true,
     maximizable: false,
@@ -1219,6 +1233,111 @@ function ensureUpdateDownloadWindow(parentWindow) {
 
   updateDownloadWindow = win;
   return win;
+}
+
+async function startUpdateDownloadPreview() {
+  if (updateDownloadPreviewTimer) {
+    clearInterval(updateDownloadPreviewTimer);
+    updateDownloadPreviewTimer = null;
+  }
+
+  if (updateDownloadWindow && !updateDownloadWindow.isDestroyed()) {
+    try {
+      updateDownloadWindow.__synastrySkipCloseConfirm = true;
+      updateDownloadWindow.close();
+    } catch {}
+  }
+  updateDownloadWindow = null;
+
+  const win = new BrowserWindow({
+    width: 520,
+    height: 320,
+    useContentSize: true,
+    resizable: false,
+    minimizable: true,
+    maximizable: false,
+    show: false,
+    title: 'Загрузка обновления (preview)',
+    icon: APP_ICON,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
+      devTools: true,
+    },
+  });
+  win.setMenu(null);
+
+  win.on('closed', () => {
+    if (updateDownloadWindow === win) {
+      updateDownloadWindow = null;
+    }
+    if (updateDownloadPreviewTimer) {
+      clearInterval(updateDownloadPreviewTimer);
+      updateDownloadPreviewTimer = null;
+    }
+    isDownloadingUpdate = false;
+    if (PREVIEW_UPDATE_DOWNLOAD) {
+      try {
+        app.quit();
+      } catch {}
+    }
+  });
+
+  win.loadFile(path.join(__dirname, 'update-download.html')).catch((error) => {
+    log.error('Failed to load update-download preview window', error);
+  });
+
+  win.once('ready-to-show', () => {
+    try {
+      win.show();
+    } catch {}
+  });
+
+  updateDownloadWindow = win;
+  isDownloadingUpdate = true;
+  updateDownloadCancelRequestedAt = 0;
+  innoDownloadCancelRequested = false;
+
+  const cacheDir = path.join(app.getPath('userData'), 'synastry-inno-updater');
+  const total = 1240 * 1024 * 1024;
+  const tickMs = 250;
+  const bytesPerSecond = 2.2 * 1024 * 1024;
+  const step = Math.max(128 * 1024, Math.round((bytesPerSecond * tickMs) / 1000));
+
+  win.webContents.on('did-finish-load', () => {
+    broadcastUpdateStatus({ type: 'available', info: { version: APP_VERSION } });
+    broadcastUpdateStatus({ type: 'download-started', info: { version: APP_VERSION, cacheDir } });
+
+    let transferred = 0;
+    const startedAt = Date.now();
+    updateDownloadPreviewTimer = setInterval(() => {
+      if (!isDownloadingUpdate) return;
+      if (!updateDownloadWindow || updateDownloadWindow.isDestroyed()) return;
+      transferred = Math.min(total, transferred + step);
+      const elapsed = Math.max(1, Date.now() - startedAt);
+      const avgBps = Math.round((transferred * 1000) / elapsed);
+      const percent = total > 0 ? (transferred / total) * 100 : 0;
+      broadcastUpdateStatus({
+        type: 'download-progress',
+        info: { percent, transferred, total, bytesPerSecond: avgBps || Math.round(bytesPerSecond) },
+      });
+      if (transferred >= total) {
+        isDownloadingUpdate = false;
+        if (updateDownloadPreviewTimer) {
+          clearInterval(updateDownloadPreviewTimer);
+          updateDownloadPreviewTimer = null;
+        }
+        broadcastUpdateStatus({
+          type: 'downloaded',
+          info: {
+            version: APP_VERSION,
+            downloadedFile: path.join(cacheDir, `Synastry-${APP_VERSION}-update.exe`),
+          },
+        });
+      }
+    }, tickMs);
+  });
 }
 
 function formatReleaseNotes(releaseNotes) {
@@ -3018,6 +3137,7 @@ function resolveNudeNetModelPath(isPackaged) {
     PYTHONUNBUFFERED: process.env.PYTHONUNBUFFERED || '1',
     PYTHONIOENCODING: process.env.PYTHONIOENCODING || 'utf-8',
   };
+  const pythonPycachePrefix = path.join(app.getPath('userData'), 'cache', 'python-pycache');
   const nudenetModelPath = resolveNudeNetModelPath(app.isPackaged);
   const nudenetEnv = nudenetModelPath ? { NUDENET_MODEL_PATH: nudenetModelPath } : {};
     const { exec: parsedExec, extraArgs: parsedArgs } = parsePythonCommand(pythonExecutable);
@@ -3080,6 +3200,7 @@ function resolveNudeNetModelPath(isPackaged) {
             ...debugPythonEnv,
             ...nudenetEnv,
             SYN_RESOURCE_ROOT: resourceRoot,
+            PYTHONPYCACHEPREFIX: process.env.PYTHONPYCACHEPREFIX || pythonPycachePrefix,
             PYTHONPATH: pyPath,
           },
         },
@@ -3123,6 +3244,7 @@ function resolveNudeNetModelPath(isPackaged) {
           ...debugPythonEnv,
           ...nudenetEnv,
           SYN_RESOURCE_ROOT: projectRoot,
+          PYTHONPYCACHEPREFIX: process.env.PYTHONPYCACHEPREFIX || pythonPycachePrefix,
           PYTHONPATH: devPyPath,
         },
       },
@@ -3446,6 +3568,8 @@ async function ensureCacheDirs() {
     const cacheBase = path.join(userData, 'cache');
     await fsPromises.mkdir(cacheBase, { recursive: true });
 
+    await fsPromises.mkdir(path.join(cacheBase, 'python-pycache'), { recursive: true });
+
     cacheRootDir = path.join(cacheBase, CACHE_VERSION);
     cacheImagesDir = path.join(cacheRootDir, 'images');
 
@@ -3461,6 +3585,10 @@ async function ensureCacheDirs() {
 app.whenReady().then(async () => {
   registerCustomProtocol();
   buildApplicationMenu();
+  if (PREVIEW_UPDATE_DOWNLOAD) {
+    await startUpdateDownloadPreview();
+    return;
+  }
   // Load previously saved identity before evaluating license status
   try {
     const savedIdentity = await readIdentityFromDisk();

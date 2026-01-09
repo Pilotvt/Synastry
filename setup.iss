@@ -76,10 +76,105 @@ Root: HKCU; Subkey: "Software\\Classes\\synastry"; ValueType: string; ValueName:
 Root: HKCU; Subkey: "Software\\Classes\\synastry\\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppName}.exe,0"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\\Classes\\synastry\\shell\\open\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppName}.exe"" ""%1"""; Flags: uninsdeletekey
 
-[UninstallDelete]
-; Wipe app data on uninstall to avoid keeping stale sessions/cache across reinstalls.
-; Trial start time is stored in registry (HKCU\Software\Synastry\FirstLaunchMs) and is preserved.
-Type: filesandordirs; Name: "{userappdata}\\Synastry"
-Type: filesandordirs; Name: "{userappdata}\\synastry"
-Type: filesandordirs; Name: "{localappdata}\\Synastry"
-Type: filesandordirs; Name: "{localappdata}\\synastry"
+[Code]
+function IsUpgradeUninstall(): Boolean;
+begin
+  Result := Pos('/UPGRADE', Uppercase(GetCmdTail())) > 0;
+end;
+
+function IsSilentUninstall(): Boolean;
+var
+  Tail: string;
+begin
+  Tail := Uppercase(GetCmdTail());
+  Result := (Pos('/SILENT', Tail) > 0) or (Pos('/VERYSILENT', Tail) > 0);
+end;
+
+var
+  ShouldWipeUserData: Boolean;
+  UserDataChoiceAsked: Boolean;
+
+procedure EnsureUserDataChoice();
+var
+  Answer: Integer;
+begin
+  if UserDataChoiceAsked then
+    exit;
+  UserDataChoiceAsked := True;
+
+  if IsUpgradeUninstall() then
+  begin
+    ShouldWipeUserData := False;
+    exit;
+  end;
+
+  // In silent mode we should not block on UI; keep user data by default.
+  if IsSilentUninstall() then
+  begin
+    ShouldWipeUserData := False;
+    exit;
+  end;
+
+  Answer := MsgBox(
+    'Удалить данные приложения Synastry?' + #13#10 + #13#10 +
+    'Это удалит локальные настройки/кэш и сохранённый лицензионный ключ на этом компьютере.' + #13#10 +
+    'Лицензия в Supabase останется привязанной к вашему логину и не пропадёт.',
+    mbConfirmation,
+    MB_YESNO
+  );
+
+  ShouldWipeUserData := (Answer = IDYES);
+end;
+
+procedure DeletePycacheDirs(const Root: string);
+var
+  FindRec: TFindRec;
+  PathName: string;
+begin
+  if not DirExists(Root) then
+    exit;
+
+  if FindFirst(Root + '\*', FindRec) then
+  try
+    repeat
+      if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+      begin
+        PathName := Root + '\' + FindRec.Name;
+        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+        begin
+          if CompareText(FindRec.Name, '__pycache__') = 0 then
+            DelTree(PathName, True, True, True)
+          else
+            DeletePycacheDirs(PathName);
+        end;
+      end;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResourcesRoot: string;
+begin
+  if CurUninstallStep <> usUninstall then
+    exit;
+
+  EnsureUserDataChoice();
+
+  // During upgrade, Inno runs previous uninstaller first. Do not wipe user data on upgrades.
+  if ShouldWipeUserData then
+  begin
+    // Full uninstall (optional): wipe app data to avoid keeping stale sessions/cache across reinstalls.
+    // Trial start time is stored in registry (HKCU\Software\Synastry\FirstLaunchMs) and is preserved.
+    DelTree(ExpandConstant('{userappdata}\Synastry'), True, True, True);
+    DelTree(ExpandConstant('{userappdata}\synastry'), True, True, True);
+    DelTree(ExpandConstant('{localappdata}\Synastry'), True, True, True);
+    DelTree(ExpandConstant('{localappdata}\synastry'), True, True, True);
+  end;
+
+  ResourcesRoot := ExpandConstant('{app}\resources');
+  DeletePycacheDirs(ResourcesRoot);
+  DeleteFile(ExpandConstant('{app}\resources\python-embed\_asyncio.pyd.disabled'));
+end;
