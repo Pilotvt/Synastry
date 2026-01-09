@@ -1,6 +1,6 @@
 Synastry — Third-Party Notices
-Version: 1.1.0
-Generated: 2026-01-05T19:52:53.956Z
+Version: 1.1.1
+Generated: 2026-01-09T17:15:52.024Z
 This product includes third-party open source software.
 License texts are reproduced below where available.
 ============================================================

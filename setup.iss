@@ -19,15 +19,15 @@
 
 ; Fallback values used only if build/version.iss is missing.
 #ifndef MyAppVersion
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.1"
 #endif
 
 #ifndef MyAppVersionFour
-#define MyAppVersionFour "1.1.0.0"
+#define MyAppVersionFour "1.1.1.0"
 #endif
 
 #ifndef MyAppOutputBase
-#define MyAppOutputBase "Synastry-1.1.0-setup"
+#define MyAppOutputBase "Synastry-1.1.1-setup"
 #endif
 
 ; Allow overriding installer icon from environment (for CI / A-B testing).
