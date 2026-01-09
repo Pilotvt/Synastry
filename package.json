@@ -22,7 +22,7 @@
     "wheels:prepare": "python scripts/build_wheelhouse.py --dest electron/resources/wheels --requirements requirements.txt",
     "inno:build": "node scripts/build_inno_installer.mjs",
     "desktop:pack": "npm run sync:version && npm run runtime:prepare && npm run wheels:prepare && electron-builder --dir",
-    "desktop:build:nsis": "npm run sync:version && npm run runtime:prepare && npm run wheels:prepare && npm run build && electron-builder",
+    "desktop:build:nsis": "npm run sync:version && npm run runtime:prepare && npm run wheels:prepare && npm run build && electron-builder --win nsis",
     "desktop:build:inno": "npm run sync:version && npm run runtime:prepare && npm run wheels:prepare && npm run build && electron-builder --dir && npm run inno:build",
     "desktop:build": "npm run desktop:build:inno",
     "dist": "npm run desktop:build",
@@ -89,6 +89,7 @@
       "THIRD_PARTY_NOTICES.txt",
       "requirements.txt",
       "package.json",
+      "!data/geonames/**",
       "!.Лекции/**",
       "!Ключи.txt",
       "!python-env",
@@ -143,7 +144,7 @@
       "sign": null,
       "target": [
         {
-          "target": "nsis",
+          "target": "dir",
           "arch": [
             "x64"
           ]
