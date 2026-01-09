@@ -7,8 +7,13 @@ import { supabase } from "./lib/supabase";
 import { useProfile } from "./store/profile";
 import { readProfileFromStorage, writeProfileToStorage } from "./utils/profileStorage";
 import { clearSavedChart, writeSavedChart } from "./utils/savedChartStorage";
-import { latinToRuApprox, latinToRuName, norm, ruToLat } from "./utils/transliterate";
+import { latinToRuApprox, norm, ruToLat } from "./utils/transliterate";
 import { getRussianCities, findNearestRussianCity, type RussianCity } from "./utils/russianCitiesClient";
+import {
+  getForeignCitiesRuMap,
+  lookupForeignCityRuName,
+  type ForeignCityRuMap,
+} from "./utils/foreignCitiesRuClient";
 import {
   PROFILE_SNAPSHOT_STORAGE_KEY as STORAGE_KEY,
   LAST_SAVED_PROFILE_FINGERPRINT_KEY as LAST_SAVED_FINGERPRINT_KEY,
@@ -119,9 +124,6 @@ function readStoredProfileSnapshot(expectedOwnerId?: string | null): Partial<Pro
       }
     }
     if (profile && isProfileLike(profile)) {
-      if (!profile.cityNameRu && typeof profile.selectedCity === 'string') {
-        profile.cityNameRu = latinToRuName(profile.selectedCity);
-      }
       return profile;
     }
 
@@ -172,9 +174,6 @@ function readStoredProfileSnapshot(expectedOwnerId?: string | null): Partial<Pro
       if (typeof legacy.children === 'string') snapshot.children = legacy.children;
 
       if (Object.keys(snapshot).length > 0) {
-        if (!snapshot.cityNameRu && typeof snapshot.selectedCity === 'string') {
-          snapshot.cityNameRu = latinToRuName(snapshot.selectedCity);
-        }
         return snapshot;
       }
     }
@@ -319,6 +318,7 @@ export default function App() {
   const [allCities, setAllCities] = useState<CityWorld[]>([]);
   const [countries, setCountries] = useState<string[]>(["RU"]);
   const cityCacheRef = useRef<Map<string, CityWorld[]>>(new Map());
+  const foreignCitiesRuRef = useRef<ForeignCityRuMap | null>(null);
   const citiesIndexLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -590,12 +590,13 @@ useEffect(() => {
       return;
     }
 
-  const controller = new AbortController();
+    const controller = new AbortController();
     setAllCities([]);
 
     (async () => {
       try {
-  const response = await fetch(publicAssetUrl(`cities-by-country/${country}.json`), {
+        const foreignRuPromise = country === "RU" ? null : getForeignCitiesRuMap().catch(() => null);
+        const response = await fetch(publicAssetUrl(`cities-by-country/${country}.json`), {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -604,6 +605,10 @@ useEffect(() => {
         if (cancelled) return;
 
         const russianCities = country === "RU" ? await getRussianCities().catch(() => null) : null;
+        const foreignRu = foreignRuPromise ? await foreignRuPromise : null;
+        if (foreignRu) {
+          foreignCitiesRuRef.current = foreignRu;
+        }
 
         const prepared: CityWorld[] = [];
         for (const c of data) {
@@ -618,12 +623,18 @@ useEffect(() => {
             matchedRussian = findNearestRussianCity(latValue, lonValue, russianCities);
           }
 
+          const nameRuFromMap = lookupForeignCityRuName(foreignRu, {
+            country: countryCode,
+            name,
+            lat: latValue,
+            lon: lonValue,
+          });
           let nameRu =
             typeof c.name_ru === "string" && c.name_ru.trim()
               ? c.name_ru.trim()
               : typeof c.nameRu === "string" && c.nameRu.trim()
                 ? c.nameRu.trim()
-                : latinToRuName(name);
+                : (nameRuFromMap ?? name);
           let regionRu = typeof c.region_ru === "string" ? c.region_ru : undefined;
 
           if (matchedRussian) {

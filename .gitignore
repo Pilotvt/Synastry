@@ -41,3 +41,4 @@ electron/resources/wheels/*.tar.gz
 electron/resources/python-embed/msvcp140*.dll
 electron/resources/python-embed/concrt140.dll
 electron/resources/python-embed/vcomp140.dll
+data/geonames/

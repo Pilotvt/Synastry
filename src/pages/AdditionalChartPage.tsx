@@ -14,10 +14,15 @@ import { NAKSHATRA_LECTURES_RU } from "../data/nakshatraLecturesRu";
 import { GATAKI_RULES_RU } from "../data/gatakiRu";
 import { GOCHARA_PLANETS_RU, GOCHARA_PLANET_ORDER, type GocharaPlanetCode } from "../data/gocharaLecturesRu";
 import { getRussianCities } from "../utils/russianCitiesClient";
+import {
+  getForeignCitiesRuMap,
+  lookupForeignCityRuName,
+  type ForeignCityRuMap,
+} from "../utils/foreignCitiesRuClient";
 import { formatArcMin, nakshatraFromLonJ2000 } from "../utils/nakshatraJ2000";
 import { requestNewChartReset } from "../utils/newChartRequest";
 import { useOfflineMode } from "../utils/offlineMode";
-import { norm, latinToRuName, ruToLat } from "../utils/transliterate";
+import { norm, ruToLat } from "../utils/transliterate";
 import { countryNameRU } from "../utils/countryNameRU";
 import {
   DAY_MS,
@@ -794,11 +799,7 @@ function normalizeCityQuery(value: string): string {
 function matchPrefix(query: string, city: CitySuggestion): boolean {
   const q = normalizeCityQuery(query);
   if (!q) return true;
-  if (city.nameRuNorm.startsWith(q) || city.nameNorm.startsWith(q) || city.nameTranslit.startsWith(q)) {
-    return true;
-  }
-  const alt = normalizeCityQuery(latinToRuName(city.name));
-  return alt.startsWith(q);
+  return city.nameRuNorm.startsWith(q) || city.nameNorm.startsWith(q) || city.nameTranslit.startsWith(q);
 }
 
 const AdditionalChartPage: React.FC = () => {
@@ -827,6 +828,7 @@ const AdditionalChartPage: React.FC = () => {
   });
   const [cities, setCities] = useState<CitySuggestion[]>([]);
   const cityCacheRef = useRef<Map<string, CitySuggestion[]>>(new Map());
+  const foreignCitiesRuRef = useRef<ForeignCityRuMap | null>(null);
   const [birthParts, setBirthParts] = useState<BirthParts>(() => initialDraft?.birthParts ?? defaultBirthParts);
   const [lat, setLat] = useState(() => initialDraft?.lat ?? 54.84152);
   const [lon, setLon] = useState(() => initialDraft?.lon ?? 73.30174);
@@ -1017,6 +1019,13 @@ const AdditionalChartPage: React.FC = () => {
             }),
           );
         } else {
+          let foreignRu = foreignCitiesRuRef.current;
+          if (!foreignRu) {
+            foreignRu = await getForeignCitiesRuMap().catch(() => null);
+            if (foreignRu) {
+              foreignCitiesRuRef.current = foreignRu;
+            }
+          }
           const response = await fetch(publicAssetUrl(`cities-by-country/${code}.json`), { cache: "no-store" });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const data = (await response.json()) as unknown;
@@ -1030,11 +1039,12 @@ const AdditionalChartPage: React.FC = () => {
                 const lon = typeof raw.lon === "number" ? raw.lon : Number(raw.lon);
                 if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
                 const id = raw.geonameid !== undefined ? String(raw.geonameid) : `${country}:${name}:${lat}:${lon}`;
+                const nameRuFromMap = lookupForeignCityRuName(foreignRu, { country, name, lat, lon });
                 const nameRu = (typeof raw.nameRu === "string" && raw.nameRu.trim())
                   ? raw.nameRu.trim()
                   : (typeof raw.name_ru === "string" && raw.name_ru.trim())
                     ? raw.name_ru.trim()
-                    : name;
+                    : (nameRuFromMap ?? name);
                 return makeCitySuggestion({ id, name, nameRu, country, lat, lon });
               })
               .filter((c): c is CitySuggestion => Boolean(c));
@@ -1051,6 +1061,20 @@ const AdditionalChartPage: React.FC = () => {
       cancelled = true;
     };
   }, [country]);
+
+  useEffect(() => {
+    if (!selectedCity || cities.length === 0) return;
+    const match =
+      cities.find((city) => city.id === selectedCity.id)
+      ?? cities.find(
+        (city) => city.name === selectedCity.name && city.lat === selectedCity.lat && city.lon === selectedCity.lon,
+      );
+    if (!match || match.nameRu === selectedCity.nameRu) return;
+    setSelectedCity(match);
+    if (cityQuery === selectedCity.name || cityQuery === selectedCity.nameRu) {
+      setCityQuery(match.nameRu);
+    }
+  }, [cities, selectedCity, cityQuery]);
 
   useEffect(() => {
     try {
@@ -1597,10 +1621,18 @@ const AdditionalChartPage: React.FC = () => {
 
         if (selectedCityRaw && typeof latResolved === "number" && typeof lonResolved === "number") {
           const countryForCity = (countryRaw || country || "RU").toUpperCase();
+          const mappedNameRu = !cityNameRuRaw
+            ? lookupForeignCityRuName(foreignCitiesRuRef.current, {
+                country: countryForCity,
+                name: selectedCityRaw,
+                lat: latResolved,
+                lon: lonResolved,
+              })
+            : undefined;
           const suggestion = makeCitySuggestion({
             id: `${countryForCity}:${selectedCityRaw}:${latResolved}:${lonResolved}`,
             name: selectedCityRaw,
-            nameRu: cityNameRuRaw || latinToRuName(selectedCityRaw),
+            nameRu: cityNameRuRaw || mappedNameRu || selectedCityRaw,
             country: countryForCity,
             lat: latResolved,
             lon: lonResolved,
