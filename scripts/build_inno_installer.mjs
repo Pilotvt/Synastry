@@ -85,6 +85,7 @@ function safeUnlink(filePath) {
   } catch {
     // ignore
   }
+  return !existsSync(filePath);
 }
 
 function downloadFile(url, destPath, redirectsLeft = 5) {
@@ -233,11 +234,20 @@ async function main() {
   };
 
   // Prefer building directly into `release/` so there's only one installer.
-  safeUnlink(expectedPrimaryPath);
-  let res = compileTo(outputDir);
+  // If the output exe is locked (Explorer/AV), fall back to `release/inno/` to avoid cryptic ISCC errors.
+  let res;
+  const primaryUnlocked = safeUnlink(expectedPrimaryPath);
+  if (primaryUnlocked) {
+    res = compileTo(outputDir);
+  } else {
+    console.warn(`[inno] output locked, building into: ${fallbackOutDir}`);
+    mkdirSync(fallbackOutDir, { recursive: true });
+    safeUnlink(expectedFallbackPath);
+    res = compileTo(fallbackOutDir);
+  }
 
   // If output folder is locked (Explorer/AV), retry into `release/inno/`.
-  if (res.status !== 0) {
+  if (res.status !== 0 && primaryUnlocked) {
     mkdirSync(fallbackOutDir, { recursive: true });
     safeUnlink(expectedFallbackPath);
     res = compileTo(fallbackOutDir);
