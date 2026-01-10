@@ -33,6 +33,7 @@ test_images/
 *.sln
 *.sw?
 release/
+build/redist/
 .Лекции/
 Ключи.txt
 electron/resources/wheels/*.whl

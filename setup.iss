@@ -64,6 +64,9 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 
 [Files]
 Source: "{#MyAppSourceDir}\\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; Bundled prerequisite: Microsoft Visual C++ Redistributable 2015–2022 (x64).
+; We embed it into the installer and extract on-demand via ExtractTemporaryFile().
+Source: "build\\redist\\vc_redist.x64.exe"; Flags: dontcopy
 
 [Icons]
 Name: "{autoprograms}\\{#MyAppName}"; Filename: "{app}\\{#MyAppName}.exe"
@@ -77,6 +80,101 @@ Root: HKCU; Subkey: "Software\\Classes\\synastry\\DefaultIcon"; ValueType: strin
 Root: HKCU; Subkey: "Software\\Classes\\synastry\\shell\\open\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppName}.exe"" ""%1"""; Flags: uninsdeletekey
 
 [Code]
+const
+  VcRedistUrl = 'https://aka.ms/vc14/vc_redist.x64.exe';
+
+function IsVcRuntimeInstalled(): Boolean;
+var
+  Installed: Cardinal;
+begin
+  Installed := 0;
+  // Visual C++ 2015-2022 Redistributable (x64)
+  if RegQueryDWordValue(HKLM64, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', Installed) then
+  begin
+    Result := (Installed = 1);
+    exit;
+  end;
+  // Fallback: some systems expose only 32-bit view (rare, but harmless to check)
+  if RegQueryDWordValue(HKLM32, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', Installed) then
+  begin
+    Result := (Installed = 1);
+    exit;
+  end;
+  Result := False;
+end;
+
+function InstallVcRedist(var NeedsRestart: Boolean): Boolean;
+var
+  LocalPath: string;
+  ResultCode: Integer;
+  Params: string;
+begin
+  NeedsRestart := False;
+  if IsVcRuntimeInstalled() then
+  begin
+    Result := True;
+    exit;
+  end;
+
+  if WizardSilent() then
+    Params := '/install /quiet /norestart'
+  else
+    Params := '/install /passive /norestart';
+
+  try
+    ExtractTemporaryFile('vc_redist.x64.exe');
+  except
+    // ignore and fallback to file existence check below
+  end;
+  LocalPath := ExpandConstant('{tmp}\vc_redist.x64.exe');
+  if not FileExists(LocalPath) then
+  begin
+    MsgBox(
+      'Для запуска Synastry требуется Microsoft Visual C++ Redistributable 2015–2022 (x64).' + #13#10 + #13#10 +
+      'Не удалось найти встроенный установщик VC++ Runtime.' + #13#10 +
+      'Скачайте и установите вручную:' + #13#10 + VcRedistUrl,
+      mbError,
+      MB_OK
+    );
+    Result := False;
+    exit;
+  end;
+
+  if not Exec(LocalPath, Params, '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+  begin
+    MsgBox(
+      'Не удалось запустить установку Microsoft Visual C++ Redistributable.' + #13#10 + #13#10 +
+      'Скачайте и установите вручную:' + #13#10 + VcRedistUrl,
+      mbError,
+      MB_OK
+    );
+    Result := False;
+    exit;
+  end;
+
+  // 0 = success, 1638 = already installed, 3010 = success (restart required)
+  if (ResultCode = 0) or (ResultCode = 1638) then
+  begin
+    Result := True;
+    exit;
+  end;
+  if ResultCode = 3010 then
+  begin
+    NeedsRestart := True;
+    Result := True;
+    exit;
+  end;
+
+  MsgBox(
+    'Установка Microsoft Visual C++ Redistributable завершилась с ошибкой (код: ' + IntToStr(ResultCode) + ').' + #13#10 +
+    'Без этого компонента Synastry может не запуститься.' + #13#10 + #13#10 +
+    'Скачайте и установите вручную:' + #13#10 + VcRedistUrl,
+    mbError,
+    MB_OK
+  );
+  Result := False;
+end;
+
 function IsUpgradeUninstall(): Boolean;
 begin
   Result := Pos('/UPGRADE', Uppercase(GetCmdTail())) > 0;
@@ -177,4 +275,50 @@ begin
   ResourcesRoot := ExpandConstant('{app}\resources');
   DeletePycacheDirs(ResourcesRoot);
   DeleteFile(ExpandConstant('{app}\resources\python-embed\_asyncio.pyd.disabled'));
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): string;
+var
+  RestartNeeded: Boolean;
+  WantsInstall: Integer;
+begin
+  if IsVcRuntimeInstalled() then
+  begin
+    Result := '';
+    exit;
+  end;
+
+  if WizardSilent() then
+  begin
+    if InstallVcRedist(RestartNeeded) then
+    begin
+      if RestartNeeded then NeedsRestart := True;
+      Result := '';
+    end
+    else
+      Result := 'Не установлен Microsoft Visual C++ Redistributable 2015–2022 (x64).';
+    exit;
+  end;
+
+  WantsInstall := MsgBox(
+    'Для запуска Synastry требуется Microsoft Visual C++ Redistributable 2015–2022 (x64).' + #13#10 + #13#10 +
+    'Установить сейчас?',
+    mbConfirmation,
+    MB_YESNO
+  );
+  if WantsInstall <> IDYES then
+  begin
+    Result :=
+      'Установка прервана: без Microsoft Visual C++ Redistributable 2015–2022 (x64) приложение может не запуститься.';
+    exit;
+  end;
+
+  if InstallVcRedist(RestartNeeded) then
+  begin
+    if RestartNeeded then NeedsRestart := True;
+    Result := '';
+    exit;
+  end;
+
+  Result := 'Не удалось установить Microsoft Visual C++ Redistributable 2015–2022 (x64).';
 end;

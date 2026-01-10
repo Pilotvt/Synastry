@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import https from "node:https";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,8 +87,88 @@ function safeUnlink(filePath) {
   }
 }
 
+function downloadFile(url, destPath, redirectsLeft = 5) {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = https.request(
+        url,
+        {
+          method: "GET",
+          headers: {
+            "User-Agent": "Synastry build script",
+          },
+        },
+        (res) => {
+          const status = Number(res.statusCode || 0);
+          if (status >= 300 && status < 400 && res.headers.location) {
+            res.resume();
+            if (redirectsLeft <= 0) {
+              reject(new Error(`Too many redirects while downloading ${url}`));
+              return;
+            }
+            resolve(downloadFile(res.headers.location, destPath, redirectsLeft - 1));
+            return;
+          }
 
-function main() {
+          if (status < 200 || status >= 300) {
+            const chunks = [];
+            res.on("data", (d) => chunks.push(d));
+            res.on("end", () => {
+              reject(
+                new Error(
+                  `Failed to download ${url}: HTTP ${status} ${(Buffer.concat(chunks).toString("utf-8") || "").slice(0, 200)}`
+                )
+              );
+            });
+            return;
+          }
+
+          const file = createWriteStream(destPath);
+          res.pipe(file);
+          file.on("finish", () => {
+            try {
+              file.close(() => resolve());
+            } catch {
+              resolve();
+            }
+          });
+          file.on("error", (err) => reject(err));
+        }
+      );
+      req.on("error", (err) => reject(err));
+      req.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function ensureBundledVcRedist() {
+  const vcUrl = process.env.SYN_VC_REDIST_URL || "https://aka.ms/vc14/vc_redist.x64.exe";
+  const redistDir = path.join(ROOT, "build", "redist");
+  const destPath = process.env.SYN_VC_REDIST_PATH || path.join(redistDir, "vc_redist.x64.exe");
+
+  mkdirSync(redistDir, { recursive: true });
+
+  if (existsSync(destPath) && statSync(destPath).isFile() && statSync(destPath).size > 1024 * 1024) {
+    return destPath;
+  }
+
+  console.log(`[inno] downloading VC++ Runtime: ${vcUrl}`);
+  safeUnlink(destPath);
+  await downloadFile(vcUrl, destPath);
+
+  if (!existsSync(destPath) || statSync(destPath).size <= 1024 * 1024) {
+    throw new Error(
+      `[inno] failed to download VC++ Runtime to ${destPath} (file missing or too small). ` +
+        `You can set SYN_VC_REDIST_PATH to an existing vc_redist.x64.exe.`
+    );
+  }
+  console.log(`[inno] bundled VC++ Runtime: ${destPath}`);
+  return destPath;
+}
+
+async function main() {
   const pkg = readJson(path.join(ROOT, "package.json"));
   const version = String(pkg.version || "").trim();
   if (!version) {
@@ -124,6 +205,8 @@ function main() {
   if (!existsSync(issPath)) {
     throw new Error(`setup.iss not found: ${issPath}`);
   }
+
+  await ensureBundledVcRedist();
 
   // Prefer icon2 if present (non-destructive A/B testing for setup icon).
   const icon2 = path.join(ROOT, "build", "icons", "icon2.ico");
@@ -178,4 +261,7 @@ function main() {
   }
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
