@@ -96,7 +96,9 @@ def analyze_text(text: str, language_hint: str | None = None) -> TextModerationR
 
     model_label: str | None = None
     model_confidence: float | None = None
-    if not flagged:
+    # fastText model is trained primarily to catch profanity in transliterated (latin) text.
+    # For pure Cyrillic, rely on the curated dictionary to avoid false positives on normal words.
+    if not flagged and contains_latin_letters(payload):
         model_label, model_confidence = predict_profanity(payload)
         if model_label == "dirty" and (model_confidence or 0.0) >= DIRTY_THRESHOLD:
             flagged = True
