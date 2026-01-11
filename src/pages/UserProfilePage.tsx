@@ -680,13 +680,22 @@ function formatAgeRu(age: number): string {
       console.warn('Не удалось открыть окно покупки лицензии', error);
     }
   }, []);
-  const partnerSearchAllowed = useMemo(() => {
+  const partnerActionsAllowed = useMemo(() => {
     if (!licenseStatus) return true;
     if (licenseStatus.licensed || licenseStatus.allowed) return true;
     const trialDays = licenseStatus.trial?.daysLeft;
     return typeof trialDays === 'number' ? trialDays > 0 : true;
   }, [licenseStatus]);
-  const partnerSearchLocked = !partnerSearchAllowed;
+  const partnerActionsLocked = !partnerActionsAllowed;
+  const requestPartnerActionsAccess = useCallback(() => {
+    requestPurchaseDialog();
+  }, [requestPurchaseDialog]);
+  useEffect(() => {
+    if (!partnerActionsLocked) return;
+    if (!selectedOtherProfileId) return;
+    requestPurchaseDialog();
+    setSelectedOtherProfileId(null);
+  }, [partnerActionsLocked, requestPurchaseDialog, selectedOtherProfileId]);
   const photoUrls = useMemo(() => {
     const urls: string[] = [];
     const main = typeof profile?.mainPhoto === 'string' ? profile.mainPhoto.trim() : '';
@@ -850,8 +859,8 @@ function formatAgeRu(age: number): string {
       setLoadingError('Чат доступен только с противоположным полом.');
       return;
     }
-    if (partnerSearchLocked) {
-      setLoadingError('Чат заблокирован: нужен активный доступ поиска партнёров.');
+    if (partnerActionsLocked) {
+      requestPartnerActionsAccess();
       return;
     }
     if (blockedIds.has(entry.id)) {
@@ -871,7 +880,7 @@ function formatAgeRu(age: number): string {
     const [base] = window.location.href.split('#');
     const url = `${base || window.location.href}#/chat-popup?data=${encoded}`;
     window.open(url, `chat-${entry.id}`, 'width=520,height=640,resizable=yes,menubar=no,toolbar=no')?.focus();
-  }, [blockedIds, encodeChatPayload, markMessagesRead, optimisticClearUnread, partnerSearchLocked, selfGender]);
+  }, [blockedIds, encodeChatPayload, markMessagesRead, optimisticClearUnread, partnerActionsLocked, requestPartnerActionsAccess, selfGender]);
   // Получаем email пользователя из Electron (main) и показываем под именем
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -1317,11 +1326,6 @@ function formatAgeRu(age: number): string {
   useEffect(() => {
     const blockedSet = new Set(blockedKeys);
     async function loadOtherProfiles() {
-      if (!partnerSearchAllowed) {
-        setOtherLoading(false);
-        setOtherProfiles([]);
-        return;
-      }
       setOtherLoading(true);
       try {
         if (!isOnline) {
@@ -1500,7 +1504,7 @@ function formatAgeRu(age: number): string {
       }
     }
     void loadOtherProfiles();
-  }, [userId, isOnline, profile?.gender, blockedKeys, partnerSearchAllowed]);
+  }, [userId, isOnline, profile?.gender, blockedKeys]);
 
   useEffect(() => {
     if (!blockedKeys.length) return;
@@ -1904,8 +1908,7 @@ function formatAgeRu(age: number): string {
 	                      !currentUserId ||
 	                      !selfGender ||
 	                      !entry.gender ||
-	                      entry.gender === selfGender ||
-	                      partnerSearchLocked;
+	                      entry.gender === selfGender;
 
 	                    return (
 	                      <div className="space-y-3">
@@ -1929,8 +1932,8 @@ function formatAgeRu(age: number): string {
 	                                  ? 'Укажите свой пол, чтобы открыть чат'
 	                                  : !entry.gender || entry.gender === selfGender
 	                                    ? 'Чат доступен только с противоположным полом'
-	                                    : partnerSearchLocked
-	                                      ? 'Для чата нужен активный доступ поиска партнёров'
+	                                    : partnerActionsLocked
+	                                      ? 'Для чата нужна активная лицензия'
 	                                      : 'Открыть окно чата'
 	                            }
 	                          >
@@ -2066,18 +2069,7 @@ function formatAgeRu(age: number): string {
 	                      </div>
 	                    );
 	                  })()
-	                ) : partnerSearchLocked ? (
-	                  <div className="text-sm text-white/80 border border-white/10 bg-white/5 rounded-md px-3 py-4 text-center flex flex-col gap-3 items-center">
-	                    <div>Приобретите лицензию для поиска партнёра.</div>
-	                    <button
-	                      type="button"
-	                      onClick={requestPurchaseDialog}
-                      className={`${BUTTON_SECONDARY} px-4 py-1.5 text-sm`}
-                    >
-                      Купить лицензию
-                    </button>
-                  </div>
-                ) : otherLoading ? (
+	                ) : otherLoading ? (
                   <div className="text-sm text-white/70">Идёт загрузка анкет...</div>
                 ) : !selfGender ? (
                   <div className="text-sm text-white/80">
@@ -2162,9 +2154,15 @@ function formatAgeRu(age: number): string {
 	                            <div className="flex items-center gap-2">
 	                              <button
 	                                type="button"
-	                                onClick={() => setSelectedOtherProfileId(entry.id)}
+	                                onClick={() => {
+	                                  if (partnerActionsLocked) {
+	                                    requestPartnerActionsAccess();
+	                                    return;
+	                                  }
+	                                  setSelectedOtherProfileId(entry.id);
+	                                }}
 	                                className="px-3 py-1 border border-black text-xs font-semibold whitespace-nowrap transition-colors bg-[#f5d6ab] hover:bg-[#eed0a3]"
-	                                title="Открыть анкету пользователя"
+	                                title={partnerActionsLocked ? 'Чтобы открыть анкету пользователя, нужна лицензия' : 'Открыть анкету пользователя'}
 	                              >
 	                                Анкета
 	                              </button>
@@ -2174,13 +2172,7 @@ function formatAgeRu(age: number): string {
 	                                className={`px-3 py-1 border border-black text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
 	                                  hasUnread ? 'bg-[#f0c0c0]' : 'bg-[#f5d6ab]'
 	                                }`}
-	                                disabled={
-	                                  !currentUserId ||
-	                                  !selfGender ||
-	                                  !entry.gender ||
-	                                  entry.gender === selfGender ||
-	                                  partnerSearchLocked
-	                                }
+	                                disabled={!currentUserId || !selfGender || !entry.gender || entry.gender === selfGender}
 	                                title={
 	                                  !currentUserId
 	                                    ? 'Требуется вход в учётную запись'
@@ -2188,8 +2180,8 @@ function formatAgeRu(age: number): string {
 	                                      ? 'Укажите свой пол, чтобы открыть чат'
 	                                      : !entry.gender || entry.gender === selfGender
 	                                        ? 'Чат доступен только с противоположным полом'
-	                                        : partnerSearchLocked
-	                                          ? 'Для чата нужен активный доступ поиска партнёров'
+	                                        : partnerActionsLocked
+	                                          ? 'Для чата нужна активная лицензия'
 	                                          : 'Открыть окно чата'
 	                                }
 	                              >

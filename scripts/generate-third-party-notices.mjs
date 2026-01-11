@@ -236,7 +236,6 @@ function main() {
   ].join("\n");
 
   fs.writeFileSync(OUTPUT_PATH, content.replace(/\n/g, "\r\n"), "utf8");
-  // eslint-disable-next-line no-console
   console.log(`Wrote ${path.relative(ROOT, OUTPUT_PATH)}`);
 }
 

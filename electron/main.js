@@ -27,6 +27,9 @@ try {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const DEVTOOLS_FLAG = '--devtools';
+const DEVTOOLS_ENABLED = !app.isPackaged || process.argv.includes(DEVTOOLS_FLAG) || process.env.SYN_DEVTOOLS === '1';
+
 function resolveAppVersion() {
   const versionFromElectron = String(process.versions?.electron ?? '');
   const fromApp = String(app.getVersion?.() ?? '');
@@ -663,7 +666,7 @@ function openChatWindow(encodedPayload, opener) {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
-      devTools: true,
+      devTools: DEVTOOLS_ENABLED,
     },
   });
   chatWindow.setMenu(null);
@@ -695,7 +698,7 @@ function openBlocklistWindow(opener) {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
-      devTools: true,
+      devTools: DEVTOOLS_ENABLED,
     },
   });
 
@@ -754,7 +757,7 @@ function openCalculationsHelpWindow(parent) {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'help-preload.cjs'),
-      devTools: true,
+      devTools: DEVTOOLS_ENABLED,
     },
   });
 
@@ -818,7 +821,7 @@ function openLicensesWindow(parent) {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'licenses-preload.cjs'),
-      devTools: true,
+      devTools: DEVTOOLS_ENABLED,
     },
   });
 
@@ -1174,7 +1177,7 @@ function ensureUpdateDownloadWindow(parentWindow) {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
-      devTools: true,
+      devTools: DEVTOOLS_ENABLED,
     },
   });
   win.setMenu(null);
@@ -1263,7 +1266,7 @@ async function startUpdateDownloadPreview() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
-      devTools: true,
+      devTools: DEVTOOLS_ENABLED,
     },
   });
   win.setMenu(null);
@@ -2283,6 +2286,15 @@ function buildApplicationMenu() {
             openBlocklistWindow(target);
           },
         },
+        {
+          label: 'Перезагрузить окно',
+          accelerator: process.platform === 'darwin' ? 'Cmd+R' : 'Ctrl+R',
+          click: (_item, browserWindow) => {
+            const target = browserWindow || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
+            if (!target || target.isDestroyed()) return;
+            target.webContents.reloadIgnoringCache();
+          },
+        },
       ],
     },
     {
@@ -2313,7 +2325,10 @@ function buildApplicationMenu() {
         },
       ],
     },
-    {
+  ];
+
+  if (DEVTOOLS_ENABLED) {
+    template.push({
       label: 'Разработка',
       submenu: [
         {
@@ -2329,18 +2344,9 @@ function buildApplicationMenu() {
             }
           },
         },
-        {
-          label: 'Перезагрузить окно',
-          accelerator: process.platform === 'darwin' ? 'Cmd+R' : 'Ctrl+R',
-          click: (_item, browserWindow) => {
-            const target = browserWindow || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
-            if (!target || target.isDestroyed()) return;
-            target.webContents.reloadIgnoringCache();
-          },
-        },
       ],
-    },
-  ];
+    });
+  }
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
@@ -3551,7 +3557,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
-      devTools: true,
+      devTools: DEVTOOLS_ENABLED,
     },
   });
 

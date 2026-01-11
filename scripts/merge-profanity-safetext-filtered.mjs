@@ -120,13 +120,10 @@ async function main() {
   out.push("");
 
   fs.writeFileSync(TARGET_PATH, out.join("\r\n"), "utf8");
-  // eslint-disable-next-line no-console
   console.log(`Merged ${toAppend.length} words into ${path.relative(ROOT, TARGET_PATH)}`);
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error("Failed to merge safetext profanity list:", err);
   process.exitCode = 1;
 });
-

@@ -518,6 +518,35 @@ function extractChartCoords(value: unknown): { lat: number | null; lon: number |
   };
 }
 
+function extractProfileSelectedCity(value: unknown): {
+  id?: string;
+  name?: string;
+  nameRu?: string;
+  country?: string;
+  lat?: number;
+  lon?: number;
+} | null {
+  if (typeof value === "string") {
+    const name = value.trim();
+    return name ? { name } : null;
+  }
+  if (!isRecord(value)) return null;
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  const nameRu = typeof value.nameRu === "string" ? value.nameRu.trim() : "";
+  const country = typeof value.country === "string" ? value.country.trim().toUpperCase() : "";
+  const id = typeof value.id === "string" ? value.id : undefined;
+  const lat = coerceFiniteNumber(value.lat);
+  const lon = coerceFiniteNumber(value.lon);
+  return {
+    id,
+    name: name || undefined,
+    nameRu: nameRu || undefined,
+    country: country || undefined,
+    lat: Number.isFinite(lat) ? lat : undefined,
+    lon: Number.isFinite(lon) ? lon : undefined,
+  };
+}
+
 type AdditionalDraftCity = {
   id: string;
   name: string;
@@ -1592,17 +1621,32 @@ const AdditionalChartPage: React.FC = () => {
         const personNameRaw = typeof profileValue.personName === "string" ? profileValue.personName : "";
         const lastNameRaw = typeof profileValue.lastName === "string" ? profileValue.lastName : "";
         const genderRaw = profileValue.gender === "female" ? "female" : profileValue.gender === "male" ? "male" : null;
-        const countryRaw = typeof profileValue.country === "string" ? profileValue.country : "";
-        const cityQueryRaw = typeof profileValue.cityQuery === "string" ? profileValue.cityQuery : "";
-        const selectedCityRaw = typeof profileValue.selectedCity === "string" ? profileValue.selectedCity : "";
-        const cityNameRuRaw = typeof profileValue.cityNameRu === "string" ? profileValue.cityNameRu : "";
+        const selectedCityPayload = extractProfileSelectedCity(profileValue.selectedCity);
+        const selectedCityNameRaw = typeof selectedCityPayload?.name === "string" ? selectedCityPayload.name : "";
+        const selectedCityNameRuRaw = typeof selectedCityPayload?.nameRu === "string" ? selectedCityPayload.nameRu : "";
+        const selectedCityCountryRaw = typeof selectedCityPayload?.country === "string" ? selectedCityPayload.country : "";
+        const countryRaw = typeof profileValue.country === "string" ? profileValue.country.trim().toUpperCase() : "";
+        const cityQueryRaw = typeof profileValue.cityQuery === "string" ? profileValue.cityQuery.trim() : "";
+        const selectedCityRaw =
+          typeof profileValue.selectedCity === "string"
+            ? profileValue.selectedCity.trim()
+            : selectedCityNameRaw;
+        const cityNameRuRaw = typeof profileValue.cityNameRu === "string" ? profileValue.cityNameRu.trim() : selectedCityNameRuRaw;
         const latRaw = coerceFiniteNumber(profileValue.lat);
         const lonRaw = coerceFiniteNumber(profileValue.lon);
+        const latSelected = selectedCityPayload?.lat;
+        const lonSelected = selectedCityPayload?.lon;
         const latResolved = Number.isFinite(latRaw)
           ? latRaw
+          : (typeof latSelected === "number" && Number.isFinite(latSelected) ? latSelected : null);
+        const latFinal = typeof latResolved === "number"
+          ? latResolved
           : (typeof chartCoords.lat === "number" && Number.isFinite(chartCoords.lat) ? chartCoords.lat : null);
         const lonResolved = Number.isFinite(lonRaw)
           ? lonRaw
+          : (typeof lonSelected === "number" && Number.isFinite(lonSelected) ? lonSelected : null);
+        const lonFinal = typeof lonResolved === "number"
+          ? lonResolved
           : (typeof chartCoords.lon === "number" && Number.isFinite(chartCoords.lon) ? chartCoords.lon : null);
 
         setPersonName(personNameRaw);
@@ -1610,8 +1654,8 @@ const AdditionalChartPage: React.FC = () => {
         if (genderRaw) setGender(genderRaw);
         if (countryRaw) setCountry(countryRaw);
         if (cityQueryRaw) setCityQuery(cityQueryRaw);
-        if (typeof latResolved === "number") setLat(latResolved);
-        if (typeof lonResolved === "number") setLon(lonResolved);
+        if (typeof latFinal === "number") setLat(latFinal);
+        if (typeof lonFinal === "number") setLon(lonFinal);
 
         importedParts = parseBirthPartsFromIso(profileValue.birth);
         if (importedParts) setBirthParts(importedParts);
@@ -1625,28 +1669,34 @@ const AdditionalChartPage: React.FC = () => {
         if (Number.isFinite(tzCorrectionHoursRaw)) setTzCorrectionHours(tzCorrectionHoursRaw);
         setDstManual(dstManualRaw);
 
-        if (selectedCityRaw && typeof latResolved === "number" && typeof lonResolved === "number") {
-          const countryForCity = (countryRaw || country || "RU").toUpperCase();
+        if (selectedCityRaw && typeof latFinal === "number" && typeof lonFinal === "number") {
+          const countryForCity = (countryRaw || selectedCityCountryRaw || "RU").toUpperCase();
+          setCountry(countryForCity);
+          setCityQuery(cityQueryRaw || cityNameRuRaw || selectedCityRaw);
           const mappedNameRu = !cityNameRuRaw
             ? lookupForeignCityRuName(foreignCitiesRuRef.current, {
                 country: countryForCity,
                 name: selectedCityRaw,
-                lat: latResolved,
-                lon: lonResolved,
+                lat: latFinal,
+                lon: lonFinal,
               })
             : undefined;
           const suggestion = makeCitySuggestion({
-            id: `${countryForCity}:${selectedCityRaw}:${latResolved}:${lonResolved}`,
+            id: selectedCityPayload?.id || `${countryForCity}:${selectedCityRaw}:${latFinal}:${lonFinal}`,
             name: selectedCityRaw,
             nameRu: cityNameRuRaw || mappedNameRu || selectedCityRaw,
             country: countryForCity,
-            lat: latResolved,
-            lon: lonResolved,
+            lat: latFinal,
+            lon: lonFinal,
           });
           setSelectedCity(suggestion);
           setAutoApplyCity(false);
           setSuggestionsOpen(false);
         } else {
+          if (!countryRaw && !cityQueryRaw) {
+            setCountry("RU");
+            setCityQuery("");
+          }
           setSelectedCity(null);
           setAutoApplyCity(true);
         }
@@ -1668,7 +1718,7 @@ const AdditionalChartPage: React.FC = () => {
         scheduleRebuild(importedParts);
       }
     },
-    [country, scheduleRebuild],
+    [scheduleRebuild],
   );
 
   const handleOpenFileSelected = useCallback(
@@ -3029,6 +3079,8 @@ const AdditionalChartPage: React.FC = () => {
     gatakiOpen,
     handleGatakiToggle,
     ianaTz,
+    lat,
+    lon,
     meta,
     moonPlanet?.lon_sidereal,
     openTransitsAtPeriodEndMsUtc,
@@ -3047,8 +3099,6 @@ const AdditionalChartPage: React.FC = () => {
     tithiLoading,
     transitTargetMsUtc,
     transitsEnabled,
-    transitChart,
-    transitLoading,
     vimshottariDepth,
     vimshottariFocusMsUtc,
   ]);

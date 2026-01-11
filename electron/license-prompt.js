@@ -56,9 +56,6 @@ function formatStatus(status) {
     lines.push('Пробный период недоступен. Для доступа необходима лицензия.');
   }
   if (status.message) lines.push(status.message);
-  if (!status.licensed && status.expectedOwner && status.identityEmail && status.expectedOwner !== status.identityEmail) {
-    lines.push(`Ключ предназначен для: ${status.expectedOwner}. Ваша учётная запись: ${status.identityEmail || 'неизвестно'}.`);
-  }
   return lines.join('\n');
 }
 
