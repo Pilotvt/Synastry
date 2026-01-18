@@ -906,12 +906,12 @@ def compute_chart(data: ChartRequest) -> ChartResponse:
         if lam is None:
             continue
         try:
-            iau_code, iau_name_ru = resolve_constellation_from_lon(lam)
+            iau_zodiac_code, iau_zodiac_name_ru = resolve_constellation_from_lon(lam)
         except Exception:
-            iau_code, iau_name_ru = '', ''
+            iau_zodiac_code, iau_zodiac_name_ru = '', ''
         house_idx, p, width = planet_house_position(lam, porphyry_cusps)
         # Bell-shaped strength by arc center
-        arc = next((a for a in IAU_ECLIPTIC_ARCS if (a.get('iau_code') == iau_code)), None)
+        arc = next((a for a in IAU_ECLIPTIC_ARCS if (a.get('iau_code') == iau_zodiac_code)), None)
         if arc:
             start = float(arc.get('lon_start_deg', 0.0)) % 360.0
             end = float(arc.get('lon_end_deg', 0.0)) % 360.0
@@ -932,12 +932,16 @@ def compute_chart(data: ChartRequest) -> ChartResponse:
             speed_deg_per_day = 0.0
         is_retro = speed_deg_per_day < 0
         # attach Russian name from cached map if available
-        iau_name_ru = iau_name_ru or IAU_CODE_TO_RU.get(iau_code, '')
+        iau_zodiac_name_ru = iau_zodiac_name_ru or IAU_CODE_TO_RU.get(iau_zodiac_code, '')
         planet_rows.append({
             'name': abbr,
             'lambdaDeg': float(lam),
-            'iauConstellation': iau_code or '',
-            'iauNameRu': iau_name_ru or '',
+            # iauZodiacConstellation: zodiac label by ecliptic longitude (Ari..Psc; Oph treated as Sco later)
+            'iauZodiacConstellation': iau_zodiac_code or '',
+            'iauZodiacNameRu': iau_zodiac_name_ru or '',
+            # iauConstellation: "true" IAU constellation (may be overwritten by polygon classifier below)
+            'iauConstellation': iau_zodiac_code or '',
+            'iauNameRu': iau_zodiac_name_ru or '',
             'houseIndex': house_idx,
             'houseProgressP': float(p),
             'houseStrength': float(strength),
@@ -960,14 +964,16 @@ def compute_chart(data: ChartRequest) -> ChartResponse:
             nis_retro = nspeed < 0
             # Resolve IAU constellation and Russian name for nodes as we do for planets
             try:
-                iau_code_node, iau_name_node = resolve_constellation_from_lon(lam)
+                iau_zodiac_code_node, iau_zodiac_name_node = resolve_constellation_from_lon(lam)
             except Exception:
-                iau_code_node, iau_name_node = '', ''
+                iau_zodiac_code_node, iau_zodiac_name_node = '', ''
             planet_rows.append({
                 'name': abbr,
                 'lambdaDeg': float(lam),
-                'iauConstellation': iau_code_node or '',
-                'iauNameRu': iau_name_node or '',
+                'iauZodiacConstellation': iau_zodiac_code_node or '',
+                'iauZodiacNameRu': iau_zodiac_name_node or '',
+                'iauConstellation': iau_zodiac_code_node or '',
+                'iauNameRu': iau_zodiac_name_node or '',
                 'houseIndex': house_idx,
                 'houseProgressP': float(p),
                 'houseStrength': float(strength),
@@ -1004,11 +1010,10 @@ def compute_chart(data: ChartRequest) -> ChartResponse:
     # Planets are produced above from J2000 pipeline and placed into `planets`.
 
     dt_iso_utc = dt_utc.isoformat()
-    # Keep the external classifier output in debug, but DO NOT overwrite the planet IAU
-    # codes we've already determined from `IAU_ECLIPTIC_ARCS` (loaded above). Overwriting
-    # with `classify_planets` may reintroduce undesired constellations (e.g. Oph).
-    # We still call the classifier to include its data in debug output, but we won't use
-    # it to change the planets produced by the J2000 pipeline.
+    # We keep two separate constellation labels per planet:
+    # - iauZodiacConstellation: by ecliptic longitude (Ari..Psc; used for sign/whole-sign house)
+    # - iauConstellation: "true" IAU constellation from polygon classifier (may be Cet/Crv/Ori/...)
+    # The classifier output is used ONLY for display/debug and must not affect sign/house.
     planet_constellations = classify_planets(dt_iso_utc)
     arcs = IAU_ECLIPTIC_ARCS
 
@@ -1081,10 +1086,11 @@ def compute_chart(data: ChartRequest) -> ChartResponse:
     planets = []
     for row in planet_rows:
         lam = float(row.get('lambdaDeg') % 360.0)
-        iau_code = (row.get('iauConstellation') or '')
-        # Map IAU constellation code to zodiac sign using IAU_TO_SIGN
-        sign_from_iau = IAU_TO_SIGN.get(iau_code)
-        # If mapping wasn't available, fallback to previously computed houseIndex -> sign
+        iau_zodiac_code = (row.get('iauZodiacConstellation') or '')
+        iau_true_code = (row.get('iauConstellation') or iau_zodiac_code or '')
+        # Map zodiac constellation code to zodiac sign using IAU_TO_SIGN
+        sign_from_iau = IAU_TO_SIGN.get(iau_zodiac_code)
+        # If mapping wasn't available, fallback to previously computed houseIndex -> sign (should not happen)
         provided_house = int(row.get('houseIndex', 1)) if row.get('houseIndex') is not None else 1
         if sign_from_iau:
             # find house whose sign matches sign_from_iau
@@ -1111,7 +1117,7 @@ def compute_chart(data: ChartRequest) -> ChartResponse:
             sign=sign,
             house=house_idx,
             nakshatra=None,
-            iau_constellation=iau_code or '',
+            iau_constellation=iau_true_code or '',
             is_retrograde=is_retro,
             sidereal_speed=speed,
             house_progress=house_progress,
