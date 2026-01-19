@@ -2,6 +2,7 @@ type RussianCityRecord = {
   name: string;
   lat: number;
   lon: number;
+  name_latin?: string;
   subject?: string;
   population?: number;
 };
@@ -12,7 +13,19 @@ let russianCitiesPromise: Promise<RussianCityRecord[]> | null = null;
 function publicAssetUrl(relativePath: string) {
   if (typeof window === "undefined") return relativePath;
   try {
-    return new URL(relativePath, window.location.href).toString();
+    const normalized = String(relativePath ?? "");
+    if (!normalized) return normalized;
+    if (
+      normalized.startsWith("data:") ||
+      normalized.startsWith("blob:") ||
+      normalized.startsWith("http://") ||
+      normalized.startsWith("https://") ||
+      normalized.startsWith("//")
+    ) {
+      return normalized;
+    }
+    const base = new URL(import.meta.env.BASE_URL || "/", window.location.origin);
+    return new URL(normalized.replace(/^\/+/, ""), base).toString();
   } catch {
     return relativePath;
   }
@@ -25,6 +38,8 @@ function normalizeRussianCity(raw: unknown): RussianCityRecord | null {
   if (!isRecord(raw)) return null;
   const name = typeof raw.name === "string" ? raw.name.trim() : "";
   if (!name) return null;
+  const nameLatinRaw = raw.name_latin ?? raw.nameLatin ?? raw.name_latin;
+  const name_latin = typeof nameLatinRaw === "string" && nameLatinRaw.trim() ? nameLatinRaw.trim() : undefined;
   const coords = isRecord(raw.coords) ? raw.coords : undefined;
   const latRaw = coords?.lat ?? raw.lat ?? raw.latitude;
   const lonRaw = coords?.lon ?? raw.lon ?? raw.longitude;
@@ -35,6 +50,7 @@ function normalizeRussianCity(raw: unknown): RussianCityRecord | null {
     name,
     lat,
     lon,
+    name_latin,
     subject: typeof raw.subject === "string" ? raw.subject : undefined,
     population: typeof raw.population === "number" ? raw.population : undefined,
   };

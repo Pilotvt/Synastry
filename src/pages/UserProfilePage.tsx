@@ -363,6 +363,8 @@ const describeOnlineStatus = (
   };
 };
 const OTHER_PROFILES_CACHE_KEY = 'synastry_cached_other_profiles_v1';
+const OTHER_PROFILES_PAGE_SIZE = 25;
+const OTHER_PROFILES_CACHE_MAX = 100;
 const PROFILE_LOAD_ERROR_MESSAGE = 'Не удалось загрузить профиль. Проверьте соединение или активность проекта Supabase.';
 const EMPTY_SMALL_PHOTOS: (string | null)[] = [null, null];
 function normalizeSmallPhotosField(value: unknown): (string | null)[] {
@@ -624,6 +626,14 @@ function formatAgeRu(age: number): string {
   const viewingOwnProfile = useMemo(() => Boolean(currentUserId && userId && currentUserId === userId), [currentUserId, userId]);
   const [otherProfiles, setOtherProfiles] = useState<OtherProfilePreview[]>([]);
   const [otherLoading, setOtherLoading] = useState(true);
+  const [otherLoadingMore, setOtherLoadingMore] = useState(false);
+  const [otherHasMore, setOtherHasMore] = useState(true);
+  const otherProfilesRef = useRef<OtherProfilePreview[]>([]);
+  const otherPagingOffsetRef = useRef(0);
+  const otherPagingHasMoreRef = useRef(true);
+  const otherPagingSeqRef = useRef(0);
+  const otherPagingInFlightRef = useRef(false);
+  const otherLoadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const [selectedOtherProfileId, setSelectedOtherProfileId] = useState<string | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [profileRetryTick, setProfileRetryTick] = useState(0);
@@ -644,11 +654,26 @@ function formatAgeRu(age: number): string {
   const blocklistEntries = useBlocklistStore((state) => state.entries);
   const blockedKeys = useMemo(() => Object.keys(blocklistEntries), [blocklistEntries]);
   const blockedIds = useMemo(() => new Set(blockedKeys), [blockedKeys]);
+  const blockedIdsRef = useRef<Set<string>>(new Set());
   const selfGender = useMemo(() => normalizeGender(profile?.gender), [profile?.gender]);
+  const oppositeGender = useMemo(() => {
+    if (selfGender === 'male') return 'female';
+    if (selfGender === 'female') return 'male';
+    return null;
+  }, [selfGender]);
   const selectedOtherProfile = useMemo(
     () => (selectedOtherProfileId ? otherProfiles.find((entry) => entry.id === selectedOtherProfileId) ?? null : null),
     [otherProfiles, selectedOtherProfileId],
   );
+  useEffect(() => {
+    otherProfilesRef.current = otherProfiles;
+  }, [otherProfiles]);
+  useEffect(() => {
+    otherPagingHasMoreRef.current = otherHasMore;
+  }, [otherHasMore]);
+  useEffect(() => {
+    blockedIdsRef.current = blockedIds;
+  }, [blockedIds]);
 
   const isProfileLoadError = loadingError === PROFILE_LOAD_ERROR_MESSAGE;
   useEffect(() => {
@@ -1323,10 +1348,26 @@ function formatAgeRu(age: number): string {
       cancelled = true;
     };
   }, [userId, currentUserId, isOnline, sanitizeOwnProfile, viewingOwnProfile, profileRetryTick]);
-  useEffect(() => {
-    const blockedSet = new Set(blockedKeys);
-    async function loadOtherProfiles() {
-      setOtherLoading(true);
+  const loadOtherProfilesPage = useCallback(
+    async ({ reset }: { reset: boolean }) => {
+      const seq = ++otherPagingSeqRef.current;
+      if (!reset && (!otherPagingHasMoreRef.current || otherPagingInFlightRef.current)) return;
+
+      if (reset) {
+        otherPagingOffsetRef.current = 0;
+        otherPagingHasMoreRef.current = true;
+        setOtherHasMore(true);
+        setOtherProfiles([]);
+      }
+
+      if (reset) {
+        setOtherLoading(true);
+        setOtherLoadingMore(false);
+      } else {
+        setOtherLoadingMore(true);
+      }
+
+      otherPagingInFlightRef.current = true;
       try {
         if (!isOnline) {
           try {
@@ -1337,11 +1378,10 @@ function formatAgeRu(age: number): string {
                 let cached = parsed.entries
                   .map((entry) => restoreCachedOtherProfile(entry))
                   .filter((item): item is OtherProfilePreview => Boolean(item));
-                // filter by opposite gender if current profile gender known
-                const g = profile?.gender;
-                if (g === 'male' || g === 'female') {
-                  cached = cached.filter((p) => p.gender && p.gender !== g);
+                if (oppositeGender) {
+                  cached = cached.filter((p) => p.gender === oppositeGender);
                 }
+                const blockedSet = blockedIdsRef.current;
                 const filteredCached = blockedSet.size ? cached.filter((entry) => !blockedSet.has(entry.id)) : cached;
                 setOtherProfiles(filteredCached);
               } else {
@@ -1354,85 +1394,122 @@ function formatAgeRu(age: number): string {
             console.warn('Не удалось прочитать кеш анкет других пользователей', cacheError);
             setOtherProfiles([]);
           }
+          setOtherHasMore(false);
+          otherPagingHasMoreRef.current = false;
           return;
         }
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, data, last_seen_at')
-          .neq('id', userId ?? '')
-          .limit(5);
+
+        if (!oppositeGender) {
+          setOtherProfiles([]);
+          setOtherHasMore(false);
+          otherPagingHasMoreRef.current = false;
+          return;
+        }
+
+        const offset = reset ? 0 : otherPagingOffsetRef.current;
+        const end = offset + OTHER_PROFILES_PAGE_SIZE - 1;
+
+        const runQuery = async (includeUpdatedAt: boolean) => {
+          let query = supabase
+            .from('profiles')
+            .select(includeUpdatedAt ? 'id, data, last_seen_at, updated_at' : 'id, data, last_seen_at')
+            .neq('id', userId ?? '')
+            .eq('data->>gender', oppositeGender)
+            .order('last_seen_at', { ascending: false, nullsFirst: false });
+
+          if (includeUpdatedAt) {
+            query = query.order('updated_at', { ascending: false, nullsFirst: false });
+          }
+
+          query = query.order('id', { ascending: false }).range(offset, end);
+          return await query;
+        };
+
+        let { data, error } = await runQuery(true);
+        if (error && typeof (error as { message?: unknown }).message === 'string') {
+          const msg = String((error as { message?: unknown }).message);
+          if (/updated_at/i.test(msg) && /does not exist/i.test(msg)) {
+            ({ data, error } = await runQuery(false));
+          }
+        }
+
         if (error) {
           console.warn('Failed to load other profiles:', error);
           return;
         }
-        if (!Array.isArray(data)) {
-          setOtherProfiles([]);
-          return;
-        }
-	        let mapped = data
-	          .map((entry) => {
-	            if (!isRecord(entry) || typeof entry.id !== 'string') return null;
-	            const snapshot = isRecord(entry.data) ? (entry.data as Record<string, unknown>) : {};
-	            const lastSeenRaw = entry['last_seen_at'];
-	            const lastSeenAt = typeof lastSeenRaw === 'string' ? lastSeenRaw : null;
-	            const personName = typeof snapshot.personName === 'string' ? snapshot.personName : '';
-	            const lastName = typeof snapshot.lastName === 'string' ? snapshot.lastName : '';
-	            const selectedCity = typeof snapshot.selectedCity === 'string' ? snapshot.selectedCity : '';
-	            const cityNameRuRaw = typeof snapshot.cityNameRu === 'string' ? snapshot.cityNameRu : '';
-	            const cityNameRu = cityNameRuRaw || (selectedCity ? latinToRuName(selectedCity) : '');
-	            const residenceCountry = typeof snapshot.residenceCountry === 'string' ? snapshot.residenceCountry : '';
-	            const residenceCityName =
-	              typeof snapshot.residenceCityName === 'string'
-	                ? snapshot.residenceCityName
-	                : typeof snapshot.residenceCity === 'string'
-	                  ? snapshot.residenceCity
-	                  : '';
-	            const mainPhoto = typeof snapshot.mainPhoto === 'string' ? snapshot.mainPhoto : null;
-	            const smallPhotos = normalizeSmallPhotosField(snapshot.smallPhotos);
-	            const birth = typeof snapshot.birth === 'string' ? snapshot.birth : null;
-	            const ascSignFromProfile = typeof snapshot.ascSign === 'string' ? snapshot.ascSign : null;
-	            const gender = normalizeGender(snapshot.gender);
-	            const typeazh = typeof snapshot.typeazh === 'string' ? snapshot.typeazh : '';
-	            const familyStatus = typeof snapshot.familyStatus === 'string' ? snapshot.familyStatus : '';
-	            const about = typeof snapshot.about === 'string' ? snapshot.about : '';
-	            const interests = typeof snapshot.interests === 'string' ? snapshot.interests : '';
-	            const religion = typeof snapshot.religion === 'string' ? snapshot.religion : '';
-	            const career = typeof snapshot.career === 'string' ? snapshot.career : '';
-	            const profession = typeof snapshot.profession === 'string' ? snapshot.profession : '';
-	            const children = typeof snapshot.children === 'string' ? snapshot.children : '';
-	            return {
-	              id: entry.id,
-	              personName,
-	              lastName,
-	              selectedCity,
-	              cityNameRu,
-	              residenceCountry,
-	              residenceCityName,
-	              mainPhoto,
-	              smallPhotos,
-	              birth,
-	              ascSign: ascSignFromProfile,
-	              gender,
-	              typeazh,
-	              familyStatus,
-	              about,
-	              interests,
-	              religion,
-	              career,
-	              profession,
-	              children,
-	              chartScreenshot: null,
-	              chart: null,
-	              chartSignature: null,
-	              lastSeenAt,
-	            } as OtherProfilePreview;
-	          })
-	          .filter((item): item is OtherProfilePreview => Boolean(item));
-        // filter by opposite gender if current profile gender known
-        const g = profile?.gender;
-        if (g === 'male' || g === 'female') {
-          mapped = mapped.filter((p) => p.gender && p.gender !== g);
-        }
+
+        const rows = Array.isArray(data) ? data : [];
+        if (seq !== otherPagingSeqRef.current) return;
+        const rawCount = rows.length;
+        const hasMore = rawCount === OTHER_PROFILES_PAGE_SIZE;
+        otherPagingOffsetRef.current = offset + rawCount;
+        setOtherHasMore(hasMore);
+        otherPagingHasMoreRef.current = hasMore;
+
+        const existingIds = new Set(otherProfilesRef.current.map((p) => p.id));
+        const blockedSet = blockedIdsRef.current;
+        const mapped = rows
+          .map((entry) => {
+            if (!isRecord(entry) || typeof entry.id !== 'string') return null;
+            if (existingIds.has(entry.id)) return null;
+            if (blockedSet.size && blockedSet.has(entry.id)) return null;
+            const snapshot = isRecord(entry.data) ? (entry.data as Record<string, unknown>) : {};
+            const lastSeenRaw = entry['last_seen_at'];
+            const lastSeenAt = typeof lastSeenRaw === 'string' ? lastSeenRaw : null;
+            const personName = typeof snapshot.personName === 'string' ? snapshot.personName : '';
+            const lastName = typeof snapshot.lastName === 'string' ? snapshot.lastName : '';
+            const selectedCity = typeof snapshot.selectedCity === 'string' ? snapshot.selectedCity : '';
+            const cityNameRuRaw = typeof snapshot.cityNameRu === 'string' ? snapshot.cityNameRu : '';
+            const cityNameRu = cityNameRuRaw || (selectedCity ? latinToRuName(selectedCity) : '');
+            const residenceCountry = typeof snapshot.residenceCountry === 'string' ? snapshot.residenceCountry : '';
+            const residenceCityName =
+              typeof snapshot.residenceCityName === 'string'
+                ? snapshot.residenceCityName
+                : typeof snapshot.residenceCity === 'string'
+                  ? snapshot.residenceCity
+                  : '';
+            const mainPhoto = typeof snapshot.mainPhoto === 'string' ? snapshot.mainPhoto : null;
+            const smallPhotos = normalizeSmallPhotosField(snapshot.smallPhotos);
+            const birth = typeof snapshot.birth === 'string' ? snapshot.birth : null;
+            const ascSignFromProfile = typeof snapshot.ascSign === 'string' ? snapshot.ascSign : null;
+            const gender = normalizeGender(snapshot.gender);
+            const typeazh = typeof snapshot.typeazh === 'string' ? snapshot.typeazh : '';
+            const familyStatus = typeof snapshot.familyStatus === 'string' ? snapshot.familyStatus : '';
+            const about = typeof snapshot.about === 'string' ? snapshot.about : '';
+            const interests = typeof snapshot.interests === 'string' ? snapshot.interests : '';
+            const religion = typeof snapshot.religion === 'string' ? snapshot.religion : '';
+            const career = typeof snapshot.career === 'string' ? snapshot.career : '';
+            const profession = typeof snapshot.profession === 'string' ? snapshot.profession : '';
+            const children = typeof snapshot.children === 'string' ? snapshot.children : '';
+            return {
+              id: entry.id,
+              personName,
+              lastName,
+              selectedCity,
+              cityNameRu,
+              residenceCountry,
+              residenceCityName,
+              mainPhoto,
+              smallPhotos,
+              birth,
+              ascSign: ascSignFromProfile,
+              gender,
+              typeazh,
+              familyStatus,
+              about,
+              interests,
+              religion,
+              career,
+              profession,
+              children,
+              chartScreenshot: null,
+              chart: null,
+              chartSignature: null,
+              lastSeenAt,
+            } as OtherProfilePreview;
+          })
+          .filter((item): item is OtherProfilePreview => Boolean(item));
+
         const withCharts = await Promise.all(
           mapped.map(async (entry) => {
             let chartScreenshot: string | null = null;
@@ -1467,8 +1544,7 @@ function formatAgeRu(age: number): string {
                     chartScreenshot = null;
                   }
                 }
-                
-                // Extract ascSign from chart if not in profile
+
                 if (!finalAscSign) {
                   finalAscSign = extractAscSignFromChart(normalized);
                 }
@@ -1478,21 +1554,27 @@ function formatAgeRu(age: number): string {
             }
             const chartSignature = computeChartSignature(chartPayload);
             return { ...entry, chartScreenshot, chart: chartPayload, ascSign: finalAscSign, chartSignature };
-          })
+          }),
         );
-        // Safety: повторно отфильтровать по противоположному полу после загрузки чартов
-        const g2 = profile?.gender;
-        const genderFiltered = (g2 === 'male' || g2 === 'female')
-          ? withCharts.filter((p) => p.gender && p.gender !== g2)
-          : withCharts;
-        const finalList = blockedSet.size
-          ? genderFiltered.filter((entry) => !blockedSet.has(entry.id))
-          : genderFiltered;
-        setOtherProfiles(finalList);
+
+        if (seq !== otherPagingSeqRef.current) return;
+
+        const mergedBase = reset ? [] : otherProfilesRef.current;
+        const combined = [...mergedBase, ...withCharts];
+        const seen = new Set<string>();
+        const unique: OtherProfilePreview[] = [];
+        for (const entry of combined) {
+          if (seen.has(entry.id)) continue;
+          seen.add(entry.id);
+          unique.push(entry);
+        }
+
+        setOtherProfiles(unique);
+
         try {
           localStorage.setItem(
             OTHER_PROFILES_CACHE_KEY,
-            JSON.stringify({ userId: userId ?? null, entries: genderFiltered })
+            JSON.stringify({ userId: userId ?? null, entries: unique.slice(0, OTHER_PROFILES_CACHE_MAX) }),
           );
         } catch (cacheSaveError) {
           console.warn('Не удалось сохранить кеш анкет других пользователей', cacheSaveError);
@@ -1500,11 +1582,40 @@ function formatAgeRu(age: number): string {
       } catch (error) {
         console.warn('Unexpected error while loading other profiles:', error);
       } finally {
-        setOtherLoading(false);
+        if (seq === otherPagingSeqRef.current) {
+          otherPagingInFlightRef.current = false;
+          setOtherLoading(false);
+          setOtherLoadingMore(false);
+        }
       }
-    }
-    void loadOtherProfiles();
-  }, [userId, isOnline, profile?.gender, blockedKeys]);
+    },
+    [isOnline, oppositeGender, userId],
+  );
+
+  useEffect(() => {
+    void loadOtherProfilesPage({ reset: true });
+  }, [loadOtherProfilesPage]);
+
+  const handleLoadMoreOtherProfiles = useCallback(() => {
+    void loadOtherProfilesPage({ reset: false });
+  }, [loadOtherProfilesPage]);
+
+  useEffect(() => {
+    if (!isOnline) return;
+    if (!otherHasMore) return;
+    const el = otherLoadMoreSentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          handleLoadMoreOtherProfiles();
+        }
+      },
+      { root: null, rootMargin: '400px 0px', threshold: 0.01 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleLoadMoreOtherProfiles, isOnline, otherHasMore]);
 
   useEffect(() => {
     if (!blockedKeys.length) return;
@@ -2078,14 +2189,29 @@ function formatAgeRu(age: number): string {
                 ) : visibleOtherProfiles.length === 0 ? (
                   <div className="text-sm text-white/70">
                     {isOnline ? 'Анкеты пока не найдены.' : 'Нет подключения: список анкет недоступен.'}
+                    {isOnline && otherHasMore && (
+                      <div className="mt-3 flex flex-col items-center gap-2">
+                        {otherLoadingMore && <div className="text-xs text-white/60">Загружаем ещё...</div>}
+                        <button
+                          type="button"
+                          onClick={handleLoadMoreOtherProfiles}
+                          disabled={otherLoadingMore || otherLoading}
+                          className={`${BUTTON_SECONDARY} w-full px-3 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed`}
+                        >
+                          Показать ещё
+                        </button>
+                        <div ref={otherLoadMoreSentinelRef} style={{ height: 1 }} />
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <ul className="space-y-3 list-none p-0 m-0" style={{ margin: 0, padding: 0 }}>
-                    {visibleOtherProfiles.map((entry) => {
+                  <div>
+                    <ul className="space-y-3 list-none p-0 m-0" style={{ margin: 0, padding: 0 }}>
+                      {visibleOtherProfiles.map((entry) => {
                       const fullName = (entry.personName || 'Имя не указано') + (entry.lastName ? ` ${entry.lastName}` : '');
                       const age = calculateAge(entry.birth);
                       const ageLabel = typeof age === 'number' ? formatAgeRu(age) : null;
-                      const genderLabel = entry.gender === 'male' ? 'мужской' : entry.gender === 'female' ? 'женский' : '—';
+                      const genderLabel = entry.gender === 'male' ? 'мужской' : entry.gender === 'female' ? 'женский' : '-';
                       const compat = compatibilityMap[entry.id];
                       const unreadCount = unreadCounts[entry.id] ?? 0;
                       const hasUnread = unreadCount > 0;
@@ -2222,7 +2348,26 @@ function formatAgeRu(age: number): string {
                         </li>
                       );
                     })}
-                  </ul>
+                    </ul>
+                    {isOnline && (
+                      <div className="mt-3 flex flex-col items-center gap-2">
+                        {otherLoadingMore && <div className="text-xs text-white/60">Загружаем ещё...</div>}
+                        {otherHasMore ? (
+                          <button
+                            type="button"
+                            onClick={handleLoadMoreOtherProfiles}
+                            disabled={otherLoadingMore || otherLoading}
+                            className={`${BUTTON_SECONDARY} w-full px-3 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed`}
+                          >
+                            Показать ещё
+                          </button>
+                        ) : (
+                          <div className="text-xs text-white/50">Больше анкет нет.</div>
+                        )}
+                      </div>
+                    )}
+                    {isOnline && otherHasMore && <div ref={otherLoadMoreSentinelRef} style={{ height: 1 }} />}
+                  </div>
                 )}
               </div>
             </div>

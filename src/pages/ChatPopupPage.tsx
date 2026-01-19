@@ -8,6 +8,21 @@ import { moderateText } from '../services/moderation';
 import { BUTTON_SECONDARY } from '../constants/buttonPalette';
 import { censorProfanity } from '../utils/profanityDictionary';
 
+function safeString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+function buildInitials(firstName?: string, lastName?: string): string {
+  const first = safeString(firstName).trim();
+  const last = safeString(lastName).trim();
+  const parts = [first, last].filter(Boolean);
+  const letters = parts.map((part) => Array.from(part)[0]).filter(Boolean);
+  return letters.slice(0, 2).join('').toUpperCase() || '•';
+}
+
 type ChatMessage = {
   id: string;
   sender_id: string;
@@ -34,6 +49,15 @@ type Gender = 'male' | 'female' | null;
 
 const normalizeGender = (value: unknown): Gender => {
   return value === 'male' || value === 'female' ? value : null;
+};
+
+type ChatDialogItem = ChatTargetPayload & {
+  lastMessageAt: number;
+};
+
+type ProfileRow = {
+  id: string;
+  data?: Record<string, unknown> | null;
 };
 
 const MALE_BUBBLE = 'text-white shadow-[0px_6px_18px_rgba(15,23,42,0.35)]';
@@ -125,6 +149,11 @@ const ChatPopupPage: React.FC = () => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const currentProfileGender = useProfile((state) => state.profile.gender ?? null);
+  const [query, setQuery] = useState('');
+  const [dialogs, setDialogs] = useState<ChatDialogItem[]>([]);
+  const [dialogsLoading, setDialogsLoading] = useState(false);
+  const [dialogsError, setDialogsError] = useState<string | null>(null);
+  const [brokenAvatars, setBrokenAvatars] = useState<Record<string, true>>({});
   const [input, setInput] = useState('');
   const [sendOnEnter, setSendOnEnter] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -149,6 +178,7 @@ const ChatPopupPage: React.FC = () => {
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const [blockStatus, setBlockStatus] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const incomingSoundRef = useRef<HTMLAudioElement | null>(null);
   const lastSoundAtRef = useRef(0);
   useEffect(() => {
@@ -162,6 +192,96 @@ const ChatPopupPage: React.FC = () => {
   useEffect(() => {
     setTarget(decodeTargetPayload(location.search));
   }, [location.search]);
+
+  const fetchDialogs = useCallback(async () => {
+    if (!currentUserId) {
+      setDialogs([]);
+      setDialogsError(null);
+      return;
+    }
+
+    setDialogsLoading(true);
+    setDialogsError(null);
+
+    try {
+      const { data: rows, error } = await supabase
+        .from(CHAT_TABLE)
+        .select('sender_id,recipient_id,created_at')
+        .or(`sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId}`)
+        .order('created_at', { ascending: false })
+        .limit(1000);
+
+      if (error) throw error;
+
+      const orderMap = new Map<string, number>();
+      (rows ?? []).forEach((row) => {
+        const senderId = (row as { sender_id?: string }).sender_id;
+        const recipientId = (row as { recipient_id?: string }).recipient_id;
+        const createdAt = (row as { created_at?: string }).created_at;
+        if (typeof senderId !== 'string' || typeof recipientId !== 'string') return;
+        const otherId = senderId === currentUserId ? recipientId : senderId;
+        if (!otherId || otherId === currentUserId) return;
+        const ts = typeof createdAt === 'string' ? Date.parse(createdAt) : NaN;
+        const nextTs = Number.isFinite(ts) ? ts : Date.now();
+        const prev = orderMap.get(otherId) ?? 0;
+        if (nextTs > prev) orderMap.set(otherId, nextTs);
+      });
+
+      const ids = Array.from(orderMap.keys());
+      if (ids.length === 0) {
+        setDialogs([]);
+        return;
+      }
+
+      const { data: profileRows, error: profileError } = await supabase
+        .from('profiles')
+        .select('id,data')
+        .in('id', ids);
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        throw profileError;
+      }
+
+      const profileMap = new Map<string, ProfileRow>();
+      if (Array.isArray(profileRows)) {
+        for (const row of profileRows) {
+          if (row && typeof (row as { id?: unknown }).id === 'string') {
+            const id = (row as { id: string }).id;
+            const data = (row as { data?: unknown }).data;
+            profileMap.set(id, { id, data: isRecord(data) ? data : null });
+          }
+        }
+      }
+
+      const list: ChatDialogItem[] = ids.map((id) => {
+        const profile = profileMap.get(id);
+        const snapshot = profile?.data ?? null;
+        return {
+          id,
+          personName: safeString(snapshot?.personName) || safeString(snapshot?.firstName) || '',
+          lastName: safeString(snapshot?.lastName) || '',
+          cityNameRu: safeString(snapshot?.cityNameRu) || safeString(snapshot?.residenceCityName) || '',
+          selectedCity: safeString(snapshot?.selectedCity) || safeString(snapshot?.residenceCity) || '',
+          gender: safeString(snapshot?.gender) || null,
+          mainPhoto: safeString(snapshot?.mainPhoto) || null,
+          lastMessageAt: orderMap.get(id) ?? 0,
+        };
+      });
+
+      list.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+      setDialogs(list);
+    } catch (err) {
+      console.warn('Failed to load chat dialogs', err);
+      setDialogs([]);
+      setDialogsError('Не удалось загрузить диалоги.');
+    } finally {
+      setDialogsLoading(false);
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    void fetchDialogs();
+  }, [fetchDialogs]);
 
   const playIncomingSound = useCallback(() => {
     const now = Date.now();
@@ -320,6 +440,7 @@ const ChatPopupPage: React.FC = () => {
           if (!resolved) {
             upsertMessage(message);
           }
+          void fetchDialogs();
           if (isTheirs && !isTargetBlocked) {
             playIncomingSound();
           }
@@ -333,7 +454,7 @@ const ChatPopupPage: React.FC = () => {
         console.warn('Не удалось удалить канал чата', error);
       }
     };
-  }, [target, currentUserId, resolvePendingMessage, upsertMessage, playIncomingSound, isTargetBlocked]);
+  }, [target, currentUserId, resolvePendingMessage, upsertMessage, playIncomingSound, isTargetBlocked, fetchDialogs]);
 
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -421,6 +542,10 @@ const ChatPopupPage: React.FC = () => {
         }
       }
       setInput('');
+      void fetchDialogs();
+      window.requestAnimationFrame(() => {
+        inputRef.current?.focus({ preventScroll: true });
+      });
     } catch (err) {
       removePendingMessage(optimisticId);
       setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId));
@@ -429,7 +554,7 @@ const ChatPopupPage: React.FC = () => {
     } finally {
       setSending(false);
     }
-  }, [input, target, currentUserId, registerPendingMessage, resolvePendingMessage, upsertMessage, removePendingMessage, isTargetBlocked]);
+  }, [input, target, currentUserId, registerPendingMessage, resolvePendingMessage, upsertMessage, removePendingMessage, isTargetBlocked, fetchDialogs]);
 
 
   const cityLabel = useMemo(() => {
@@ -526,6 +651,42 @@ const ChatPopupPage: React.FC = () => {
     void markConversationRead(unreadIncomingIds);
   }, [unreadIncomingIds, markConversationRead]);
 
+  const visibleDialogs = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const selectedId = target?.id ?? '';
+
+    const list = [...dialogs];
+    list.sort((a, b) => {
+      if (a.id === selectedId) return -1;
+      if (b.id === selectedId) return 1;
+      return b.lastMessageAt - a.lastMessageAt;
+    });
+
+    if (!q) return list;
+    return list.filter((item) => {
+      const name = `${safeString(item.personName)} ${safeString(item.lastName)}`.trim().toLowerCase();
+      const city = (safeString(item.cityNameRu) || safeString(item.selectedCity)).trim().toLowerCase();
+      return name.includes(q) || city.includes(q);
+    });
+  }, [dialogs, query, target?.id]);
+
+  const handleSelectDialog = useCallback((item: ChatDialogItem) => {
+    setTarget({
+      id: item.id,
+      personName: item.personName ?? '',
+      lastName: item.lastName ?? '',
+      cityNameRu: item.cityNameRu ?? '',
+      selectedCity: item.selectedCity ?? '',
+      gender: item.gender ?? null,
+      mainPhoto: item.mainPhoto ?? null,
+    });
+    setInput('');
+    setError(null);
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
+
   if (!target) {
     return (
       <div className="h-screen bg-slate-950 text-white flex items-center justify-center p-6 text-center text-sm overflow-hidden">
@@ -535,7 +696,64 @@ const ChatPopupPage: React.FC = () => {
   }
 
   return (
-    <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden relative">
+    <div className="h-screen bg-slate-950 overflow-hidden">
+      <div className="chat-modal-content chat-modal-content--desktop">
+        <div className="chat-modal-list">
+          <div className="chat-modal-search">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Поиск по контактам"
+              disabled={!currentUserId}
+            />
+          </div>
+          <div className="chat-modal-contacts">
+            {!currentUserId ? (
+              <div style={{ padding: 12, fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>
+                Войдите в профиль, чтобы увидеть диалоги.
+              </div>
+            ) : dialogsLoading ? (
+              <div style={{ padding: 12, fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>Загрузка...</div>
+            ) : dialogsError ? (
+              <div style={{ padding: 12, fontSize: 14, color: 'rgba(170, 0, 0, 0.8)' }}>{dialogsError}</div>
+            ) : visibleDialogs.length === 0 ? (
+              <div style={{ padding: 12, fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>Пока нет контактов.</div>
+            ) : (
+              visibleDialogs.map((item) => {
+                const name = `${safeString(item.personName)} ${safeString(item.lastName)}`.trim() || 'Пользователь';
+                const city = safeString(item.cityNameRu) || safeString(item.selectedCity) || '';
+                const photo = safeString(item.mainPhoto) && !brokenAvatars[item.id] ? safeString(item.mainPhoto) : '';
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="chat-modal-contact"
+                    onClick={() => handleSelectDialog(item)}
+                  >
+                    <div className="chat-modal-avatar">
+                      {photo ? (
+                        <img
+                          src={photo}
+                          alt=""
+                          onError={() => setBrokenAvatars((prev) => ({ ...prev, [item.id]: true }))}
+                        />
+                      ) : (
+                        <div className="chat-modal-avatar-fallback">{buildInitials(item.personName, item.lastName)}</div>
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                      <div className="chat-modal-contact-name">{name}</div>
+                      <div className="chat-modal-contact-city">{city}</div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="chat-modal-chat">
+          <div className="h-full bg-slate-950 text-white flex flex-col overflow-hidden relative">
       <header className="px-4 py-3 border-b border-white/10">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -612,6 +830,7 @@ const ChatPopupPage: React.FC = () => {
         <div className="pb-4 shrink-0" style={{ marginBottom: "20px" }}>
           <div className="flex gap-3 items-end">
             <textarea
+              ref={inputRef}
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {
@@ -677,6 +896,9 @@ const ChatPopupPage: React.FC = () => {
             </div>
           </div>
         ) : null}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

@@ -89,7 +89,17 @@ def main() -> None:
     base_wheel = [*pip, "wheel", "--wheel-dir", str(dest), "--no-deps"]
 
     # Ensure we always have a pip wheel available for embedded builds without ensurepip.
-    run([*base_download, "pip", "setuptools", "wheel"])
+    try:
+        run([*base_download, "--no-deps", "pip", "setuptools", "wheel"])
+    except subprocess.CalledProcessError as exc:
+        stdout = exc.output or ""
+        stderr = exc.stderr or ""
+        print("[wheelhouse] Failed to download pip/setuptools/wheel as wheels.")
+        if stdout.strip():
+            print(stdout.strip())
+        if stderr.strip():
+            print(stderr.strip())
+        raise
 
     requirements = read_requirements(req)
     failures: list[str] = []

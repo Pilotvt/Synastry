@@ -8,7 +8,7 @@ import { useProfile } from "./store/profile";
 import { readProfileFromStorage, writeProfileToStorage } from "./utils/profileStorage";
 import { clearSavedChart, writeSavedChart } from "./utils/savedChartStorage";
 import { latinToRuApprox, norm, ruToLat } from "./utils/transliterate";
-import { getRussianCities, findNearestRussianCity, type RussianCity } from "./utils/russianCitiesClient";
+import { getRussianCities } from "./utils/russianCitiesClient";
 import {
   getForeignCitiesRuMap,
   lookupForeignCityRuName,
@@ -40,6 +40,8 @@ type CityWorld = {
   nameRuNorm: string;
   nameTranslit: string;
   nameApprox: string;
+  nameLatin?: string;
+  nameLatinNorm?: string;
   regionRu?: string;
   population?: number;
 };
@@ -595,7 +597,45 @@ useEffect(() => {
 
     (async () => {
       try {
-        const foreignRuPromise = country === "RU" ? null : getForeignCitiesRuMap().catch(() => null);
+        if (country === "RU") {
+          const russianCities = await getRussianCities();
+          if (cancelled) return;
+
+          const prepared: CityWorld[] = russianCities.map((c) => {
+            const nameRu = String(c.name || "");
+            const normalized = norm(nameRu);
+            const translit = ruToLat(nameRu);
+            const approx = latinToRuApprox(normalized);
+            const nameLatin = typeof c.name_latin === "string" && c.name_latin.trim() ? c.name_latin.trim() : undefined;
+            const nameLatinNorm = nameLatin ? norm(nameLatin) : undefined;
+            const parts = new Set([normalized, translit, approx, nameLatinNorm].filter(Boolean));
+            return {
+              id: `RU:${nameRu}:${c.lat}:${c.lon}`,
+              name: nameRu,
+              nameRu,
+              lat: c.lat,
+              lon: c.lon,
+              country: "RU",
+              searchKey: Array.from(parts).join("|"),
+              nameNorm: normalized,
+              nameRuNorm: normalized,
+              nameTranslit: translit,
+              nameApprox: approx,
+              nameLatin,
+              nameLatinNorm,
+              regionRu: c.subject,
+              population: c.population,
+            };
+          });
+
+          cityCacheRef.current.set(country, prepared);
+          if (!cancelled) {
+            setAllCities(prepared);
+          }
+          return;
+        }
+
+        const foreignRuPromise = getForeignCitiesRuMap().catch(() => null);
         const response = await fetch(publicAssetUrl(`cities-by-country/${country}.json`), {
           signal: controller.signal,
           cache: "no-store",
@@ -604,8 +644,7 @@ useEffect(() => {
         const data = (await response.json()) as CitiesJsonItem[];
         if (cancelled) return;
 
-        const russianCities = country === "RU" ? await getRussianCities().catch(() => null) : null;
-        const foreignRu = foreignRuPromise ? await foreignRuPromise : null;
+        const foreignRu = await foreignRuPromise;
         if (foreignRu) {
           foreignCitiesRuRef.current = foreignRu;
         }
@@ -618,10 +657,6 @@ useEffect(() => {
           const lonValue = typeof c.lon === "number" ? c.lon : parseFloat(String(c.lon));
           const countryCode = String(c.country).toUpperCase();
           const rawId = c.geonameid !== undefined ? String(c.geonameid) : `${countryCode}:${name}:${latValue}:${lonValue}`;
-          let matchedRussian: RussianCity | null = null;
-          if (country === "RU" && russianCities) {
-            matchedRussian = findNearestRussianCity(latValue, lonValue, russianCities);
-          }
 
           const nameRuFromMap = lookupForeignCityRuName(foreignRu, {
             country: countryCode,
@@ -629,18 +664,13 @@ useEffect(() => {
             lat: latValue,
             lon: lonValue,
           });
-          let nameRu =
+          const nameRu =
             typeof c.name_ru === "string" && c.name_ru.trim()
               ? c.name_ru.trim()
               : typeof c.nameRu === "string" && c.nameRu.trim()
                 ? c.nameRu.trim()
                 : (nameRuFromMap ?? name);
-          let regionRu = typeof c.region_ru === "string" ? c.region_ru : undefined;
-
-          if (matchedRussian) {
-            nameRu = matchedRussian.name || nameRu;
-            regionRu = matchedRussian.subject ?? regionRu;
-          }
+          const regionRu = typeof c.region_ru === "string" ? c.region_ru : undefined;
 
           const normalizedName = norm(name);
           const transliterated = ruToLat(name);
@@ -651,13 +681,6 @@ useEffect(() => {
           const parts = new Set(
             [normalizedName, transliterated, approx, nameRuNorm, transliteratedRu, approxRu].filter(Boolean),
           );
-
-          const populationFromMatch =
-            matchedRussian && typeof matchedRussian.population === "number"
-              ? matchedRussian.population
-              : typeof c.population === "number"
-                ? c.population
-                : undefined;
 
           prepared.push({
             id: rawId,
@@ -672,29 +695,11 @@ useEffect(() => {
             nameTranslit: transliterated,
             nameApprox: approx,
             regionRu,
-            population: populationFromMatch,
+            population: typeof c.population === "number" ? c.population : undefined,
           });
         }
 
-        const resultList =
-          country === "RU"
-            ? Array.from(
-                prepared.reduce((map, city) => {
-                  const key = (city.nameRu || city.name).trim().toLowerCase();
-                  const existing = map.get(key);
-                  if (!existing) {
-                    map.set(key, city);
-                    return map;
-                  }
-                  const currentPop = typeof city.population === "number" ? city.population : 0;
-                  const existingPop = typeof existing.population === "number" ? existing.population : 0;
-                  if (currentPop > existingPop) {
-                    map.set(key, city);
-                  }
-                  return map;
-                }, new Map<string, CityWorld>()).values(),
-              )
-            : prepared;
+        const resultList = prepared;
 
         cityCacheRef.current.set(country, resultList);
         if (!cancelled) {
@@ -738,6 +743,44 @@ useEffect(() => {
 
   const citiesOfCountry = allCities;
 
+  const cityDuplicateCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (country !== "RU") return counts;
+    for (const city of citiesOfCountry) {
+      const key = (city.nameRuNorm || city.nameNorm || "").trim();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [citiesOfCountry, country]);
+
+  const formatSubjectShort = useCallback((subject: string) => {
+    const value = String(subject || "").trim();
+    if (!value) return "";
+    return value
+      .replace(/\bобласть\b/giu, "обл.")
+      .replace(/\bреспублика\b/giu, "респ.")
+      .replace(/\bкрай\b/giu, "кр.")
+      .replace(/\bавтономный округ\b/giu, "АО")
+      .replace(/\bавтономная область\b/giu, "АО");
+  }, []);
+
+  const formatCitySuggestionLabel = useCallback(
+    (c: CityWorld) => {
+      const base = c.nameRu || c.name;
+      if (country !== "RU") {
+        return c.nameRu !== c.name ? `${base} (${c.name})` : base;
+      }
+      const key = (c.nameRuNorm || c.nameNorm || "").trim();
+      const isDuplicate = (key && (cityDuplicateCounts.get(key) ?? 0) > 1) || false;
+      if (!isDuplicate) return base;
+      const subject = c.regionRu ? formatSubjectShort(c.regionRu) : "";
+      if (subject) return `${base} (${subject})`;
+      return `${base} (${c.lat.toFixed(2)}, ${c.lon.toFixed(2)})`;
+    },
+    [cityDuplicateCounts, country, formatSubjectShort],
+  );
+
   const filteredCities = useMemo(() => {
     const query = cityQuery.trim();
     if (!query) {
@@ -758,6 +801,10 @@ useEffect(() => {
           if (city.nameNorm.startsWith(normalized)) scores.push(1);
           if (city.nameRuNorm === normalized) scores.push(0.2);
           if (city.nameRuNorm.startsWith(normalized)) scores.push(1.2);
+          if (city.nameLatinNorm) {
+            if (city.nameLatinNorm === normalized) scores.push(0.4);
+            if (city.nameLatinNorm.startsWith(normalized)) scores.push(1.4);
+          }
         }
         if (translit) {
           if (city.nameTranslit === translit) scores.push(0.5);
@@ -856,6 +903,7 @@ useEffect(() => {
   dataset.find((city: CityWorld) => {
           if (city.nameNorm === normalized) return true;
           if (city.nameRuNorm === normalized) return true;
+          if (city.nameLatinNorm === normalized) return true;
           if (city.nameTranslit === translit) return true;
           if (city.nameApprox === approx) return true;
           if (city.nameTranslit.replace(/y/g, "i") === loose) return true;
@@ -1574,10 +1622,7 @@ if (!sessionReady) {
                         setCityInputFocused(false);
                       }}
                     >
-                      <span className="font-medium text-sm">{c.nameRu}</span>
-                      {country !== "RU" && c.nameRu !== c.name && (
-                        <span className="ml-1 text-xs text-black/60">({c.name})</span>
-                      )}
+                      <span className="font-medium text-sm">{formatCitySuggestionLabel(c)}</span>
                     </li>
                   ))}
                 </ul>

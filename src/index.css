@@ -113,3 +113,116 @@ select:focus {
 	background-color: #f9e0bbf2 !important;
 	background-image: none !important;
 }
+
+.chat-modal-content {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: grid;
+	grid-template-columns: 340px 1fr;
+	height: 100%;
+}
+
+.chat-modal-content--desktop {
+	grid-template-columns: 260px 1fr;
+}
+
+.chat-modal-list {
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	border-right: 1px solid rgba(0, 0, 0, 0.25);
+	background: rgba(244, 212, 168, 0.7);
+}
+
+.chat-modal-search {
+	padding: 10px 12px;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.chat-modal-search input {
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid rgba(0, 0, 0, 0.35);
+	background-color: rgba(249, 224, 187, 0.98);
+	background-image: var(--paper-texture-image);
+	background-size: var(--paper-texture-size);
+	background-repeat: repeat;
+}
+
+.chat-modal-contacts {
+	min-height: 0;
+	overflow: auto;
+}
+
+.chat-modal-contact {
+	width: 100%;
+	text-align: left;
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	padding: 10px 12px;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.chat-modal-contact:hover {
+	background: rgba(255, 255, 255, 0.35);
+}
+
+.chat-modal-avatar {
+	width: 40px;
+	height: 40px;
+	border-radius: 999px;
+	overflow: hidden;
+	background: rgba(255, 255, 255, 0.5);
+	border: 1px solid rgba(0, 0, 0, 0.25);
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.chat-modal-avatar img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.chat-modal-avatar-fallback {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 14px;
+	font-weight: 700;
+	color: rgba(43, 28, 15, 0.85);
+	background: rgba(255, 255, 255, 0.2);
+}
+
+.chat-modal-contact-name {
+	font-size: 14px;
+	font-weight: 700;
+	color: #2b1c0f;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.chat-modal-contact-city {
+	font-size: 12px;
+	color: rgba(0, 0, 0, 0.7);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.chat-modal-chat {
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	background: rgba(249, 224, 187, 0.98);
+}

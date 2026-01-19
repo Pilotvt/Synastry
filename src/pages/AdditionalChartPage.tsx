@@ -28,7 +28,7 @@ import {
 import { formatArcMin, nakshatraFromLonJ2000 } from "../utils/nakshatraJ2000";
 import { requestNewChartReset } from "../utils/newChartRequest";
 import { useOfflineMode } from "../utils/offlineMode";
-import { norm, ruToLat } from "../utils/transliterate";
+import { latinToRuName, norm, ruToLat } from "../utils/transliterate";
 import { countryNameRU } from "../utils/countryNameRU";
 import {
   DAY_MS,
@@ -108,6 +108,10 @@ type CitySuggestion = {
   nameNorm: string;
   nameRuNorm: string;
   nameTranslit: string;
+  nameLatin?: string;
+  nameLatinNorm?: string;
+  subject?: string;
+  population?: number;
 };
 
 function makeCitySuggestion(source: {
@@ -117,15 +121,36 @@ function makeCitySuggestion(source: {
   country: string;
   lat: number;
   lon: number;
+  nameLatin?: string;
+  subject?: string;
+  population?: number;
 }): CitySuggestion {
   const country = (source.country || "").toUpperCase();
   const name = String(source.name || "").trim();
-  const nameRu = String(source.nameRu || source.name || "").trim();
+  const rawNameRu = String(source.nameRu || source.name || "").trim();
+  const normalizedRuCandidate = /[A-Za-z]/.test(rawNameRu) ? latinToRuName(rawNameRu) : rawNameRu;
+  const nameRu = country !== "RU" && normalizedRuCandidate === name ? latinToRuName(name) : normalizedRuCandidate;
   const id = source.id ? String(source.id) : `${country}:${name}:${source.lat}:${source.lon}`;
   const nameNorm = norm(name);
   const nameRuNorm = norm(nameRu);
   const nameTranslit = norm(ruToLat(nameRu));
-  return { id, name, nameRu, lat: source.lat, lon: source.lon, country, nameNorm, nameRuNorm, nameTranslit };
+  const nameLatin = typeof source.nameLatin === "string" && source.nameLatin.trim() ? source.nameLatin.trim() : undefined;
+  const nameLatinNorm = nameLatin ? norm(nameLatin) : undefined;
+  return {
+    id,
+    name,
+    nameRu,
+    lat: source.lat,
+    lon: source.lon,
+    country,
+    nameNorm,
+    nameRuNorm,
+    nameTranslit,
+    nameLatin,
+    nameLatinNorm,
+    subject: typeof source.subject === "string" && source.subject.trim() ? source.subject.trim() : undefined,
+    population: typeof source.population === "number" && Number.isFinite(source.population) ? source.population : undefined,
+  };
 }
 
 type ChartRequestPayload = {
@@ -829,7 +854,12 @@ function normalizeCityQuery(value: string): string {
 function matchPrefix(query: string, city: CitySuggestion): boolean {
   const q = normalizeCityQuery(query);
   if (!q) return true;
-  return city.nameRuNorm.startsWith(q) || city.nameNorm.startsWith(q) || city.nameTranslit.startsWith(q);
+  if (city.nameRuNorm.startsWith(q) || city.nameNorm.startsWith(q) || city.nameTranslit.startsWith(q)) {
+    return true;
+  }
+  if (city.nameLatinNorm && city.nameLatinNorm.startsWith(q)) return true;
+  const alt = normalizeCityQuery(latinToRuName(city.name));
+  return alt.startsWith(q);
 }
 
 const AdditionalChartPage: React.FC = () => {
@@ -925,6 +955,44 @@ const AdditionalChartPage: React.FC = () => {
     const filtered = cities.filter((c) => matchPrefix(cityQuery, c));
     return filtered.slice(0, 20);
   }, [cities, cityQuery]);
+
+  const cityDuplicateCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const city of cities) {
+      if (city.country !== "RU") continue;
+      const key = city.nameRuNorm || city.nameNorm;
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [cities]);
+
+  const formatSubjectShort = useCallback((subject: string) => {
+    const value = String(subject || "").trim();
+    if (!value) return "";
+    return value
+      .replace(/\bобласть\b/giu, "обл.")
+      .replace(/\bреспублика\b/giu, "респ.")
+      .replace(/\bкрай\b/giu, "кр.")
+      .replace(/\bавтономный округ\b/giu, "АО")
+      .replace(/\bавтономная область\b/giu, "АО");
+  }, []);
+
+  const formatCitySuggestionLabel = useCallback(
+    (city: CitySuggestion) => {
+      const base = city.nameRu || city.name;
+      if (city.country !== "RU") {
+        return city.nameRu !== city.name ? `${base} (${city.name})` : base;
+      }
+      const key = city.nameRuNorm || city.nameNorm;
+      const isDuplicate = (key && (cityDuplicateCounts.get(key) ?? 0) > 1) || false;
+      if (!isDuplicate) return base;
+      const subject = city.subject ? formatSubjectShort(city.subject) : "";
+      if (subject) return `${base} (${subject})`;
+      return `${base} (${city.lat.toFixed(2)}, ${city.lon.toFixed(2)})`;
+    },
+    [cityDuplicateCounts, formatSubjectShort],
+  );
 
   useEffect(() => {
     if (rightPanelTab !== "vimshottari-dasha") return;
@@ -1046,6 +1114,9 @@ const AdditionalChartPage: React.FC = () => {
               country: "RU",
               lat: c.lat,
               lon: c.lon,
+              nameLatin: c.name_latin,
+              subject: c.subject,
+              population: c.population,
             }),
           );
         } else {
@@ -3757,8 +3828,7 @@ const AdditionalChartPage: React.FC = () => {
 	                              handleCitySelect(city);
 	                            }}
 	                          >
-	                            {city.nameRu}
-	                            {city.country !== "RU" && city.nameRu !== city.name ? ` (${city.name})` : ""}
+	                            {formatCitySuggestionLabel(city)}
 	                          </div>
 	                        ))}
 	                      </div>
@@ -3970,7 +4040,7 @@ const AdditionalChartPage: React.FC = () => {
                   return (
                     <div style={{ fontSize: 16, color: "#000", whiteSpace: "pre-line" }}>
                       {reasons.length
-                        ? `Гатака (повреждение, разрушение, сложности): ⛔Есть ${reasons.join("; ")}\n Если важное дело в этот день перенести нельзя, качестве упаи, рекомендуется читать мантру Ганеше - эта мантра разрушает препятствия.`
+                        ? `Гатака (повреждение, разрушение, сложности): ⛔Есть ${reasons.join("; ")}\n Если важное дело в этот день перенести нельзя, в качестве упаи, рекомендуется читать мантру Ганеше - эта мантра разрушает препятствия.`
                         : "Гатака (повреждение, разрушение, сложности): ✅нет."}
                     </div>
                   );
