@@ -654,10 +654,10 @@ function normalizeEmail(value) {
 function openChatWindow(encodedPayload, opener) {
   if (typeof encodedPayload !== 'string' || !encodedPayload.trim()) return;
   const chatWindow = new BrowserWindow({
-    width: 520,
-    height: 680,
-    minWidth: 480,
-    minHeight: 560,
+    width: 940,
+    height: 720,
+    minWidth: 760,
+    minHeight: 600,
     title: `${APP_DISPLAY_NAME} - Чат`,
     icon: APP_ICON,
     autoHideMenuBar: true,

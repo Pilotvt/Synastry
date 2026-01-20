@@ -26,6 +26,10 @@ import { PAPER_INPUT_STYLE, PAPER_SURFACE_STYLE } from "../constants/paperStyles
 import { countryNameRU } from "../utils/countryNameRU";
 import { checkTextModeration } from "../utils/textModeration";
 import { showMessageBox } from "../utils/showMessageBox";
+import { uploadProfilePhotoToStorage } from "../utils/profilePhotoStorage";
+import { migrateProfilePhotosToStorage } from "../utils/migrateProfilePhotosToStorage";
+import { createThumbDataUrlFromSource } from "../utils/imageThumb";
+import { inlineImageValueForExport, inlineProfilePhotosForExport } from "../utils/inlineMediaForExport";
 
 type ProfileSnapshot = {
   personName?: string;
@@ -46,7 +50,11 @@ type ProfileSnapshot = {
   dstManual?: boolean;
   dstManualOverride?: boolean;
   mainPhoto?: string | null;
+  mainPhotoStoragePointer?: string | null;
+  mainPhotoThumb?: string | null;
+  mainPhotoThumbStoragePointer?: string | null;
   smallPhotos?: (string | null)[];
+  smallPhotosStoragePointers?: (string | null)[];
   typeazh?: string;
   familyStatus?: string;
   about?: string;
@@ -591,7 +599,27 @@ function DoneButton({ navigate, getProfileSnapshot, currentUserId }: DoneButtonP
       void (async () => {
         try {
           if (!sessionUserId) return;
-          const payload = { id: sessionUserId, data: stamped };
+          let payloadProfile = stamped;
+          try {
+            const migration = await migrateProfilePhotosToStorage({ userId: sessionUserId, profile: stamped, maxSmallPhotos: 2 });
+            if (migration.changed) {
+              payloadProfile = migration.profile;
+              try {
+                writeProfileToStorage(STORAGE_KEY, payloadProfile, ownerId, false);
+                const savedChartData = readSavedChartSource(ownerId);
+                if (savedChartData) {
+                  const updatedChart = { ...savedChartData, profile: payloadProfile } as Record<string, JsonValue>;
+                  writeSavedChart(updatedChart, ownerId);
+                }
+              } catch (localSyncErr) {
+                console.warn("Failed to persist migrated profile photos locally", localSyncErr);
+              }
+            }
+          } catch (migrationError) {
+            console.warn("Failed to migrate profile photos to storage before cloud save", migrationError);
+          }
+
+          const payload = { id: sessionUserId, data: payloadProfile };
           const { error: upsertErr } = await supabase.from('profiles').upsert(payload);
           if (upsertErr) throw upsertErr;
 
@@ -607,7 +635,7 @@ function DoneButton({ navigate, getProfileSnapshot, currentUserId }: DoneButtonP
               const shouldSaveChart = Boolean(chart && chartFp && fpKey && knownKeys && !knownKeys.has(fpKey));
               if (chart && shouldSaveChart) {
                 const name = `${snapshot?.personName ?? 'chart'} ${new Date().toLocaleString()}`;
-                await saveChart(sessionUserId, name, 'private', stamped, chart, meta ?? undefined);
+                await saveChart(sessionUserId, name, 'private', payloadProfile, chart, meta ?? undefined);
                 if (chartFp) markCloudSavedChartFingerprint(chartFp);
               }
             }
@@ -721,8 +749,12 @@ const Questionnaire: React.FC = () => {
           ascSign: ascCandidate || "",
         });
         setMainPhoto((typeof localSnapshot.mainPhoto === "string" ? localSnapshot.mainPhoto : null) ?? null);
+        setMainPhotoStoragePointer(
+          typeof localSnapshot.mainPhotoStoragePointer === "string" ? localSnapshot.mainPhotoStoragePointer : null,
+        );
         setGender(localSnapshot.gender === 'male' || localSnapshot.gender === 'female' ? localSnapshot.gender : "");
         setSmallPhotos(normalizeSmallPhotos(localSnapshot.smallPhotos));
+        setSmallPhotosStoragePointers(normalizeSmallPhotos(localSnapshot.smallPhotosStoragePointers));
         setTypeazh(typeof localSnapshot.typeazh === "string" ? localSnapshot.typeazh : "");
         setFamilyStatus(typeof localSnapshot.familyStatus === "string" ? localSnapshot.familyStatus : "");
         setAbout(typeof localSnapshot.about === "string" ? localSnapshot.about.slice(0, ABOUT_MAX_LEN) : "");
@@ -821,8 +853,12 @@ const Questionnaire: React.FC = () => {
           ascSign: ascCandidate || "",
         });
         setMainPhoto((typeof mergedSnapshot.mainPhoto === "string" ? mergedSnapshot.mainPhoto : null) ?? null);
+        setMainPhotoStoragePointer(
+          typeof mergedSnapshot.mainPhotoStoragePointer === "string" ? mergedSnapshot.mainPhotoStoragePointer : null,
+        );
         setGender(mergedSnapshot.gender === 'male' || mergedSnapshot.gender === 'female' ? mergedSnapshot.gender : "");
         setSmallPhotos(normalizeSmallPhotos(mergedSnapshot.smallPhotos));
+        setSmallPhotosStoragePointers(normalizeSmallPhotos(mergedSnapshot.smallPhotosStoragePointers));
         setTypeazh(typeof mergedSnapshot.typeazh === "string" ? mergedSnapshot.typeazh : "");
         setFamilyStatus(typeof mergedSnapshot.familyStatus === "string" ? mergedSnapshot.familyStatus : "");
         setAbout(typeof mergedSnapshot.about === "string" ? mergedSnapshot.about.slice(0, ABOUT_MAX_LEN) : "");
@@ -849,8 +885,10 @@ const Questionnaire: React.FC = () => {
         }
         setHeaderData(null);
         setMainPhoto(null);
+        setMainPhotoStoragePointer(null);
         setGender("");
         setSmallPhotos([null, null]);
+        setSmallPhotosStoragePointers([null, null]);
         setTypeazh("");
         setFamilyStatus("");
         setAbout("");
@@ -881,7 +919,9 @@ const Questionnaire: React.FC = () => {
 
   // State for photos
   const [mainPhoto, setMainPhoto] = React.useState<string | null>(null);
+  const [, setMainPhotoStoragePointer] = React.useState<string | null>(null);
   const [smallPhotos, setSmallPhotos] = React.useState<(string | null)[]>([null, null]);
+  const [, setSmallPhotosStoragePointers] = React.useState<(string | null)[]>([null, null]);
 
   // State for form fields
   const [gender, setGender] = useState<"male" | "female" | "">("");
@@ -1398,8 +1438,47 @@ const Questionnaire: React.FC = () => {
       const result = await compressImageToDataUrl(file, 300 * 1024);
       if (typeof result !== 'string') return;
       setMainPhoto(result);
-      persistFieldToLocal('mainPhoto', result);
-      void persistFieldToCloud('mainPhoto', result);
+
+      const userId = currentUserId;
+      const uploaded = userId
+        ? await uploadProfilePhotoToStorage({ userId, kind: "main", dataUrl: result })
+        : null;
+
+      if (uploaded) {
+        setMainPhoto(uploaded.publicUrl);
+        setMainPhotoStoragePointer(uploaded.storagePointer);
+        persistFieldToLocal('mainPhoto', uploaded.publicUrl);
+        void persistFieldToCloud('mainPhoto', uploaded.publicUrl);
+        persistFieldToLocal('mainPhotoStoragePointer', uploaded.storagePointer);
+        void persistFieldToCloud('mainPhotoStoragePointer', uploaded.storagePointer);
+
+        const thumbDataUrl = await createThumbDataUrlFromSource(result, {
+          width: 100,
+          height: 140,
+          fit: "cover",
+          mimeType: "image/webp",
+          quality: 0.7,
+          background: null,
+        });
+        if (thumbDataUrl) {
+          const uploadedThumb = await uploadProfilePhotoToStorage({
+            userId: userId ?? "",
+            kind: "main",
+            dataUrl: thumbDataUrl,
+            variantSuffix: "_thumb",
+          });
+          if (uploadedThumb) {
+            persistFieldToLocal("mainPhotoThumb", uploadedThumb.publicUrl);
+            void persistFieldToCloud("mainPhotoThumb", uploadedThumb.publicUrl);
+            persistFieldToLocal("mainPhotoThumbStoragePointer", uploadedThumb.storagePointer);
+            void persistFieldToCloud("mainPhotoThumbStoragePointer", uploadedThumb.storagePointer);
+          }
+        }
+      } else {
+        setMainPhotoStoragePointer(null);
+        persistFieldToLocal('mainPhoto', result);
+        void persistFieldToCloud('mainPhoto', result);
+      }
     } catch (err) {
       console.warn('Failed to compress main photo:', err);
     } finally {
@@ -1434,10 +1513,41 @@ const Questionnaire: React.FC = () => {
         const normalized = normalizeSmallPhotos(arr);
         const next = [...normalized];
         next[idx] = result;
-        persistFieldToLocal('smallPhotos', next);
-        void persistFieldToCloud('smallPhotos', next);
         return next;
       });
+
+      const userId = currentUserId;
+      const uploaded = userId
+        ? await uploadProfilePhotoToStorage({ userId, kind: "small", index: idx, dataUrl: result })
+        : null;
+
+      if (uploaded) {
+        setSmallPhotos((arr) => {
+          const normalized = normalizeSmallPhotos(arr);
+          const next = [...normalized];
+          next[idx] = uploaded.publicUrl;
+          persistFieldToLocal('smallPhotos', next);
+          void persistFieldToCloud('smallPhotos', next);
+          return next;
+        });
+        setSmallPhotosStoragePointers((prev) => {
+          const normalized = normalizeSmallPhotos(prev);
+          const next = [...normalized];
+          next[idx] = uploaded.storagePointer;
+          persistFieldToLocal('smallPhotosStoragePointers', next);
+          void persistFieldToCloud('smallPhotosStoragePointers', next);
+          return next;
+        });
+      } else {
+        setSmallPhotos((arr) => {
+          const normalized = normalizeSmallPhotos(arr);
+          const next = [...normalized];
+          next[idx] = result;
+          persistFieldToLocal('smallPhotos', next);
+          void persistFieldToCloud('smallPhotos', next);
+          return next;
+        });
+      }
     } catch (err) {
       console.warn('Failed to compress small photo:', err);
     } finally {
@@ -1453,8 +1563,11 @@ const Questionnaire: React.FC = () => {
     ev.preventDefault();
     ev.stopPropagation();
     setMainPhoto(null);
+    setMainPhotoStoragePointer(null);
     persistFieldToLocal('mainPhoto', null);
     void persistFieldToCloud('mainPhoto', null);
+    persistFieldToLocal('mainPhotoStoragePointer', null);
+    void persistFieldToCloud('mainPhotoStoragePointer', null);
   };
 
   const handleDeleteSmallPhoto = (idx: number) => (ev: React.MouseEvent<HTMLButtonElement>) => {
@@ -1466,6 +1579,14 @@ const Questionnaire: React.FC = () => {
       next[idx] = null;
       persistFieldToLocal('smallPhotos', next);
       void persistFieldToCloud('smallPhotos', next);
+      return next;
+    });
+    setSmallPhotosStoragePointers((arr) => {
+      const normalized = normalizeSmallPhotos(arr);
+      const next = [...normalized];
+      next[idx] = null;
+      persistFieldToLocal('smallPhotosStoragePointers', next);
+      void persistFieldToCloud('smallPhotosStoragePointers', next);
       return next;
     });
   };
@@ -1571,7 +1692,7 @@ const Questionnaire: React.FC = () => {
           <button
             type="button"
             className={`${BUTTON_SECONDARY} px-4 py-2 text-sm mt-3`}
-            onClick={() => {
+            onClick={async () => {
               let snapshot = getProfileSnapshot ? getProfileSnapshot() : null;
               if (!snapshot) {
                 snapshot = readStoredProfileSnapshot(currentUserId ?? undefined);
@@ -1586,11 +1707,19 @@ const Questionnaire: React.FC = () => {
                 snapshot = fallbackProfile;
               }
 
+              if (snapshot) {
+                try {
+                  snapshot = await inlineProfilePhotosForExport(snapshot as Record<string, unknown>);
+                } catch (error) {
+                  console.warn("Failed to inline profile photos for export", error);
+                }
+              }
+
               const payload: Record<string, unknown> = {};
               if (snapshot) payload.profile = snapshot;
               if (exportChart) payload.chart = exportChart;
               if (exportMeta) payload.meta = exportMeta;
-              if (screenshot) payload.screenshot = screenshot;
+              if (screenshot) payload.screenshot = (await inlineImageValueForExport(screenshot)) ?? screenshot;
               if (screenshot && screenshotHash) payload.screenshotHash = screenshotHash;
               if (!payload.profile && fallbackProfile) payload.profile = fallbackProfile;
               if (Object.keys(payload).length === 0) {

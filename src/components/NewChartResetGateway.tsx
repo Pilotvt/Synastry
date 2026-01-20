@@ -36,7 +36,7 @@ const NewChartResetGateway: React.FC = () => {
     if (!request) return;
     setBusy(true);
     try {
-      await hardResetAllData({ logout, clearCloud: false });
+      await hardResetAllData({ logout, clearCloud: true });
       emitNewChartConfirmed(request.origin);
       navigate("/app", { replace: true });
     } catch (error) {

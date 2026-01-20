@@ -20,6 +20,9 @@ import { isOwnerMatch, clearProfileStorage } from "../utils/profileStorage";
 import { readSavedChart, writeSavedChart, clearSavedChart, type SavedChartSource, type SavedChartMetadata } from "../utils/savedChartStorage";
 import { isChartSessionFromFile, setChartSessionFromFile } from "../utils/fromFileSession";
 import { encodeSupabasePointer, needsSupabaseResolution, parseSupabaseStoragePointer, resolveSupabaseScreenshotUrl } from "../utils/screenshotUrl";
+import { migrateProfilePhotosToStorage } from "../utils/migrateProfilePhotosToStorage";
+import { createThumbDataUrlFromSource } from "../utils/imageThumb";
+import { inlineImageValueForExport, inlineProfilePhotosForExport } from "../utils/inlineMediaForExport";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../constants/buttonPalette";
 import {
   PROFILE_SNAPSHOT_STORAGE_KEY,
@@ -53,7 +56,11 @@ type ProfileSnapshot = {
   dstManual?: boolean;
   dstManualOverride?: boolean;
   mainPhoto?: string | null;
+  mainPhotoStoragePointer?: string | null;
+  mainPhotoThumb?: string | null;
+  mainPhotoThumbStoragePointer?: string | null;
   smallPhotos?: (string | null)[];
+  smallPhotosStoragePointers?: (string | null)[];
   typeazh?: string;
   familyStatus?: string;
   about?: string;
@@ -232,6 +239,8 @@ type ScreenshotUploadResult = {
   ok: boolean;
   finalScreenshotUrl: string;
   storagePointer: string | null;
+  thumbUrl: string | null;
+  thumbStoragePointer: string | null;
   uploadedBucket: string | null;
 };
 
@@ -2618,16 +2627,27 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
       enrichedChart: Record<string, unknown>;
     }): Promise<ScreenshotUploadResult> => {
       if (!screenshotDataUrl) {
-        return { ok: false, finalScreenshotUrl: "", storagePointer: null, uploadedBucket: null };
+        return {
+          ok: false,
+          finalScreenshotUrl: "",
+          storagePointer: null,
+          thumbUrl: null,
+          thumbStoragePointer: null,
+          uploadedBucket: null,
+        };
       }
       try {
         let persistedUrl: string | null = null;
         let storagePointer: string | null = null;
+        let thumbPersistedUrl: string | null = null;
+        let thumbStoragePointer: string | null = null;
         let uploadedBucket: string | null = null;
         if (screenshotDataUrl.startsWith('data:')) {
           const res = await fetch(screenshotDataUrl);
           const blobPng = await res.blob();
-          const filename = `chart-${userId}-${chartId || Date.now()}.png`;
+          const baseName = `chart-${userId}-${chartId || Date.now()}`;
+          const filename = `${baseName}.png`;
+          const thumbFilename = `${baseName}-thumb.webp`;
           const preferredBuckets = ['charts-screenshots', 'charts', 'public', 'screenshots'];
           for (const bucket of preferredBuckets) {
             try {
@@ -2650,6 +2670,31 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
           if (uploadedBucket) {
             storagePointer = encodeSupabasePointer({ bucket: uploadedBucket, path: filename });
             persistedUrl = (await resolveSupabaseScreenshotUrl(storagePointer)) ?? storagePointer;
+
+            try {
+              const thumbDataUrl = await createThumbDataUrlFromSource(screenshotDataUrl, {
+                width: 220,
+                height: 160,
+                fit: "contain",
+                mimeType: "image/webp",
+                quality: 0.72,
+                background: null,
+              });
+              if (thumbDataUrl) {
+                const thumbRes = await fetch(thumbDataUrl);
+                const thumbBlob = await thumbRes.blob();
+                const { error: thumbErr } = await supabase.storage.from(uploadedBucket).upload(thumbFilename, thumbBlob, {
+                  contentType: "image/webp",
+                  upsert: true,
+                });
+                if (!thumbErr) {
+                  thumbStoragePointer = encodeSupabasePointer({ bucket: uploadedBucket, path: thumbFilename });
+                  thumbPersistedUrl = (await resolveSupabaseScreenshotUrl(thumbStoragePointer)) ?? thumbStoragePointer;
+                }
+              }
+            } catch (thumbError) {
+              console.warn("Failed to upload screenshot thumbnail", thumbError);
+            }
           }
         } else if (screenshotDataUrl.startsWith('http')) {
           persistedUrl = screenshotDataUrl;
@@ -2670,6 +2715,8 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
               screenshotUrl: finalScreenshotUrl,
               screenshotHash: screenshotHash ?? null,
               screenshotStoragePointer: storagePointer,
+              screenshotThumbUrl: thumbPersistedUrl,
+              screenshotThumbStoragePointer: thumbStoragePointer,
             },
           })
           .eq('id', chartId);
@@ -2677,6 +2724,8 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
           ok: Boolean(uploadedBucket),
           finalScreenshotUrl,
           storagePointer,
+          thumbUrl: thumbPersistedUrl,
+          thumbStoragePointer,
           uploadedBucket,
         };
       } catch (error) {
@@ -2688,9 +2737,23 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
             .eq('id', chartId);
         } catch (fallbackError) {
           console.warn('Fallback screenshot persistence failed', fallbackError);
-          return { ok: false, finalScreenshotUrl: screenshotDataUrl, storagePointer: null, uploadedBucket: null };
+          return {
+            ok: false,
+            finalScreenshotUrl: screenshotDataUrl,
+            storagePointer: null,
+            thumbUrl: null,
+            thumbStoragePointer: null,
+            uploadedBucket: null,
+          };
         }
-        return { ok: false, finalScreenshotUrl: screenshotDataUrl, storagePointer: null, uploadedBucket: null };
+        return {
+          ok: false,
+          finalScreenshotUrl: screenshotDataUrl,
+          storagePointer: null,
+          thumbUrl: null,
+          thumbStoragePointer: null,
+          uploadedBucket: null,
+        };
       }
     },
     [],
@@ -2742,36 +2805,68 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
         if (!silent) updateStatus?.('Пользователь не авторизован.');
         return { success: false };
       }
+      let migratedProfile = profileForCloud;
+      try {
+        const migration = await migrateProfilePhotosToStorage({ userId, profile: profileForCloud, maxSmallPhotos: 2 });
+        if (migration.changed) {
+          migratedProfile = migration.profile;
+          persistProfileSnapshotLocal(migratedProfile, userId);
+          setProfile((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              mainPhoto: typeof migratedProfile.mainPhoto === "string" ? migratedProfile.mainPhoto : prev.mainPhoto ?? null,
+              smallPhotos: Array.isArray(migratedProfile.smallPhotos) ? migratedProfile.smallPhotos : prev.smallPhotos,
+            };
+          });
+        }
+      } catch (migrationError) {
+        console.warn("Failed to migrate profile photos to storage before cloud save", migrationError);
+      }
       updateStatus?.('Обновляем профиль...');
       try {
-        await supabase.from('profiles').upsert({ id: userId, data: profileForCloud }).select('id');
+        await supabase.from('profiles').upsert({ id: userId, data: migratedProfile }).select('id');
       } catch (profileError) {
         if (!silent) updateStatus?.('Не удалось обновить профиль в облаке.');
         throw profileError;
       }
       const name = `${personLabel || 'chart'} ${new Date().toLocaleString()}`;
       updateStatus?.('Сохраняем карту...');
-      const saved = await saveChart(userId, name, 'private', profileForCloud, enrichedChart, meta ?? undefined);
+      const saved = await saveChart(userId, name, 'private', migratedProfile, enrichedChart, meta ?? undefined);
       let screenshotUploaded = false;
-      if (shouldUploadScreenshot && effectiveScreenshot) {
-        notifyScreenshotUploading?.(true);
-        const result = await uploadChartScreenshot({
-          userId,
-          chartId: saved.id,
-          screenshotDataUrl: effectiveScreenshot,
-          screenshotHash: effectiveScreenshotHash ?? undefined,
-          enrichedChart,
-        });
-        notifyScreenshotUploading?.(false);
-        screenshotUploaded = result.ok;
-        if (result.finalScreenshotUrl) {
-          if (result.ok && result.uploadedBucket) {
-            lastScreenshotUploadRef.current = { location: 'cloud', bucket: result.uploadedBucket };
-          }
-          const storagePointer = result.storagePointer ?? null;
-          const screenshotUrl = result.finalScreenshotUrl;
-          const hash = effectiveScreenshotHash;
-          setChart((prev) => (prev ? { ...prev, screenshotUrl, screenshotHash: hash ?? prev.screenshotHash ?? null, screenshotStoragePointer: storagePointer ?? prev.screenshotStoragePointer ?? null } : prev));
+        if (shouldUploadScreenshot && effectiveScreenshot) {
+          notifyScreenshotUploading?.(true);
+          const result = await uploadChartScreenshot({
+            userId,
+            chartId: saved.id,
+            screenshotDataUrl: effectiveScreenshot,
+            screenshotHash: effectiveScreenshotHash ?? undefined,
+            enrichedChart,
+          });
+          notifyScreenshotUploading?.(false);
+          screenshotUploaded = result.ok;
+          if (result.finalScreenshotUrl) {
+            if (result.ok && result.uploadedBucket) {
+              lastScreenshotUploadRef.current = { location: 'cloud', bucket: result.uploadedBucket };
+            }
+            const storagePointer = result.storagePointer ?? null;
+            const screenshotUrl = result.finalScreenshotUrl;
+            const thumbUrl = result.thumbUrl ?? null;
+            const thumbPointer = result.thumbStoragePointer ?? null;
+            const hash = effectiveScreenshotHash;
+          setChart((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  screenshotUrl,
+                  screenshotHash: hash ?? prev.screenshotHash ?? null,
+                  screenshotStoragePointer: storagePointer ?? prev.screenshotStoragePointer ?? null,
+                  screenshotThumbUrl: thumbUrl ?? (prev as Record<string, unknown>).screenshotThumbUrl ?? null,
+                  screenshotThumbStoragePointer:
+                    thumbPointer ?? (prev as Record<string, unknown>).screenshotThumbStoragePointer ?? null,
+                }
+              : prev,
+          );
           setChartScreenshot(screenshotUrl);
           setChartScreenshotHash(hash);
           try {
@@ -3134,19 +3229,22 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
 	              <button
 	                type="button"
 	                className={`${BUTTON_SECONDARY} px-4 py-2 text-sm self-start`}
-	                onClick={() => {
+	                onClick={async () => {
 	                  // Save chart/profile as JSON file
 	                  const chartForExport = chartScreenshot
 	                    ? mergeChartWithScreenshot(chart, chartScreenshot, chartScreenshotHash, chart.screenshotStoragePointer ?? null)
 	                    : chart;
-	                  const profileForExport = buildProfileForCloud() ?? (ensureProfileCoords(profile, chart) ?? profile);
+	                  const baseProfileForExport = buildProfileForCloud() ?? (ensureProfileCoords(profile, chart) ?? profile);
+	                  const profileForExport = baseProfileForExport
+	                    ? await inlineProfilePhotosForExport(baseProfileForExport as Record<string, unknown>)
+	                    : baseProfileForExport;
 	                  const payload: Record<string, unknown> = {
 	                    profile: profileForExport,
 	                    chart: chartForExport,
 	                    meta,
 	                  };
                   if (chartScreenshot) {
-                    payload.screenshot = chartScreenshot;
+                    payload.screenshot = (await inlineImageValueForExport(chartScreenshot)) ?? chartScreenshot;
                     if (chartScreenshotHash) {
                       payload.screenshotHash = chartScreenshotHash;
                     }

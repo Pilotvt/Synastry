@@ -62,10 +62,12 @@ type OtherProfilePreview = {
   residenceCountry?: string | null;
   residenceCityName?: string | null;
   mainPhoto: string | null;
+  mainPhotoThumb: string | null;
   smallPhotos: (string | null)[];
   birth: string | null;
   ascSign: string | null;
   chartScreenshot: string | null;
+  chartScreenshotFull: string | null;
   gender: "male" | "female" | null;
   typeazh: string;
   familyStatus: string;
@@ -132,6 +134,20 @@ const extractChartScreenshot = (row: ChartRow | null): string | null => {
     }
     if (url) return url;
   }
+  return null;
+};
+const extractChartScreenshotThumb = (row: ChartRow | null): string | null => {
+  if (!row) return null;
+  const chartValue = row.chart;
+  if (!isRecord(chartValue)) return null;
+  const url = typeof chartValue.screenshotThumbUrl === 'string' ? chartValue.screenshotThumbUrl.trim() : '';
+  const pointer =
+    typeof chartValue.screenshotThumbStoragePointer === 'string' ? chartValue.screenshotThumbStoragePointer : null;
+  if (url && (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http'))) {
+    return url;
+  }
+  if (pointer && pointer.trim()) return pointer;
+  if (url) return url;
   return null;
 };
 const applyScreenshotToChart = (row: ChartRow, screenshotUrl: string): ChartRow => {
@@ -367,11 +383,68 @@ const OTHER_PROFILES_PAGE_SIZE = 25;
 const OTHER_PROFILES_CACHE_MAX = 100;
 const PROFILE_LOAD_ERROR_MESSAGE = 'Не удалось загрузить профиль. Проверьте соединение или активность проекта Supabase.';
 const EMPTY_SMALL_PHOTOS: (string | null)[] = [null, null];
-function normalizeSmallPhotosField(value: unknown): (string | null)[] {
-  if (!Array.isArray(value)) {
-    return [...EMPTY_SMALL_PHOTOS];
+function buildGenderOrFilter(target: 'male' | 'female'): string {
+  if (target === 'female') {
+    return [
+      'data->>gender.eq.female',
+      'data->>gender.ilike.*female*',
+      'data->>gender.eq.f',
+      'data->>gender.eq.ж',
+      'data->>gender.ilike.*жен*',
+      'data->>gender.ilike.*woman*',
+    ].join(',');
   }
-  const normalized = value.slice(0, 2).map((item) => (typeof item === 'string' && item.trim() ? item : null));
+  return [
+    'data->>gender.eq.male',
+    'data->>gender.ilike.*male*',
+    'data->>gender.eq.m',
+    'data->>gender.eq.м',
+    'data->>gender.ilike.*муж*',
+    'data->>gender.ilike.*man*',
+  ].join(',');
+}
+
+function buildOtherProfilesSelect(includeUpdatedAt: boolean): string {
+  const base = [
+    'id',
+    'last_seen_at',
+    'personName:data->>personName',
+    'lastName:data->>lastName',
+    'selectedCity:data->>selectedCity',
+    'cityNameRu:data->>cityNameRu',
+    'residenceCountry:data->>residenceCountry',
+    'residenceCityName:data->>residenceCityName',
+    'birth:data->>birth',
+    'ascSign:data->>ascSign',
+    'gender:data->>gender',
+    'mainPhoto:data->>mainPhoto',
+    'mainPhotoThumb:data->>mainPhotoThumb',
+    'smallPhotos:data->smallPhotos',
+    'typeazh:data->>typeazh',
+    'familyStatus:data->>familyStatus',
+    'about:data->>about',
+    'interests:data->>interests',
+    'religion:data->>religion',
+    'career:data->>career',
+    'profession:data->>profession',
+    'children:data->>children',
+  ];
+  if (includeUpdatedAt) {
+    base.splice(2, 0, 'updated_at');
+  }
+  return base.join(',');
+}
+function normalizeSmallPhotosField(value: unknown): (string | null)[] {
+  let source: unknown = value;
+  if (typeof source === 'string' && source.trim()) {
+    try {
+      source = JSON.parse(source) as unknown;
+    } catch {
+      // ignore
+    }
+  }
+  if (!Array.isArray(source)) return [...EMPTY_SMALL_PHOTOS];
+  const normalized = source.slice(0, 2).map((item) => (typeof item === 'string' && item.trim() ? item : null));
   while (normalized.length < 2) {
     normalized.push(null);
   }
@@ -511,10 +584,12 @@ const restoreCachedOtherProfile = (value: unknown): OtherProfilePreview | null =
   const residenceCountry = readStringProp(record, 'residenceCountry');
   const residenceCityName = readStringProp(record, 'residenceCityName');
   const mainPhoto = typeof value.mainPhoto === 'string' ? value.mainPhoto : null;
+  const mainPhotoThumb = typeof record.mainPhotoThumb === 'string' ? record.mainPhotoThumb : null;
   const smallPhotos = normalizeSmallPhotosField(record.smallPhotos ?? record.photos ?? record.thumbnails ?? (value as Record<string, unknown>).smallPhotos);
   const birth = typeof value.birth === 'string' ? value.birth : null;
   const ascSign = typeof value.ascSign === 'string' ? value.ascSign : null;
   const chartScreenshot = typeof value.chartScreenshot === 'string' ? value.chartScreenshot : null;
+  const chartScreenshotFull = typeof record.chartScreenshotFull === 'string' ? record.chartScreenshotFull : chartScreenshot;
   const gender = normalizeGender(value.gender);
   const typeazh = typeof value.typeazh === 'string' ? value.typeazh : '';
   const familyStatus = readStringProp(record, 'familyStatus');
@@ -546,10 +621,12 @@ const restoreCachedOtherProfile = (value: unknown): OtherProfilePreview | null =
     residenceCountry,
     residenceCityName,
     mainPhoto,
+    mainPhotoThumb,
     smallPhotos,
     birth,
     ascSign,
     chartScreenshot,
+    chartScreenshotFull,
     gender,
     typeazh,
     familyStatus,
@@ -904,7 +981,7 @@ function formatAgeRu(age: number): string {
     }
     const [base] = window.location.href.split('#');
     const url = `${base || window.location.href}#/chat-popup?data=${encoded}`;
-    window.open(url, `chat-${entry.id}`, 'width=520,height=640,resizable=yes,menubar=no,toolbar=no')?.focus();
+    window.open(url, `chat-${entry.id}`, 'width=940,height=720,resizable=yes,menubar=no,toolbar=no')?.focus();
   }, [blockedIds, encodeChatPayload, markMessagesRead, optimisticClearUnread, partnerActionsLocked, requestPartnerActionsAccess, selfGender]);
   // Получаем email пользователя из Electron (main) и показываем под именем
   useEffect(() => {
@@ -1350,7 +1427,7 @@ function formatAgeRu(age: number): string {
   }, [userId, currentUserId, isOnline, sanitizeOwnProfile, viewingOwnProfile, profileRetryTick]);
   const loadOtherProfilesPage = useCallback(
     async ({ reset }: { reset: boolean }) => {
-      const seq = ++otherPagingSeqRef.current;
+      const seq = reset ? ++otherPagingSeqRef.current : otherPagingSeqRef.current;
       if (!reset && (!otherPagingHasMoreRef.current || otherPagingInFlightRef.current)) return;
 
       if (reset) {
@@ -1407,14 +1484,15 @@ function formatAgeRu(age: number): string {
         }
 
         const offset = reset ? 0 : otherPagingOffsetRef.current;
-        const end = offset + OTHER_PROFILES_PAGE_SIZE - 1;
+        const pageSize = OTHER_PROFILES_PAGE_SIZE;
+        const end = offset + pageSize - 1;
 
         const runQuery = async (includeUpdatedAt: boolean) => {
           let query = supabase
             .from('profiles')
-            .select(includeUpdatedAt ? 'id, data, last_seen_at, updated_at' : 'id, data, last_seen_at')
+            .select(buildOtherProfilesSelect(includeUpdatedAt))
             .neq('id', userId ?? '')
-            .eq('data->>gender', oppositeGender)
+            .or(buildGenderOrFilter(oppositeGender))
             .order('last_seen_at', { ascending: false, nullsFirst: false });
 
           if (includeUpdatedAt) {
@@ -1441,7 +1519,7 @@ function formatAgeRu(age: number): string {
         const rows = Array.isArray(data) ? data : [];
         if (seq !== otherPagingSeqRef.current) return;
         const rawCount = rows.length;
-        const hasMore = rawCount === OTHER_PROFILES_PAGE_SIZE;
+        const hasMore = rawCount === pageSize;
         otherPagingOffsetRef.current = offset + rawCount;
         setOtherHasMore(hasMore);
         otherPagingHasMoreRef.current = hasMore;
@@ -1453,34 +1531,31 @@ function formatAgeRu(age: number): string {
             if (!isRecord(entry) || typeof entry.id !== 'string') return null;
             if (existingIds.has(entry.id)) return null;
             if (blockedSet.size && blockedSet.has(entry.id)) return null;
-            const snapshot = isRecord(entry.data) ? (entry.data as Record<string, unknown>) : {};
-            const lastSeenRaw = entry['last_seen_at'];
-            const lastSeenAt = typeof lastSeenRaw === 'string' ? lastSeenRaw : null;
-            const personName = typeof snapshot.personName === 'string' ? snapshot.personName : '';
-            const lastName = typeof snapshot.lastName === 'string' ? snapshot.lastName : '';
-            const selectedCity = typeof snapshot.selectedCity === 'string' ? snapshot.selectedCity : '';
-            const cityNameRuRaw = typeof snapshot.cityNameRu === 'string' ? snapshot.cityNameRu : '';
+            const record = entry as Record<string, unknown>;
+            const lastSeenAt = typeof record.last_seen_at === 'string' ? record.last_seen_at : null;
+            const personName = readStringProp(record, 'personName');
+            const lastName = readStringProp(record, 'lastName');
+            const selectedCity = readStringProp(record, 'selectedCity');
+            const cityNameRuRaw = readStringProp(record, 'cityNameRu');
             const cityNameRu = cityNameRuRaw || (selectedCity ? latinToRuName(selectedCity) : '');
-            const residenceCountry = typeof snapshot.residenceCountry === 'string' ? snapshot.residenceCountry : '';
-            const residenceCityName =
-              typeof snapshot.residenceCityName === 'string'
-                ? snapshot.residenceCityName
-                : typeof snapshot.residenceCity === 'string'
-                  ? snapshot.residenceCity
-                  : '';
-            const mainPhoto = typeof snapshot.mainPhoto === 'string' ? snapshot.mainPhoto : null;
-            const smallPhotos = normalizeSmallPhotosField(snapshot.smallPhotos);
-            const birth = typeof snapshot.birth === 'string' ? snapshot.birth : null;
-            const ascSignFromProfile = typeof snapshot.ascSign === 'string' ? snapshot.ascSign : null;
-            const gender = normalizeGender(snapshot.gender);
-            const typeazh = typeof snapshot.typeazh === 'string' ? snapshot.typeazh : '';
-            const familyStatus = typeof snapshot.familyStatus === 'string' ? snapshot.familyStatus : '';
-            const about = typeof snapshot.about === 'string' ? snapshot.about : '';
-            const interests = typeof snapshot.interests === 'string' ? snapshot.interests : '';
-            const religion = typeof snapshot.religion === 'string' ? snapshot.religion : '';
-            const career = typeof snapshot.career === 'string' ? snapshot.career : '';
-            const profession = typeof snapshot.profession === 'string' ? snapshot.profession : '';
-            const children = typeof snapshot.children === 'string' ? snapshot.children : '';
+            const residenceCountry = readStringProp(record, 'residenceCountry');
+            const residenceCityName = readStringProp(record, 'residenceCityName');
+            const mainPhotoRaw = readStringProp(record, 'mainPhoto');
+            const mainPhoto = mainPhotoRaw && mainPhotoRaw.trim() ? mainPhotoRaw : null;
+            const mainPhotoThumbRaw = readStringProp(record, 'mainPhotoThumb');
+            const mainPhotoThumb = mainPhotoThumbRaw && mainPhotoThumbRaw.trim() ? mainPhotoThumbRaw : null;
+            const smallPhotos = normalizeSmallPhotosField(record.smallPhotos);
+            const birth = readStringProp(record, 'birth') || null;
+            const ascSignFromProfile = readStringProp(record, 'ascSign') || null;
+            const gender = normalizeGender(record.gender) ?? oppositeGender;
+            const typeazh = readStringProp(record, 'typeazh');
+            const familyStatus = readStringProp(record, 'familyStatus');
+            const about = readStringProp(record, 'about');
+            const interests = readStringProp(record, 'interests');
+            const religion = readStringProp(record, 'religion');
+            const career = readStringProp(record, 'career');
+            const profession = readStringProp(record, 'profession');
+            const children = readStringProp(record, 'children');
             return {
               id: entry.id,
               personName,
@@ -1490,6 +1565,7 @@ function formatAgeRu(age: number): string {
               residenceCountry,
               residenceCityName,
               mainPhoto,
+              mainPhotoThumb,
               smallPhotos,
               birth,
               ascSign: ascSignFromProfile,
@@ -1503,6 +1579,7 @@ function formatAgeRu(age: number): string {
               profession,
               children,
               chartScreenshot: null,
+              chartScreenshotFull: null,
               chart: null,
               chartSignature: null,
               lastSeenAt,
@@ -1510,75 +1587,124 @@ function formatAgeRu(age: number): string {
           })
           .filter((item): item is OtherProfilePreview => Boolean(item));
 
-        const withCharts = await Promise.all(
-          mapped.map(async (entry) => {
-            let chartScreenshot: string | null = null;
-            let chartPayload: ChartPayload = null;
-            let finalAscSign = entry.ascSign;
-            try {
-              const { data: chartRow, error: chartErr } = await supabase
-                .from('charts')
-                .select('chart, meta')
-                .eq('user_id', entry.id)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              if (chartErr && chartErr.code !== 'PGRST116') {
-                console.warn('Failed to load chart for preview:', chartErr);
-              }
-              if (chartRow && isRecord(chartRow)) {
-                const normalized = toChartRow(chartRow);
-                chartPayload = normalized.chart ?? null;
-                chartScreenshot = resolveScreenshotFromAny(normalized) ?? extractChartScreenshot(normalized);
-                if (chartScreenshot && typeof chartScreenshot === 'string' && needsSupabaseResolution(chartScreenshot)) {
-                  try {
-                    const resolved = await resolveSupabaseScreenshotUrl(chartScreenshot);
-                    if (resolved && typeof resolved === 'string' && !resolved.startsWith('supabase://')) {
-                      chartScreenshot = resolved;
-                    }
-                    if (chartScreenshot?.startsWith('supabase://')) {
-                      chartScreenshot = null;
-                    }
-                  } catch (resolveError) {
-                    console.warn('Failed to resolve chart screenshot for preview', resolveError);
-                    chartScreenshot = null;
-                  }
-                }
-
-                if (!finalAscSign) {
-                  finalAscSign = extractAscSignFromChart(normalized);
-                }
-              }
-            } catch (chartError) {
-              console.warn('Unexpected chart preview error:', chartError);
-            }
-            const chartSignature = computeChartSignature(chartPayload);
-            return { ...entry, chartScreenshot, chart: chartPayload, ascSign: finalAscSign, chartSignature };
-          }),
-        );
-
-        if (seq !== otherPagingSeqRef.current) return;
-
         const mergedBase = reset ? [] : otherProfilesRef.current;
-        const combined = [...mergedBase, ...withCharts];
-        const seen = new Set<string>();
-        const unique: OtherProfilePreview[] = [];
-        for (const entry of combined) {
-          if (seen.has(entry.id)) continue;
-          seen.add(entry.id);
-          unique.push(entry);
+        const combinedBase = [...mergedBase, ...mapped];
+        const seenBase = new Set<string>();
+        const uniqueBase: OtherProfilePreview[] = [];
+        for (const entry of combinedBase) {
+          if (seenBase.has(entry.id)) continue;
+          seenBase.add(entry.id);
+          uniqueBase.push(entry);
         }
 
-        setOtherProfiles(unique);
+        if (seq !== otherPagingSeqRef.current) return;
+        setOtherProfiles(uniqueBase);
 
         try {
           localStorage.setItem(
             OTHER_PROFILES_CACHE_KEY,
-            JSON.stringify({ userId: userId ?? null, entries: unique.slice(0, OTHER_PROFILES_CACHE_MAX) }),
+            JSON.stringify({ userId: userId ?? null, entries: uniqueBase.slice(0, OTHER_PROFILES_CACHE_MAX) }),
           );
         } catch (cacheSaveError) {
           console.warn('Не удалось сохранить кеш анкет других пользователей', cacheSaveError);
         }
+
+        const applyChartUpdate = (id: string, patch: Partial<OtherProfilePreview>) => {
+          if (seq !== otherPagingSeqRef.current) return;
+          if (blockedIdsRef.current.has(id)) return;
+          setOtherProfiles((prev) => {
+            let changed = false;
+            const next = prev.map((entry) => {
+              if (entry.id !== id) return entry;
+              changed = true;
+              return { ...entry, ...patch };
+            });
+            return changed ? next : prev;
+          });
+        };
+
+        const enrichEntryWithChartPreview = async (entry: OtherProfilePreview) => {
+          let chartScreenshot: string | null = null;
+          let chartScreenshotFull: string | null = null;
+          let chartPayload: ChartPayload = null;
+          let finalAscSign = entry.ascSign;
+          try {
+            const { data: chartRow, error: chartErr } = await supabase
+              .from('charts')
+              .select('chart, meta')
+              .eq('user_id', entry.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (chartErr && chartErr.code !== 'PGRST116') {
+              console.warn('Failed to load chart for preview:', chartErr);
+            }
+            if (chartRow && isRecord(chartRow)) {
+              const normalized = toChartRow(chartRow);
+              chartPayload = normalized.chart ?? null;
+              chartScreenshotFull = resolveScreenshotFromAny(normalized) ?? extractChartScreenshot(normalized);
+              const thumbCandidate = extractChartScreenshotThumb(normalized);
+              chartScreenshot = thumbCandidate ?? chartScreenshotFull;
+
+              const resolveMaybe = async (value: string | null): Promise<string | null> => {
+                if (!value) return null;
+                if (!needsSupabaseResolution(value)) return value;
+                try {
+                  const resolved = await resolveSupabaseScreenshotUrl(value);
+                  if (resolved && typeof resolved === 'string' && !resolved.startsWith('supabase://')) return resolved;
+                  return null;
+                } catch (resolveError) {
+                  console.warn('Failed to resolve chart screenshot for preview', resolveError);
+                  return null;
+                }
+              };
+
+              chartScreenshot = await resolveMaybe(chartScreenshot);
+              chartScreenshotFull = await resolveMaybe(chartScreenshotFull);
+
+              if (!finalAscSign) {
+                finalAscSign = extractAscSignFromChart(normalized);
+              }
+            }
+          } catch (chartError) {
+            console.warn('Unexpected chart preview error:', chartError);
+          }
+
+          const chartSignature = computeChartSignature(chartPayload);
+          applyChartUpdate(entry.id, {
+            chartScreenshot,
+            chartScreenshotFull: chartScreenshotFull ?? chartScreenshot,
+            chart: chartPayload,
+            ascSign: finalAscSign,
+            chartSignature,
+          });
+        };
+
+        const entriesToEnrich = mapped;
+        const concurrency = 4;
+        void (async () => {
+          let index = 0;
+          const worker = async () => {
+            while (true) {
+              if (seq !== otherPagingSeqRef.current) return;
+              const next = entriesToEnrich[index];
+              index += 1;
+              if (!next) return;
+              if (blockedIdsRef.current.has(next.id)) continue;
+              await enrichEntryWithChartPreview(next);
+            }
+          };
+          await Promise.all(Array.from({ length: Math.min(concurrency, entriesToEnrich.length) }, () => worker()));
+          if (seq !== otherPagingSeqRef.current) return;
+          try {
+            localStorage.setItem(
+              OTHER_PROFILES_CACHE_KEY,
+              JSON.stringify({ userId: userId ?? null, entries: otherProfilesRef.current.slice(0, OTHER_PROFILES_CACHE_MAX) }),
+            );
+          } catch (cacheSaveError) {
+            console.warn('Не удалось сохранить кеш анкет других пользователей', cacheSaveError);
+          }
+        })();
       } catch (error) {
         console.warn('Unexpected error while loading other profiles:', error);
       } finally {
@@ -2111,9 +2237,9 @@ function formatAgeRu(age: number): string {
 	                        </div>
 
 	                        <div className="relative overflow-hidden rounded-lg border border-blue-300 p-1 bg-white/5 w-full">
-	                          {entry.chartScreenshot ? (
+	                          {entry.chartScreenshotFull || entry.chartScreenshot ? (
 	                            <AutoAspectImage
-	                              src={entry.chartScreenshot}
+	                              src={(entry.chartScreenshotFull || entry.chartScreenshot) as string}
 	                              alt="Скриншот карты"
 	                              wrapperClassName="mx-auto w-full max-w-[360px]"
 	                              imgClassName="object-contain"
@@ -2179,30 +2305,18 @@ function formatAgeRu(age: number): string {
 	                        </div>
 	                      </div>
 	                    );
-	                  })()
-	                ) : otherLoading ? (
-                  <div className="text-sm text-white/70">Идёт загрузка анкет...</div>
+                  })()
                 ) : !selfGender ? (
                   <div className="text-sm text-white/80">
                     Укажите пол в анкете, чтобы видеть подходящие профили и открывать чат.
                   </div>
                 ) : visibleOtherProfiles.length === 0 ? (
                   <div className="text-sm text-white/70">
-                    {isOnline ? 'Анкеты пока не найдены.' : 'Нет подключения: список анкет недоступен.'}
-                    {isOnline && otherHasMore && (
-                      <div className="mt-3 flex flex-col items-center gap-2">
-                        {otherLoadingMore && <div className="text-xs text-white/60">Загружаем ещё...</div>}
-                        <button
-                          type="button"
-                          onClick={handleLoadMoreOtherProfiles}
-                          disabled={otherLoadingMore || otherLoading}
-                          className={`${BUTTON_SECONDARY} w-full px-3 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed`}
-                        >
-                          Показать ещё
-                        </button>
-                        <div ref={otherLoadMoreSentinelRef} style={{ height: 1 }} />
-                      </div>
-                    )}
+                    {otherLoading || otherLoadingMore
+                      ? 'Идёт загрузка анкет...'
+                      : isOnline
+                        ? 'Анкеты пока не найдены.'
+                        : 'Нет подключения: список анкет недоступен.'}
                   </div>
                 ) : (
                   <div>
@@ -2317,8 +2431,12 @@ function formatAgeRu(age: number): string {
 	                          </div>
                           <div className="flex flex-row flex-wrap gap-3 md:gap-4 md:flex-nowrap md:items-stretch">
                             <div className="w-[100px] h-[140px] md:h-auto bg-white/10 border border-white/20 rounded overflow-hidden flex-shrink-0">
-                              {entry.mainPhoto ? (
-                                <img src={entry.mainPhoto} alt={entry.personName || 'Главное фото'} className="w-full h-full object-cover" />
+                              {entry.mainPhotoThumb || entry.mainPhoto ? (
+                                <img
+                                  src={(entry.mainPhotoThumb || entry.mainPhoto) as string}
+                                  alt={entry.personName || 'Главное фото'}
+                                  className="w-full h-full object-cover"
+                                />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-xs text-white/60 text-center px-1">Нет фото</div>
                               )}
