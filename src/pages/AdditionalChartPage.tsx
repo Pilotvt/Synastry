@@ -3192,14 +3192,11 @@ const AdditionalChartPage: React.FC = () => {
           : chart?.ascendant?.lon_sidereal ?? null;
     const ascLongitudeText = typeof ascLongitudeValue === "number" && Number.isFinite(ascLongitudeValue) ? degStr(ascLongitudeValue) : "";
     const ascLine = `${chartVariantConfig.headerAscLabel}: ${ascSignName}${ascLongitudeText ? ` - ${ascLongitudeText}` : ""}`;
-    const mcLongitudeText = typeof chart?.mc?.lon_sidereal === "number" && Number.isFinite(chart.mc.lon_sidereal) ? degStr(chart.mc.lon_sidereal) : "";
-    const mcLine = mcLongitudeText ? `MC: ${mcLongitudeText}` : "MC: —";
 
     return {
       cityLine: `Город: ${cityLabel}${coordsLabel ? ` · ${coordsLabel}` : ""}`,
       localTimeLine: `Локальное время: ${localTime}`,
       ascLine,
-      mcLine,
     };
   }, [
     birthParts,
@@ -3535,7 +3532,6 @@ const AdditionalChartPage: React.FC = () => {
             <div>{headerLines.cityLine}</div>
             <div>{headerLines.localTimeLine}</div>
             <div>{headerLines.ascLine}</div>
-            <div>{headerLines.mcLine}</div>
           </div>
         </header>
 

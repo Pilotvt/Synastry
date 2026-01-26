@@ -3196,9 +3196,6 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
                   {ascLongitudeHeaderSuffix}
                 </div>
               ) : null}
-              {chart.mc ? (
-                <div>MC: {formatDegrees(chart.mc.lon_sidereal)}</div>
-              ) : null}
             </div>
           </header>
           <div className="w-full mb-4">

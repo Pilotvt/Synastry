@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { type ChartPayload } from '../synastry/scoring';
@@ -17,7 +18,16 @@ import { useBlocklistStore } from '../store/blocklist';
 import { PROFILE_SNAPSHOT_STORAGE_KEY as STORAGE_KEY } from '../constants/storageKeys';
 import { requestNewChartReset } from '../utils/newChartRequest';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../constants/buttonPalette';
+import { PAPER_INPUT_STYLE, PAPER_SURFACE_STYLE } from '../constants/paperStyles';
+import PaperDropdown from '../components/PaperDropdown';
 import AutoAspectImage from '../components/AutoAspectImage';
+import {
+  OTHER_PROFILES_FILTERS_KEY,
+  escapeIlike,
+  parseStoredOtherProfilesFilters,
+  type GenderFilterValue,
+  type StoredOtherProfilesFilters,
+} from '../utils/otherProfilesFilters';
 const CHAT_TABLE = 'user_messages';
 type UserProfile = {
   personName: string;
@@ -94,6 +104,59 @@ type CompatibilityPreview = {
 };
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
+const FILTER_OVERLAY_STYLE: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 3000,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  background: 'rgba(0,0,0,0.65)',
+  backdropFilter: 'blur(4px)',
+};
+const FILTER_DIALOG_STYLE: React.CSSProperties = {
+  width: '100%',
+  maxWidth: 720,
+  borderRadius: 16,
+  border: '1px solid rgba(0,0,0,0.55)',
+  background: '#f5d6ab',
+  color: '#111827',
+  padding: 16,
+  boxShadow: '0 24px 60px rgba(0,0,0,0.55)',
+};
+const FILTER_FIELD_STYLE: React.CSSProperties = {
+  ...(PAPER_INPUT_STYLE as unknown as React.CSSProperties),
+  width: '100%',
+  borderRadius: 10,
+  padding: '8px 10px',
+  outline: 'none',
+};
+const FILTER_HELP_STYLE: React.CSSProperties = { fontSize: 11, color: 'rgba(43,28,15,0.65)' };
+const FILTER_SECTION_TITLE_STYLE: React.CSSProperties = { fontSize: 16, fontWeight: 700, marginBottom: 8 };
+const FILTER_FIELD_LABEL_STYLE: React.CSSProperties = { fontSize: 16, fontWeight: 700, color: 'rgba(43,28,15,0.95)', marginBottom: 6 };
+
+type CitiesIndexFile = { countries?: Array<{ country?: string }> };
+type CityJsonItem = {
+  name?: string;
+  name_ru?: string;
+  nameRu?: string;
+  geonameid?: string | number;
+  lat?: number;
+  lon?: number;
+};
+type ResidenceCityOption = { id: string; name: string; nameRu?: string | null; nameLatin?: string | null };
+
+function publicAssetUrl(relativePath: string) {
+  if (typeof window === "undefined") return relativePath;
+  try {
+    return new URL(relativePath, window.location.href).toString();
+  } catch (error) {
+    console.warn("Failed to resolve asset URL", relativePath, error);
+    return relativePath;
+  }
+}
+
 const readStringProp = (record: Record<string, unknown>, key: string): string => {
   const value = record[key];
   return typeof value === 'string' ? value : '';
@@ -115,8 +178,8 @@ function normalizeGender(value: unknown): "male" | "female" | null {
   if (value === 'male' || value === 'female') return value;
   if (typeof value !== 'string') return null;
   const s = value.trim().toLowerCase();
-  if (s === 'male' || s === 'm' || s === 'м' || s === 'муж' || s === 'мужской') return 'male';
-  if (s === 'female' || s === 'f' || s === 'ж' || s === 'жен' || s === 'женский') return 'female';
+  if (s === 'male' || s === 'm' || s === 'м' || s === 'муж' || s === 'мужской' || s === 'мужчина') return 'male';
+  if (s === 'female' || s === 'f' || s === 'ж' || s === 'жен' || s === 'женский' || s === 'женщина') return 'female';
   return null;
 }
 const toChartRow = (value: unknown): ChartRow => (isRecord(value) ? { ...value } : { chart: null });
@@ -383,25 +446,38 @@ const OTHER_PROFILES_PAGE_SIZE = 25;
 const OTHER_PROFILES_CACHE_MAX = 100;
 const PROFILE_LOAD_ERROR_MESSAGE = 'Не удалось загрузить профиль. Проверьте соединение или активность проекта Supabase.';
 const EMPTY_SMALL_PHOTOS: (string | null)[] = [null, null];
-function buildGenderOrFilter(target: 'male' | 'female'): string {
-  if (target === 'female') {
-    return [
-      'data->>gender.eq.female',
-      'data->>gender.ilike.*female*',
-      'data->>gender.eq.f',
-      'data->>gender.eq.ж',
-      'data->>gender.ilike.*жен*',
-      'data->>gender.ilike.*woman*',
-    ].join(',');
-  }
-  return [
-    'data->>gender.eq.male',
-    'data->>gender.ilike.*male*',
-    'data->>gender.eq.m',
-    'data->>gender.eq.м',
-    'data->>gender.ilike.*муж*',
-    'data->>gender.ilike.*man*',
-  ].join(',');
+const GENDER_VARIANTS: Record<'male' | 'female', string[]> = {
+  male: ['male', 'Male', 'MALE', 'm', 'M', 'м', 'М', 'муж', 'Муж', 'мужской', 'Мужской', 'мужчина', 'Мужчина'],
+  female: ['female', 'Female', 'FEMALE', 'f', 'F', 'ж', 'Ж', 'жен', 'Жен', 'женский', 'Женский', 'женщина', 'Женщина'],
+};
+const RELIGION_OPTIONS: readonly string[] = [
+  'Христианство',
+  'Ислам',
+  'Буддизм',
+  'Вайшнавизм',
+  'Шиваизм',
+  'Другая',
+];
+const AGE_FILTER_OPTIONS: readonly number[] = [18, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70];
+type CompatibilityRange = { id: string; label: string; min: number | null; max: number | null };
+const COMPATIBILITY_RANGES: readonly CompatibilityRange[] = [
+  { id: '', label: 'Любая', min: null, max: null },
+  { id: '50-60', label: '50–60%', min: 50, max: 60 },
+  { id: '60-70', label: '60–70%', min: 60, max: 70 },
+  { id: '70-80', label: '70–80%', min: 70, max: 80 },
+  { id: '80-90', label: '80–90%', min: 80, max: 90 },
+  { id: '90-100', label: '90–100%', min: 90, max: 100 },
+];
+
+const buildDefaultGenderFilter = (gender: "male" | "female" | null): GenderFilterValue => {
+  void gender;
+  return 'all';
+};
+
+function dateIsoDaysAgo(yearsAgo: number): string {
+  const now = new Date();
+  const candidate = new Date(now.getFullYear() - yearsAgo, now.getMonth(), now.getDate());
+  return candidate.toISOString().slice(0, 10);
 }
 
 function buildOtherProfilesSelect(includeUpdatedAt: boolean): string {
@@ -434,6 +510,37 @@ function buildOtherProfilesSelect(includeUpdatedAt: boolean): string {
   }
   return base.join(',');
 }
+
+const readStoredFilters = (): StoredOtherProfilesFilters | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(OTHER_PROFILES_FILTERS_KEY);
+    if (!raw) return null;
+    return parseStoredOtherProfilesFilters(raw);
+  } catch (error) {
+    console.warn('Failed to read stored filters', error);
+    return null;
+  }
+};
+
+const writeStoredFilters = (payload: StoredOtherProfilesFilters) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(OTHER_PROFILES_FILTERS_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.warn('Failed to save stored filters', error);
+  }
+};
+
+const clearStoredFilters = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(OTHER_PROFILES_FILTERS_KEY);
+  } catch (error) {
+    console.warn('Failed to clear stored filters', error);
+  }
+};
+
 function normalizeSmallPhotosField(value: unknown): (string | null)[] {
   let source: unknown = value;
   if (typeof source === 'string' && source.trim()) {
@@ -733,11 +840,88 @@ function formatAgeRu(age: number): string {
   const blockedIds = useMemo(() => new Set(blockedKeys), [blockedKeys]);
   const blockedIdsRef = useRef<Set<string>>(new Set());
   const selfGender = useMemo(() => normalizeGender(profile?.gender), [profile?.gender]);
-  const oppositeGender = useMemo(() => {
-    if (selfGender === 'male') return 'female';
-    if (selfGender === 'female') return 'male';
-    return null;
-  }, [selfGender]);
+  const defaultGenderFilter = useMemo(() => buildDefaultGenderFilter(selfGender), [selfGender]);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterGender, setFilterGender] = useState<GenderFilterValue>(() => buildDefaultGenderFilter(null));
+  const [filterAgeMin, setFilterAgeMin] = useState<number | null>(null);
+  const [filterAgeMax, setFilterAgeMax] = useState<number | null>(null);
+  const [filterReligion, setFilterReligion] = useState<string>('');
+  const [filterCountry, setFilterCountry] = useState<string>('');
+  const [filterCity, setFilterCity] = useState<string>('');
+  const [filterCompatRange, setFilterCompatRange] = useState<string>('');
+  const [filterCountryOptions, setFilterCountryOptions] = useState<string[]>([]);
+  const [filterCountryLoading, setFilterCountryLoading] = useState(false);
+  const [filterCityOptions, setFilterCityOptions] = useState<ResidenceCityOption[]>([]);
+  const [filterCityLoading, setFilterCityLoading] = useState(false);
+  const [filterCityOpen, setFilterCityOpen] = useState(false);
+  const filterCityRef = useRef<HTMLDivElement | null>(null);
+  const filterCityCacheRef = useRef<Map<string, ResidenceCityOption[]>>(new Map());
+  const filterDialogRef = useRef<HTMLDivElement | null>(null);
+  const [filtersLoadedFor, setFiltersLoadedFor] = useState<string | null | undefined>(undefined);
+  const [filtersLoadedHadStored, setFiltersLoadedHadStored] = useState(false);
+  const otherProfilesFilterKey = useMemo(
+    () =>
+      JSON.stringify({
+        userId: userId ?? null,
+        gender: filterGender,
+        ageMin: filterAgeMin,
+        ageMax: filterAgeMax,
+        religion: filterReligion.trim(),
+        country: filterCountry.trim().toUpperCase(),
+        city: filterCity.trim(),
+        compatibility: filterCompatRange,
+      }),
+    [
+      filterAgeMax,
+      filterAgeMin,
+      filterCity,
+      filterCompatRange,
+      filterCountry,
+      filterGender,
+      filterReligion,
+      userId,
+    ],
+  );
+  const activeCompatRange = useMemo(
+    () => COMPATIBILITY_RANGES.find((range) => range.id === filterCompatRange) ?? COMPATIBILITY_RANGES[0],
+    [filterCompatRange],
+  );
+  const hasActiveFilters = useMemo(() => {
+    if (filterGender !== defaultGenderFilter) return true;
+    if (filterAgeMin !== null || filterAgeMax !== null) return true;
+    if (filterReligion.trim()) return true;
+    if (filterCountry.trim()) return true;
+    if (filterCity.trim()) return true;
+    if (activeCompatRange.id) return true;
+    return false;
+  }, [
+    activeCompatRange.id,
+    defaultGenderFilter,
+    filterAgeMax,
+    filterAgeMin,
+    filterCity,
+    filterCountry,
+    filterGender,
+    filterReligion,
+  ]);
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filterGender !== defaultGenderFilter) count += 1;
+    if (filterAgeMin !== null || filterAgeMax !== null) count += 1;
+    if (filterReligion.trim()) count += 1;
+    if (filterCountry.trim() || filterCity.trim()) count += 1;
+    if (activeCompatRange.id) count += 1;
+    return count;
+  }, [
+    activeCompatRange.id,
+    defaultGenderFilter,
+    filterAgeMax,
+    filterAgeMin,
+    filterCity,
+    filterCountry,
+    filterGender,
+    filterReligion,
+  ]);
   const selectedOtherProfile = useMemo(
     () => (selectedOtherProfileId ? otherProfiles.find((entry) => entry.id === selectedOtherProfileId) ?? null : null),
     [otherProfiles, selectedOtherProfileId],
@@ -766,10 +950,249 @@ function formatAgeRu(age: number): string {
   }, [selectedOtherProfileId]);
   const visibleOtherProfiles = useMemo(() => {
     const blockedSet = blockedKeys.length ? new Set(blockedKeys) : null;
-    const base = blockedSet ? otherProfiles.filter((entry) => !blockedSet.has(entry.id)) : otherProfiles;
-    if (!selfGender) return [];
-    return base.filter((entry) => entry.gender && entry.gender !== selfGender);
-  }, [blockedKeys, otherProfiles, selfGender]);
+    let base = blockedSet ? otherProfiles.filter((entry) => !blockedSet.has(entry.id)) : otherProfiles;
+    if (filterGender !== 'all') {
+      base = base.filter((entry) => entry.gender === filterGender);
+    }
+    if (filterAgeMin !== null || filterAgeMax !== null) {
+      base = base.filter((entry) => {
+        const age = calculateAge(entry.birth);
+        if (age === null) return false;
+        if (filterAgeMin !== null && age < filterAgeMin) return false;
+        if (filterAgeMax !== null && age > filterAgeMax) return false;
+        return true;
+      });
+    }
+    const religionFilter = filterReligion.trim().toLowerCase();
+    if (religionFilter) {
+      base = base.filter((entry) => (entry.religion || '').trim().toLowerCase() === religionFilter);
+    }
+    const countryFilter = filterCountry.trim().toUpperCase();
+    if (countryFilter) {
+      base = base.filter((entry) => (entry.residenceCountry || '').trim().toUpperCase() === countryFilter);
+    }
+    const cityFilter = filterCity.trim().toLowerCase();
+    if (cityFilter) {
+      base = base.filter((entry) => {
+        const candidates = [entry.residenceCityName, entry.cityNameRu, entry.selectedCity];
+        return candidates.some((value) => {
+          const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+          return normalized ? normalized.includes(cityFilter) : false;
+        });
+      });
+    }
+    if (activeCompatRange.min !== null || activeCompatRange.max !== null) {
+      base = base.filter((entry) => {
+        const compat = compatibilityMap[entry.id];
+        if (!compat || compat.status !== 'ready' || compat.percent === null) return false;
+        if (activeCompatRange.min !== null && compat.percent < activeCompatRange.min) return false;
+        if (activeCompatRange.max !== null && compat.percent > activeCompatRange.max) return false;
+        return true;
+      });
+    }
+    return base;
+  }, [
+    activeCompatRange.max,
+    activeCompatRange.min,
+    blockedKeys,
+    compatibilityMap,
+    filterAgeMax,
+    filterAgeMin,
+    filterCity,
+    filterCountry,
+    filterGender,
+    filterReligion,
+    otherProfiles,
+  ]);
+
+  useEffect(() => {
+    if (filtersLoadedFor === currentUserId) return;
+    const stored = readStoredFilters();
+    if (stored && stored.userId === (currentUserId ?? null)) {
+      setFilterGender(stored.gender);
+      setFilterAgeMin(stored.ageMin);
+      setFilterAgeMax(stored.ageMax);
+      setFilterReligion(stored.religion);
+      setFilterCountry(stored.country);
+      setFilterCity(stored.city);
+      setFilterCompatRange(stored.compatibilityRange);
+      setFiltersLoadedHadStored(true);
+    } else {
+      setFilterGender(buildDefaultGenderFilter(selfGender));
+      setFilterAgeMin(null);
+      setFilterAgeMax(null);
+      setFilterReligion('');
+      setFilterCountry('');
+      setFilterCity('');
+      setFilterCompatRange('');
+      setFiltersLoadedHadStored(false);
+    }
+    setFiltersLoadedFor(currentUserId ?? null);
+  }, [currentUserId, filtersLoadedFor, selfGender]);
+
+  useEffect(() => {
+    if (filtersLoadedFor !== currentUserId) return;
+    if (filtersLoadedHadStored) return;
+    if (hasActiveFilters) return;
+    setFilterGender(buildDefaultGenderFilter(selfGender));
+  }, [currentUserId, filtersLoadedFor, filtersLoadedHadStored, hasActiveFilters, selfGender]);
+
+  useEffect(() => {
+    if (filtersLoadedFor !== currentUserId) return;
+    if (!hasActiveFilters) {
+      clearStoredFilters();
+    } else {
+      writeStoredFilters({
+        userId: currentUserId ?? null,
+        gender: filterGender,
+        ageMin: filterAgeMin,
+        ageMax: filterAgeMax,
+        religion: filterReligion,
+        country: filterCountry,
+        city: filterCity,
+        compatibilityRange: filterCompatRange,
+      });
+    }
+  }, [
+    currentUserId,
+    filterAgeMax,
+    filterAgeMin,
+    filterCity,
+    filterCompatRange,
+    filterCountry,
+    filterGender,
+    filterReligion,
+    filtersLoadedFor,
+    hasActiveFilters,
+  ]);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setFilterOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [filterOpen]);
+
+  useEffect(() => {
+    if (!filterCityOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && filterCityRef.current && filterCityRef.current.contains(target)) return;
+      setFilterCityOpen(false);
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    return () => window.removeEventListener('mousedown', onPointerDown);
+  }, [filterCityOpen]);
+
+  useEffect(() => {
+    setSelectedOtherProfileId(null);
+  }, [otherProfilesFilterKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFilterCountryLoading(true);
+    (async () => {
+      try {
+        const response = await fetch(publicAssetUrl("cities-by-country/index.json"), { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = (await response.json()) as CitiesIndexFile;
+        const codes = Array.isArray(data?.countries)
+          ? data.countries
+              .map((entry) => String(entry.country ?? "").trim().toUpperCase())
+              .filter((code): code is string => Boolean(code))
+          : [];
+        const extra = filterCountry ? [filterCountry] : [];
+        const merged = Array.from(new Set([...codes, ...extra])).sort((a, b) => countryNameRU(a).localeCompare(countryNameRU(b), "ru"));
+        if (!cancelled) setFilterCountryOptions(merged);
+      } catch (error) {
+        console.warn("Failed to load filter countries", error);
+        if (!cancelled) setFilterCountryOptions(filterCountry ? [filterCountry] : []);
+      } finally {
+        if (!cancelled) setFilterCountryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [filterCountry]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!filterCountry) {
+      setFilterCityOptions([]);
+      setFilterCityLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const cached = filterCityCacheRef.current.get(filterCountry);
+    if (cached) {
+      setFilterCityOptions(cached);
+      setFilterCityLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setFilterCityLoading(true);
+    const loadCities = async () => {
+      try {
+        const response = await fetch(publicAssetUrl(`cities-by-country/${filterCountry}.json`), { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = (await response.json()) as CityJsonItem[];
+        const mapped = (data ?? [])
+          .filter((entry) => typeof entry.name === "string")
+          .map((entry) => {
+            const name = String(entry.name);
+            const ruFromFile =
+              typeof entry.name_ru === "string" && entry.name_ru.trim()
+                ? entry.name_ru.trim()
+                : typeof entry.nameRu === "string" && entry.nameRu.trim()
+                  ? entry.nameRu.trim()
+                  : null;
+            const nameRu = ruFromFile ?? latinToRuName(name);
+            const id = entry.geonameid !== undefined ? String(entry.geonameid) : `${filterCountry}:${name}:${entry.lat}:${entry.lon}`;
+            return { id, name, nameRu };
+          })
+          .sort((a, b) => (a.nameRu || a.name).localeCompare(b.nameRu || b.name, "ru"));
+        filterCityCacheRef.current.set(filterCountry, mapped);
+        if (!cancelled) setFilterCityOptions(mapped);
+      } catch (error) {
+        console.warn("Failed to load filter cities", error);
+        if (!cancelled) setFilterCityOptions([]);
+      } finally {
+        if (!cancelled) setFilterCityLoading(false);
+      }
+    };
+    void loadCities();
+    return () => {
+      cancelled = true;
+    };
+  }, [filterCountry]);
+
+  const filteredFilterCityOptions = useMemo(() => {
+    const query = filterCity.trim().toLowerCase();
+    const results: ResidenceCityOption[] = [];
+    if (!query) return filterCityOptions.slice(0, 40);
+    for (const option of filterCityOptions) {
+      const ruLabel = (option.nameRu || "").toLowerCase();
+      const enLabel = option.name.toLowerCase();
+      const latinLabel = (option.nameLatin || "").toLowerCase();
+      if (
+        (ruLabel && ruLabel.startsWith(query)) ||
+        enLabel.startsWith(query) ||
+        (latinLabel && latinLabel.startsWith(query))
+      ) {
+        results.push(option);
+        if (results.length >= 40) break;
+      }
+    }
+    return results;
+  }, [filterCity, filterCityOptions]);
+
   const requestPurchaseDialog = useCallback(() => {
     try {
       const api = typeof window !== 'undefined' ? window.electronAPI?.license : undefined;
@@ -792,6 +1215,16 @@ function formatAgeRu(age: number): string {
   const requestPartnerActionsAccess = useCallback(() => {
     requestPurchaseDialog();
   }, [requestPurchaseDialog]);
+  const resetFilters = useCallback(() => {
+    setFilterGender(buildDefaultGenderFilter(selfGender));
+    setFilterAgeMin(null);
+    setFilterAgeMax(null);
+    setFilterReligion('');
+    setFilterCountry('');
+    setFilterCity('');
+    setFilterCompatRange('');
+    clearStoredFilters();
+  }, [selfGender]);
   useEffect(() => {
     if (!partnerActionsLocked) return;
     if (!selectedOtherProfileId) return;
@@ -952,13 +1385,8 @@ function formatAgeRu(age: number): string {
   }, [currentUserId]);
 
   const handleOpenChat = useCallback((entry: OtherProfilePreview) => {
-    if (!selfGender) {
-      setLoadingError('Укажите пол в анкете, чтобы открыть чат.');
-      return;
-    }
-    const entryGender = normalizeGender(entry.gender);
-    if (!entryGender || entryGender === selfGender) {
-      setLoadingError('Чат доступен только с противоположным полом.');
+    if (!currentUserId) {
+      setLoadingError('Требуется вход в учётную запись.');
       return;
     }
     if (partnerActionsLocked) {
@@ -982,7 +1410,7 @@ function formatAgeRu(age: number): string {
     const [base] = window.location.href.split('#');
     const url = `${base || window.location.href}#/chat-popup?data=${encoded}`;
     window.open(url, `chat-${entry.id}`, 'width=940,height=720,resizable=yes,menubar=no,toolbar=no')?.focus();
-  }, [blockedIds, encodeChatPayload, markMessagesRead, optimisticClearUnread, partnerActionsLocked, requestPartnerActionsAccess, selfGender]);
+  }, [blockedIds, currentUserId, encodeChatPayload, markMessagesRead, optimisticClearUnread, partnerActionsLocked, requestPartnerActionsAccess]);
   // Получаем email пользователя из Electron (main) и показываем под именем
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -1435,6 +1863,7 @@ function formatAgeRu(age: number): string {
         otherPagingHasMoreRef.current = true;
         setOtherHasMore(true);
         setOtherProfiles([]);
+        setSelectedOtherProfileId(null);
       }
 
       if (reset) {
@@ -1451,13 +1880,10 @@ function formatAgeRu(age: number): string {
             const raw = localStorage.getItem(OTHER_PROFILES_CACHE_KEY);
             if (raw) {
               const parsed = JSON.parse(raw) as unknown;
-              if (isRecord(parsed) && Array.isArray(parsed.entries)) {
-                let cached = parsed.entries
+              if (isRecord(parsed) && Array.isArray(parsed.entries) && parsed.filterKey === otherProfilesFilterKey) {
+                const cached = parsed.entries
                   .map((entry) => restoreCachedOtherProfile(entry))
                   .filter((item): item is OtherProfilePreview => Boolean(item));
-                if (oppositeGender) {
-                  cached = cached.filter((p) => p.gender === oppositeGender);
-                }
                 const blockedSet = blockedIdsRef.current;
                 const filteredCached = blockedSet.size ? cached.filter((entry) => !blockedSet.has(entry.id)) : cached;
                 setOtherProfiles(filteredCached);
@@ -1476,27 +1902,51 @@ function formatAgeRu(age: number): string {
           return;
         }
 
-        if (!oppositeGender) {
-          setOtherProfiles([]);
-          setOtherHasMore(false);
-          otherPagingHasMoreRef.current = false;
-          return;
-        }
-
         const offset = reset ? 0 : otherPagingOffsetRef.current;
         const pageSize = OTHER_PROFILES_PAGE_SIZE;
         const end = offset + pageSize - 1;
+        const effectiveAgeMin = filterAgeMin;
+        const effectiveAgeMax = filterAgeMax;
+        const effectiveReligion = filterReligion.trim();
+        const effectiveCountry = filterCountry.trim().toUpperCase();
+        const effectiveCity = filterCity.trim();
+        const selectedVariants =
+          filterGender === 'all' ? null : Array.from(new Set(GENDER_VARIANTS[filterGender] ?? [filterGender]));
 
         const runQuery = async (includeUpdatedAt: boolean) => {
           let query = supabase
             .from('profiles')
             .select(buildOtherProfilesSelect(includeUpdatedAt))
             .neq('id', userId ?? '')
-            .or(buildGenderOrFilter(oppositeGender))
             .order('last_seen_at', { ascending: false, nullsFirst: false });
 
           if (includeUpdatedAt) {
             query = query.order('updated_at', { ascending: false, nullsFirst: false });
+          }
+
+          if (selectedVariants && selectedVariants.length) {
+            query = query.in('data->>gender', selectedVariants);
+          }
+          if (effectiveReligion) query = query.eq('data->>religion', effectiveReligion);
+          if (effectiveCountry) query = query.eq('data->>residenceCountry', effectiveCountry);
+          if (effectiveCity) {
+            const safeCity = escapeIlike(effectiveCity);
+            query = query.or(
+              [
+                `data->>residenceCityName.ilike.%${safeCity}%`,
+                `data->>residenceCity.ilike.%${safeCity}%`,
+                `data->>cityNameRu.ilike.%${safeCity}%`,
+                `data->>selectedCity.ilike.%${safeCity}%`,
+              ].join(','),
+            );
+          }
+          if (effectiveAgeMax !== null) {
+            const minBirth = dateIsoDaysAgo(effectiveAgeMax);
+            query = query.gte('data->>birth', minBirth);
+          }
+          if (effectiveAgeMin !== null) {
+            const maxBirth = dateIsoDaysAgo(effectiveAgeMin);
+            query = query.lte('data->>birth', maxBirth);
           }
 
           query = query.order('id', { ascending: false }).range(offset, end);
@@ -1547,7 +1997,7 @@ function formatAgeRu(age: number): string {
             const smallPhotos = normalizeSmallPhotosField(record.smallPhotos);
             const birth = readStringProp(record, 'birth') || null;
             const ascSignFromProfile = readStringProp(record, 'ascSign') || null;
-            const gender = normalizeGender(record.gender) ?? oppositeGender;
+            const gender = normalizeGender(record.gender);
             const typeazh = readStringProp(record, 'typeazh');
             const familyStatus = readStringProp(record, 'familyStatus');
             const about = readStringProp(record, 'about');
@@ -1603,7 +2053,7 @@ function formatAgeRu(age: number): string {
         try {
           localStorage.setItem(
             OTHER_PROFILES_CACHE_KEY,
-            JSON.stringify({ userId: userId ?? null, entries: uniqueBase.slice(0, OTHER_PROFILES_CACHE_MAX) }),
+            JSON.stringify({ userId: userId ?? null, filterKey: otherProfilesFilterKey, entries: uniqueBase.slice(0, OTHER_PROFILES_CACHE_MAX) }),
           );
         } catch (cacheSaveError) {
           console.warn('Не удалось сохранить кеш анкет других пользователей', cacheSaveError);
@@ -1699,7 +2149,7 @@ function formatAgeRu(age: number): string {
           try {
             localStorage.setItem(
               OTHER_PROFILES_CACHE_KEY,
-              JSON.stringify({ userId: userId ?? null, entries: otherProfilesRef.current.slice(0, OTHER_PROFILES_CACHE_MAX) }),
+              JSON.stringify({ userId: userId ?? null, filterKey: otherProfilesFilterKey, entries: otherProfilesRef.current.slice(0, OTHER_PROFILES_CACHE_MAX) }),
             );
           } catch (cacheSaveError) {
             console.warn('Не удалось сохранить кеш анкет других пользователей', cacheSaveError);
@@ -1715,7 +2165,17 @@ function formatAgeRu(age: number): string {
         }
       }
     },
-    [isOnline, oppositeGender, userId],
+    [
+      filterAgeMax,
+      filterAgeMin,
+      filterCity,
+      filterCountry,
+      filterGender,
+      filterReligion,
+      isOnline,
+      otherProfilesFilterKey,
+      userId,
+    ],
   );
 
   useEffect(() => {
@@ -1911,6 +2371,235 @@ function formatAgeRu(age: number): string {
   const screenshotUrl = rawScreenshotUrl && rawScreenshotUrl.startsWith('supabase://') ? null : rawScreenshotUrl;
   const ownChartPayload = extractChartPayload(chart);
   const isOwnProfile = Boolean(currentUserId && userId && currentUserId === userId);
+
+  const filterDialogContent = filterOpen ? (
+    <div
+      style={FILTER_OVERLAY_STYLE}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="other-profiles-filter-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          setFilterOpen(false);
+        }
+      }}
+    >
+      <div ref={filterDialogRef} style={FILTER_DIALOG_STYLE}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+          <h3 id="other-profiles-filter-title" style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
+            Фильтр анкет
+          </h3>
+          <button
+            type="button"
+            onClick={() => setFilterOpen(false)}
+            style={{ border: '1px solid #000', background: '#f5d6ab', padding: '6px 10px', fontSize: 12, fontWeight: 700 }}
+          >
+            Закрыть
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <div style={FILTER_SECTION_TITLE_STYLE}>Пол</div>
+            <PaperDropdown
+              value={filterGender}
+              placeholder="Все анкеты"
+              options={[
+                { value: 'all', label: 'Все анкеты' },
+                { value: 'male', label: 'Мужской' },
+                { value: 'female', label: 'Женский' },
+              ]}
+              onSelect={(value) => setFilterGender(value as GenderFilterValue)}
+            />
+            <div style={{ ...FILTER_HELP_STYLE, marginTop: 4 }}>По умолчанию показываются все анкеты.</div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={FILTER_FIELD_LABEL_STYLE}>Возраст от</label>
+              <PaperDropdown
+                value={filterAgeMin === null ? '' : String(filterAgeMin)}
+                placeholder="Любой"
+                options={[
+                  { value: '', label: 'Любой' },
+                  ...AGE_FILTER_OPTIONS.map((age) => ({ value: String(age), label: String(age) })),
+                ]}
+                onSelect={(raw) => {
+                  const value = raw ? Number(raw) : null;
+                  setFilterAgeMin(value);
+                  if (value !== null) {
+                    setFilterAgeMax((prev) => {
+                      if (prev === null || prev <= value) {
+                        const idx = AGE_FILTER_OPTIONS.indexOf(value);
+                        const next = idx >= 0 ? AGE_FILTER_OPTIONS[Math.min(AGE_FILTER_OPTIONS.length - 1, idx + 1)] : value + 5;
+                        return typeof next === 'number' ? next : value;
+                      }
+                      return prev;
+                    });
+                  }
+                }}
+              />
+            </div>
+            <div>
+              <label style={FILTER_FIELD_LABEL_STYLE}>Возраст до</label>
+              <PaperDropdown
+                value={filterAgeMax === null ? '' : String(filterAgeMax)}
+                placeholder="Любой"
+                options={[
+                  { value: '', label: 'Любой' },
+                  ...AGE_FILTER_OPTIONS.map((age) => ({ value: String(age), label: String(age) })),
+                ]}
+                onSelect={(raw) => {
+                  const value = raw ? Number(raw) : null;
+                  setFilterAgeMax(value);
+                  if (value !== null && filterAgeMin !== null && value <= filterAgeMin) {
+                    const idx = AGE_FILTER_OPTIONS.indexOf(value);
+                    const prev = idx > 0 ? AGE_FILTER_OPTIONS[idx - 1] : null;
+                    setFilterAgeMin(prev);
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div style={FILTER_SECTION_TITLE_STYLE}>Место жительства</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={FILTER_FIELD_LABEL_STYLE}>Страна</label>
+                <PaperDropdown
+                  value={filterCountry}
+                  placeholder="Любая"
+                  searchable
+                  options={[
+                    { value: '', label: 'Любая' },
+                    ...filterCountryOptions.map((code) => ({ value: code, label: `${countryNameRU(code)} (${code})` })),
+                  ]}
+                  onSelect={(value) => {
+                    setFilterCountry(value);
+                    setFilterCity('');
+                    setFilterCityOpen(false);
+                  }}
+                />
+                {filterCountryLoading ? <div style={{ ...FILTER_HELP_STYLE, marginTop: 4 }}>Загрузка стран...</div> : null}
+              </div>
+              <div style={{ position: 'relative' }} ref={filterCityRef}>
+                <label style={FILTER_FIELD_LABEL_STYLE}>Город</label>
+                <input
+                  value={filterCity}
+                  onChange={(event) => {
+                    setFilterCity(event.target.value);
+                    setFilterCityOpen(true);
+                  }}
+                  onFocus={() => setFilterCityOpen(true)}
+                  style={FILTER_FIELD_STYLE}
+                  placeholder={filterCountry ? 'Введите город...' : 'Сначала выберите страну'}
+                  disabled={!filterCountry}
+                />
+                {filterCityOpen && filteredFilterCityOptions.length > 0 ? (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      right: 0,
+                      top: '100%',
+                      marginTop: 6,
+                      zIndex: 10,
+                      borderRadius: 12,
+                      ...(PAPER_SURFACE_STYLE as unknown as React.CSSProperties),
+                      boxShadow: '0 10px 26px rgba(0,0,0,0.35)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                      {filteredFilterCityOptions.map((option) => {
+                        const label = option.nameRu || option.name;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            style={{
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: '8px 10px',
+                              border: 0,
+                              background: 'transparent',
+                              cursor: 'pointer',
+                              fontSize: 13,
+                            }}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setFilterCity(label);
+                              setFilterCityOpen(false);
+                            }}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+                {filterCityLoading ? <div style={{ ...FILTER_HELP_STYLE, marginTop: 4 }}>Загрузка городов...</div> : null}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={FILTER_FIELD_LABEL_STYLE}>Религия</label>
+              <PaperDropdown
+                value={filterReligion}
+                placeholder="Любая"
+                options={[{ value: '', label: 'Любая' }, ...RELIGION_OPTIONS.map((item) => ({ value: item, label: item }))]}
+                onSelect={(value) => setFilterReligion(value)}
+              />
+            </div>
+            <div>
+              <label style={FILTER_FIELD_LABEL_STYLE}>Совместимость</label>
+              <PaperDropdown
+                value={filterCompatRange}
+                placeholder="Любая"
+                options={COMPATIBILITY_RANGES.map((range) => ({ value: range.id, label: range.label }))}
+                onSelect={(value) => setFilterCompatRange(value)}
+              />
+              {!ownChartPayload && activeCompatRange.id ? (
+                <div style={{ ...FILTER_HELP_STYLE, marginTop: 4 }}>Для фильтра по совместимости нужна ваша карта.</div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 16 }}>
+          <button
+            type="button"
+            onClick={resetFilters}
+            style={{ border: '1px solid #000', background: '#f5d6ab', padding: '7px 10px', fontSize: 12, fontWeight: 700 }}
+          >
+            Сбросить
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setFilterOpen(false)}
+              style={{ border: '1px solid #000', background: '#f5d6ab', padding: '7px 10px', fontSize: 12, fontWeight: 700 }}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterOpen(false)}
+              style={{ border: '1px solid #000', background: '#eed0a3', padding: '7px 10px', fontSize: 12, fontWeight: 700 }}
+            >
+              Применить
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
+  const filterDialog =
+    filterDialogContent && typeof document !== 'undefined' ? createPortal(filterDialogContent, document.body) : filterDialogContent;
   
   // Resolve ascendant sign with fallback logic (like in Questionnaire)
   const ascSign = (() => {
@@ -2112,9 +2801,49 @@ function formatAgeRu(age: number): string {
           </div>
         </div>
         <aside className="user-profile-sidebar">
-          <div className="user-profile-scroll">
+	          <div className="user-profile-scroll">
 	            <div className="bg-slate-900/40 border border-slate-700 rounded-lg p-4 flex flex-col h-full">
-	              <h2 className="text-lg font-semibold text-white mb-3">Анкеты других пользователей</h2>
+	              <div className="flex items-center justify-between gap-2 mb-3">
+	                <h2 className="text-lg font-semibold text-white">Анкеты других пользователей</h2>
+	                <button
+	                  type="button"
+	                  onClick={() => setFilterOpen(true)}
+	                  className={`${BUTTON_SECONDARY} inline-flex items-center gap-2 whitespace-nowrap px-3 py-1.5 text-sm`}
+	                  aria-haspopup="dialog"
+	                  aria-expanded={filterOpen}
+	                >
+	                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+	                    <path
+	                      d="M4 5h16l-6 7v5l-4 2v-7L4 5z"
+	                      stroke="currentColor"
+	                      strokeWidth="1.6"
+	                      strokeLinecap="round"
+	                      strokeLinejoin="round"
+	                    />
+	                  </svg>
+	                  Фильтр
+	                  {activeFilterCount > 0 ? (
+	                    <span
+	                      style={{
+	                        display: 'inline-flex',
+	                        alignItems: 'center',
+	                        justifyContent: 'center',
+	                        minWidth: 18,
+	                        height: 18,
+	                        padding: '0 6px',
+	                        border: '1px solid #000',
+	                        borderRadius: 999,
+	                        background: '#f9e0bb',
+	                        fontSize: 11,
+	                        fontWeight: 700,
+	                        lineHeight: 1,
+	                      }}
+	                    >
+	                      {activeFilterCount}
+	                    </span>
+	                  ) : null}
+	                </button>
+	              </div>
 	              <div className="flex-1 pr-1">
 	                {selectedOtherProfile ? (
 	                  (() => {
@@ -2141,11 +2870,7 @@ function formatAgeRu(age: number): string {
 	                    const canPrevPhoto = safeIndex > 0;
 	                    const canNextPhoto = safeIndex < photoUrls.length - 1;
 
-	                    const chatDisabled =
-	                      !currentUserId ||
-	                      !selfGender ||
-	                      !entry.gender ||
-	                      entry.gender === selfGender;
+	                    const chatDisabled = !currentUserId || blockedIds.has(entry.id) || partnerActionsLocked;
 
 	                    return (
 	                      <div className="space-y-3">
@@ -2165,13 +2890,11 @@ function formatAgeRu(age: number): string {
 	                            title={
 	                              !currentUserId
 	                                ? 'Требуется вход в учётную запись'
-	                                : !selfGender
-	                                  ? 'Укажите свой пол, чтобы открыть чат'
-	                                  : !entry.gender || entry.gender === selfGender
-	                                    ? 'Чат доступен только с противоположным полом'
-	                                    : partnerActionsLocked
-	                                      ? 'Для чата нужна активная лицензия'
-	                                      : 'Открыть окно чата'
+	                                : blockedIds.has(entry.id)
+	                                  ? 'Чат недоступен: пользователь в вашем блок-листе'
+	                                  : partnerActionsLocked
+	                                    ? 'Для чата нужна активная лицензия'
+	                                    : 'Открыть окно чата'
 	                            }
 	                          >
 	                            Чат
@@ -2412,17 +3135,15 @@ function formatAgeRu(age: number): string {
 	                                className={`px-3 py-1 border border-black text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
 	                                  hasUnread ? 'bg-[#f0c0c0]' : 'bg-[#f5d6ab]'
 	                                }`}
-	                                disabled={!currentUserId || !selfGender || !entry.gender || entry.gender === selfGender}
+	                                disabled={!currentUserId || blockedIds.has(entry.id) || partnerActionsLocked}
 	                                title={
 	                                  !currentUserId
 	                                    ? 'Требуется вход в учётную запись'
-	                                    : !selfGender
-	                                      ? 'Укажите свой пол, чтобы открыть чат'
-	                                      : !entry.gender || entry.gender === selfGender
-	                                        ? 'Чат доступен только с противоположным полом'
-	                                        : partnerActionsLocked
-	                                          ? 'Для чата нужна активная лицензия'
-	                                          : 'Открыть окно чата'
+	                                    : blockedIds.has(entry.id)
+	                                      ? 'Чат недоступен: пользователь в вашем блок-листе'
+	                                      : partnerActionsLocked
+	                                        ? 'Для чата нужна активная лицензия'
+	                                        : 'Открыть окно чата'
 	                                }
 	                              >
 	                                {chatLabel}
@@ -2492,6 +3213,7 @@ function formatAgeRu(age: number): string {
           </div>
         </aside>
       </div>
+      {filterDialog}
     </div>
     </div>
   );
