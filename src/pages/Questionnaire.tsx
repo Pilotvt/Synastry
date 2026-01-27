@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { saveChart, type JsonValue } from "../lib/charts";
-import { latinToRuName } from "../utils/transliterate";
+import { latinToRuApprox, latinToRuName, norm, ruToLat } from "../utils/transliterate";
 import { useProfile } from "../store/profile";
-import { getRussianCities, findNearestRussianCity } from "../utils/russianCitiesClient";
+import { getRussianCities } from "../utils/russianCitiesClient";
+import { getForeignCitiesRuMap, lookupForeignCityRuName, type ForeignCityRuMap } from "../utils/foreignCitiesRuClient";
 import { readSavedChart, writeSavedChart } from "../utils/savedChartStorage";
 import { isChartSessionFromFile } from "../utils/fromFileSession";
 import { readProfileFromStorage, writeProfileToStorage, isOwnerMatch } from "../utils/profileStorage";
@@ -70,7 +71,7 @@ type ProfileSnapshot = {
 const ABOUT_MAX_LEN = 300;
 
 const FAMILY_STATUS_OPTIONS_MALE: readonly string[] = ["Женат", "Холост"];
-const FAMILY_STATUS_OPTIONS_FEMALE: readonly string[] = ["Замужем", "Незамужем"];
+const FAMILY_STATUS_OPTIONS_FEMALE: readonly string[] = ["Замужем", "Не замужем"];
 
 const EDUCATION_OPTIONS: readonly string[] = [
   "Среднее",
@@ -141,7 +142,7 @@ function DropdownField({
     <div className="relative mt-1" ref={containerRef}>
       <button
         type="button"
-        className="w-full rounded-lg px-3 py-2 outline-none text-left flex items-center justify-between gap-2"
+        className="questionnaire-control w-full rounded-lg px-3 py-2 outline-none text-left flex items-center justify-between gap-2"
         style={PAPER_INPUT_STYLE}
         onClick={() => setOpen(!open)}
         aria-haspopup="listbox"
@@ -259,6 +260,16 @@ type ResidenceCityOption = {
   id: string;
   name: string;
   nameRu: string;
+  nameLatin?: string;
+  nameRuNorm: string;
+  nameNorm: string;
+  nameLatinNorm?: string;
+  nameTranslit: string;
+  nameApprox: string;
+  searchKey: string;
+  subject?: string;
+  lat?: number;
+  lon?: number;
 };
 
 const EMPTY_SMALL_PHOTOS: (string | null)[] = [null, null];
@@ -940,6 +951,7 @@ const Questionnaire: React.FC = () => {
   const [residenceCitiesLoading, setResidenceCitiesLoading] = useState(false);
   const residenceCountriesLoadedRef = useRef(false);
   const residenceCityCacheRef = useRef<Map<string, ResidenceCityOption[]>>(new Map());
+  const foreignCitiesRuRef = useRef<ForeignCityRuMap | null>(null);
   const [residenceCountryOpen, setResidenceCountryOpen] = useState(false);
   const [residenceCountryFilter, setResidenceCountryFilter] = useState("");
   const [residenceCityOpen, setResidenceCityOpen] = useState(false);
@@ -1174,36 +1186,89 @@ const Questionnaire: React.FC = () => {
         return;
       }
       try {
-        const response = await fetch(publicAssetUrl(`cities-by-country/${residenceCountry}.json`), { cache: "no-store" });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = (await response.json()) as CityJsonItem[];
-        const russianCities = residenceCountry === "RU" ? await getRussianCities().catch(() => null) : null;
-        const mapped: ResidenceCityOption[] = data
-          .filter((entry) => typeof entry.name === "string")
-          .map((entry) => {
+        const mapped: ResidenceCityOption[] = [];
+
+        if (residenceCountry === "RU") {
+          const russianCities = await getRussianCities();
+          for (const c of russianCities) {
+            const nameRu = String(c.name || "").trim();
+            if (!nameRu) continue;
+            const nameLatin = typeof c.name_latin === "string" && c.name_latin.trim() ? c.name_latin.trim() : undefined;
+            const name = nameLatin ?? nameRu;
+            const nameRuNorm = norm(nameRu);
+            const nameNorm = norm(name);
+            const nameLatinNorm = nameLatin ? norm(nameLatin) : undefined;
+            const nameTranslit = ruToLat(nameRu);
+            const nameApprox = latinToRuApprox(nameRuNorm);
+            const parts = new Set([nameRuNorm, nameNorm, nameLatinNorm, nameTranslit, nameApprox].filter(Boolean));
+            mapped.push({
+              id: `RU:${nameRu}:${c.lat}:${c.lon}`,
+              name,
+              nameRu,
+              nameLatin,
+              nameRuNorm,
+              nameNorm,
+              nameLatinNorm,
+              nameTranslit,
+              nameApprox,
+              searchKey: Array.from(parts).join("|"),
+              subject: typeof c.subject === "string" ? c.subject : undefined,
+              lat: c.lat,
+              lon: c.lon,
+            });
+          }
+        } else {
+          let foreignRu = foreignCitiesRuRef.current;
+          if (!foreignRu) {
+            foreignRu = await getForeignCitiesRuMap().catch(() => null);
+            if (foreignRu) {
+              foreignCitiesRuRef.current = foreignRu;
+            }
+          }
+          const response = await fetch(publicAssetUrl(`cities-by-country/${residenceCountry}.json`), { cache: "no-store" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = (await response.json()) as CityJsonItem[];
+          for (const entry of data) {
+            if (typeof entry?.name !== "string") continue;
             const name = String(entry.name);
             const latValue = typeof entry.lat === "number" ? entry.lat : parseFloat(String(entry.lat));
             const lonValue = typeof entry.lon === "number" ? entry.lon : parseFloat(String(entry.lon));
+            const country = typeof entry.country === "string" && entry.country.trim()
+              ? entry.country.trim().toUpperCase()
+              : residenceCountry.toUpperCase();
             const ruFromFile =
               typeof entry.name_ru === "string" && entry.name_ru.trim()
                 ? entry.name_ru.trim()
                 : typeof entry.nameRu === "string" && entry.nameRu.trim()
                   ? entry.nameRu.trim()
                   : null;
-            let nameRu = ruFromFile ?? latinToRuName(name);
-            if (residenceCountry === "RU" && russianCities) {
-              const match = findNearestRussianCity(latValue, lonValue, russianCities);
-              if (match) {
-                nameRu = match.name ?? nameRu;
-              }
-            }
+            const nameRuFromMap = foreignRu
+              ? lookupForeignCityRuName(foreignRu, { country, name, lat: latValue, lon: lonValue })
+              : undefined;
+            const nameRu = ruFromFile ?? nameRuFromMap ?? latinToRuName(name);
+            const nameRuNorm = norm(nameRu);
+            const nameNorm = norm(name);
+            const nameTranslit = ruToLat(nameRu);
+            const nameApprox = latinToRuApprox(nameNorm);
+            const parts = new Set([nameRuNorm, nameNorm, nameTranslit, nameApprox].filter(Boolean));
             const id =
               entry.geonameid !== undefined
                 ? String(entry.geonameid)
                 : `${residenceCountry}:${name}:${entry.lat}:${entry.lon}`;
-            return { id, name, nameRu };
-          })
-          .sort((a, b) => (a.nameRu || a.name).localeCompare(b.nameRu || b.name, "ru"));
+            mapped.push({
+              id,
+              name,
+              nameRu,
+              nameRuNorm,
+              nameNorm,
+              nameTranslit,
+              nameApprox,
+              searchKey: Array.from(parts).join("|"),
+            });
+          }
+        }
+
+        mapped.sort((a, b) => (a.nameRu || a.name).localeCompare(b.nameRu || b.name, "ru"));
         const deduped: ResidenceCityOption[] = [];
         const seen = new Set<string>();
         for (const option of mapped) {
@@ -1233,6 +1298,47 @@ const Questionnaire: React.FC = () => {
     };
   }, [residenceCountry]);
 
+  const residenceCityDuplicateCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (residenceCountry !== "RU") return counts;
+    for (const city of residenceCityOptions) {
+      const key = String(city.nameRuNorm || "").trim();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [residenceCityOptions, residenceCountry]);
+
+  const formatSubjectShort = useCallback((subject: string) => {
+    const value = String(subject || "").trim();
+    if (!value) return "";
+    return value
+      .replace(/\bобласть\b/giu, "обл.")
+      .replace(/\bреспублика\b/giu, "респ.")
+      .replace(/\bкрай\b/giu, "кр.")
+      .replace(/\bавтономный округ\b/giu, "АО")
+      .replace(/\bавтономная область\b/giu, "АО");
+  }, []);
+
+  const formatResidenceCityLabel = useCallback(
+    (city: ResidenceCityOption) => {
+      const base = city.nameRu || city.name;
+      if (residenceCountry !== "RU") {
+        return city.nameRu !== city.name ? `${base} (${city.name})` : base;
+      }
+      const key = String(city.nameRuNorm || "").trim();
+      const isDuplicate = (key && (residenceCityDuplicateCounts.get(key) ?? 0) > 1) || false;
+      if (!isDuplicate) return base;
+      const subject = city.subject ? formatSubjectShort(city.subject) : "";
+      if (subject) return `${base} (${subject})`;
+      if (typeof city.lat === "number" && typeof city.lon === "number") {
+        return `${base} (${city.lat.toFixed(2)}, ${city.lon.toFixed(2)})`;
+      }
+      return base;
+    },
+    [formatSubjectShort, residenceCountry, residenceCityDuplicateCounts],
+  );
+
   const applyResidenceCountry = useCallback((value: string) => {
     setResidenceCountry(value);
     persistFieldToLocal("residenceCountry", value);
@@ -1255,15 +1361,43 @@ const Questionnaire: React.FC = () => {
   }, [residenceCityName, persistFieldToCloud]);
 
   const filteredResidenceCityOptions = useMemo(() => {
-    const query = residenceCityName.trim().toLowerCase();
+    const queryRaw = residenceCityName.trim();
     const results: ResidenceCityOption[] = [];
-    if (!query) {
+    if (!queryRaw) {
       return residenceCityOptions.slice(0, 40);
     }
+    const query = norm(queryRaw);
+    const queryTranslit = ruToLat(queryRaw);
+    const queryApprox = latinToRuApprox(query);
     for (const option of residenceCityOptions) {
-      const ruLabel = (option.nameRu || "").toLowerCase();
-      const enLabel = option.name.toLowerCase();
-      if ((ruLabel && ruLabel.startsWith(query)) || enLabel.startsWith(query)) {
+      if (query) {
+        if (option.nameRuNorm && option.nameRuNorm.startsWith(query)) {
+          results.push(option);
+          if (results.length >= 40) break;
+          continue;
+        }
+        if (option.nameNorm && option.nameNorm.startsWith(query)) {
+          results.push(option);
+          if (results.length >= 40) break;
+          continue;
+        }
+        if (option.nameLatinNorm && option.nameLatinNorm.startsWith(query)) {
+          results.push(option);
+          if (results.length >= 40) break;
+          continue;
+        }
+      }
+      if (queryTranslit && option.nameTranslit && option.nameTranslit.startsWith(queryTranslit)) {
+        results.push(option);
+        if (results.length >= 40) break;
+        continue;
+      }
+      if (queryApprox && option.nameApprox && option.nameApprox.startsWith(queryApprox)) {
+        results.push(option);
+        if (results.length >= 40) break;
+        continue;
+      }
+      if (query && option.searchKey && option.searchKey.includes(query)) {
         results.push(option);
         if (results.length >= 40) break;
       }
@@ -1800,7 +1934,7 @@ const Questionnaire: React.FC = () => {
 	                <div className="relative mt-1" ref={familyStatusRef}>
                   <button
                     type="button"
-                    className="w-full rounded-lg px-3 py-2 outline-none text-left flex items-center justify-between gap-2"
+                    className="questionnaire-control w-full rounded-lg px-3 py-2 outline-none text-left flex items-center justify-between gap-2"
                     style={PAPER_INPUT_STYLE}
                     onClick={() => setFamilyStatusOpen((prev) => !prev)}
                     aria-haspopup="listbox"
@@ -1860,7 +1994,7 @@ const Questionnaire: React.FC = () => {
 	                <div className="relative mt-1" ref={interestsRef}>
                   <button
                     type="button"
-                    className="w-full rounded-lg px-3 py-2 outline-none text-left flex items-center justify-between gap-2"
+                    className="questionnaire-control w-full rounded-lg px-3 py-2 outline-none text-left flex items-center justify-between gap-2"
                     style={PAPER_INPUT_STYLE}
                     onClick={() => setInterestsOpen((prev) => !prev)}
                     aria-haspopup="dialog"
@@ -1945,7 +2079,7 @@ const Questionnaire: React.FC = () => {
 	                  value={profession}
 	                  onChange={makeTextChangeHandler("profession", setProfession)}
 	                  onBlur={makeTextBlurHandler("profession", () => profession)}
-	                  className="mt-1 block w-full rounded-lg px-3 py-2 outline-none"
+	                  className="questionnaire-control mt-1 block w-full rounded-lg px-3 py-2 outline-none"
 	                  style={{ ...PAPER_INPUT_STYLE, font: "inherit" }}
 	                />
 	              </div>
@@ -1957,7 +2091,7 @@ const Questionnaire: React.FC = () => {
                   <div className="relative mt-1" ref={residenceCountryRef}>
                     <button
                       type="button"
-                      className="w-full rounded-lg px-3 py-2 outline-none text-left"
+                      className="questionnaire-control w-full rounded-lg px-3 py-2 outline-none text-left"
                       style={PAPER_INPUT_STYLE}
                       onClick={() => setResidenceCountryOpen((prev) => !prev)}
                       aria-haspopup="listbox"
@@ -2025,7 +2159,7 @@ const Questionnaire: React.FC = () => {
                         setTimeout(() => setResidenceCityOpen(false), 150);
                       }}
                       placeholder="Начните ввод..."
-                      className="w-full rounded-lg px-3 py-2 outline-none placeholder:text-black/40"
+                      className="questionnaire-control w-full rounded-lg px-3 py-2 outline-none placeholder:text-black/40"
                       style={PAPER_INPUT_STYLE}
                     />
                     {residenceCityOpen ? (
@@ -2062,10 +2196,7 @@ const Questionnaire: React.FC = () => {
                                   setResidenceCityOpen(false);
                                 }}
                               >
-                                <span className="font-medium text-sm">{city.nameRu || city.name}</span>
-                                {residenceCountry !== "RU" && city.nameRu && city.nameRu !== city.name ? (
-                                  <span className="ml-1 text-xs text-black/60">({city.name})</span>
-                                ) : null}
+                                <span className="font-medium text-sm">{formatResidenceCityLabel(city)}</span>
                               </li>
                             );
                           })

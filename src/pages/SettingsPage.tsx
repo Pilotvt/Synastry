@@ -46,8 +46,8 @@ const SettingsPage: React.FC = () => {
         .from("profiles")
         .select("notify_email_messages")
         .eq("id", userId)
-        .single();
-      if (queryError && queryError.code !== "PGRST116") throw queryError;
+        .maybeSingle();
+      if (queryError) throw queryError;
       setNotifyEmail(Boolean(data?.notify_email_messages));
     } catch (fetchError) {
       console.warn("Не удалось получить настройки уведомлений", fetchError);
@@ -69,9 +69,11 @@ const SettingsPage: React.FC = () => {
       setError(null);
       setStatus(null);
       try {
-        const payload = { id: userId, notify_email_messages: nextValue };
-        const { error: upsertError } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
-        if (upsertError) throw upsertError;
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({ notify_email_messages: nextValue })
+          .eq("id", userId);
+        if (updateError) throw updateError;
         setNotifyEmail(nextValue);
         setStatus("Настройка сохранена.");
       } catch (persistError) {
@@ -113,13 +115,14 @@ const SettingsPage: React.FC = () => {
               type="checkbox"
               className="mt-1 h-4 w-4 accent-pink-500"
               checked={notifyEmail}
-              disabled
+              disabled={loading || saving}
               onChange={(event) => persistSetting(event.target.checked)}
             />
             <div>
-              <div className="text-base font-semibold">Уведомления на email (в разработке)</div>
+              <div className="text-base font-semibold">Уведомления на email</div>
               <div className="text-sm text-white/70">
-                Почтовые уведомления появятся в одном из ближайших обновлений. Пока доступны уведомления внутри приложения.
+                Письма приходят только если есть непрочитанные сообщения и вы офлайн некоторое время (обычно ~15 минут).
+                Повторные письма приходят не чаще чем раз в ~30 минут, пока остаются непрочитанные.
               </div>
             </div>
           </label>

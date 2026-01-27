@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNetStatus } from "../context/useNetStatus";
 
-const HEARTBEAT_INTERVAL_MS = 60_000;
+const HEARTBEAT_INTERVAL_MS = 120_000;
 const OFFLINE_GRACE_MS = 5_000;
 
 async function touchLastSeen(userId: string) {
   try {
     await supabase.rpc("touch_last_seen", { p_user_id: userId });
   } catch (error) {
-    console.warn("Не удалось обновить last_seen", error);
+    // По требованиям: если сеть/сервер недоступны — молча пропускаем и пробуем на следующем тике.
+    if (import.meta.env.DEV) {
+      console.warn("Не удалось обновить last_seen", error);
+    }
   }
 }
 
@@ -68,11 +71,27 @@ const LastSeenHeartbeat: React.FC = () => {
     };
     window.addEventListener("focus", focusHandler);
 
+    const onlineHandler = () => {
+      void maybePing();
+    };
+    window.addEventListener("online", onlineHandler);
+
+    const unsubscribeResume = window.electronAPI?.power?.onResume?.(() => {
+      void maybePing();
+    });
+
+    const unsubscribeUnlock = window.electronAPI?.power?.onUnlock?.(() => {
+      void maybePing();
+    });
+
     return () => {
       cancelled = true;
       clearInterval(interval);
       document.removeEventListener("visibilitychange", visibilityHandler);
       window.removeEventListener("focus", focusHandler);
+      window.removeEventListener("online", onlineHandler);
+      unsubscribeResume?.();
+      unsubscribeUnlock?.();
     };
   }, [userId, isOnline]);
 

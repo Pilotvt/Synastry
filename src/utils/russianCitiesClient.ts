@@ -15,17 +15,7 @@ function publicAssetUrl(relativePath: string) {
   try {
     const normalized = String(relativePath ?? "");
     if (!normalized) return normalized;
-    if (
-      normalized.startsWith("data:") ||
-      normalized.startsWith("blob:") ||
-      normalized.startsWith("http://") ||
-      normalized.startsWith("https://") ||
-      normalized.startsWith("//")
-    ) {
-      return normalized;
-    }
-    const base = new URL(import.meta.env.BASE_URL || "/", window.location.origin);
-    return new URL(normalized.replace(/^\/+/, ""), base).toString();
+    return new URL(normalized, window.location.href).toString();
   } catch {
     return relativePath;
   }

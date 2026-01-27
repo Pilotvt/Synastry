@@ -74,7 +74,7 @@ export default function AuthPage() {
           options: { emailRedirectTo: getAuthRedirectUrl("signup") },
         });
         if (error) throw error;
-        alert("Мы отправили письмо для подтверждения. Проверьте почту.");
+        alert("Мы отправили письмо для подтверждения. Проверьте почту. Если письма нет — проверьте папку «Спам».");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -103,7 +103,7 @@ export default function AuthPage() {
       });
       if (error) throw error;
       setResetStatus(
-        "Мы отправили письмо для сброса пароля. В письме не будет временного пароля — откройте ссылку и задайте новый пароль.",
+        "Мы отправили письмо для сброса пароля. Проверьте почту и следуйте инструкции. Если письма нет — проверьте папку «Спам».",
       );
     } catch (resetError) {
       const message = resetError instanceof Error ? resetError.message : String(resetError);

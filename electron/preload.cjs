@@ -113,6 +113,25 @@ const updatesChannel = {
   cancelDownload: (options) => ipcRenderer.invoke('updates:cancel-download', options ?? null),
 };
 
+const powerChannel = {
+  onResume: (callback) => {
+    if (typeof callback !== 'function') return () => undefined;
+    const handler = () => {
+      callback();
+    };
+    ipcRenderer.on('power:resume', handler);
+    return () => ipcRenderer.removeListener('power:resume', handler);
+  },
+  onUnlock: (callback) => {
+    if (typeof callback !== 'function') return () => undefined;
+    const handler = () => {
+      callback();
+    };
+    ipcRenderer.on('power:unlock', handler);
+    return () => ipcRenderer.removeListener('power:unlock', handler);
+  },
+};
+
 const authChannel = {
   getPending: () => ipcRenderer.invoke('auth:get-pending'),
   acknowledge: () => ipcRenderer.invoke('auth:acknowledge'),
@@ -150,6 +169,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   blocklist: blocklistChannel,
   ui: uiChannel,
   updates: updatesChannel,
+  power: powerChannel,
   navigation: {
     onOpenApp: (callback) => {
       if (typeof callback !== 'function') return () => undefined;

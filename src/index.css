@@ -220,6 +220,13 @@ select:focus {
 	text-overflow: ellipsis;
 }
 
+/* Questionnaire: normalize form control heights to avoid uneven grid rows */
+.questionnaire-control {
+	height: 21px !important;
+	padding-top: 4px !important;
+	padding-bottom: 4px !important;
+}
+
 .chat-modal-chat {
 	min-height: 0;
 	display: flex;

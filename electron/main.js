@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen } = electron;
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen, powerMonitor } = electron;
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -65,6 +65,39 @@ const BACKEND_STDIO = process.env.ELECTRON_BACKEND_STDIO || 'pipe';
 const BACKEND_COMPAT_FLAGS_FILE = 'backend-compat.json';
 let backendCompatFlags = null;
 let backendRestartAttempted = false;
+
+function broadcastToAllWindows(channel, payload) {
+  try {
+    const windows = BrowserWindow.getAllWindows();
+    for (const win of windows) {
+      try {
+        if (win && !win.isDestroyed() && win.webContents) {
+          win.webContents.send(channel, payload);
+        }
+      } catch {
+        // ignore send errors
+      }
+    }
+  } catch {
+    // ignore window enumeration errors
+  }
+}
+
+function registerPowerMonitorEvents() {
+  try {
+    if (!powerMonitor || typeof powerMonitor.on !== 'function') return;
+  } catch {
+    return;
+  }
+
+  try {
+    powerMonitor.on('resume', () => broadcastToAllWindows('power:resume'));
+  } catch {}
+
+  try {
+    powerMonitor.on('unlock-screen', () => broadcastToAllWindows('power:unlock'));
+  } catch {}
+}
 
 function normalizeQuotedPath(value) {
   if (typeof value !== 'string') return '';
@@ -3591,6 +3624,7 @@ async function ensureCacheDirs() {
 app.whenReady().then(async () => {
   registerCustomProtocol();
   buildApplicationMenu();
+  registerPowerMonitorEvents();
   if (PREVIEW_UPDATE_DOWNLOAD) {
     await startUpdateDownloadPreview();
     return;

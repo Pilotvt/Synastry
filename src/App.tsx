@@ -1595,7 +1595,7 @@ if (!sessionReady) {
                 onFocus={() => setCityInputFocused(true)}
                 onBlur={() => setTimeout(() => setCityInputFocused(false), 150)}
               />
-		              {!manual && cityInputFocused && cityQuery && citySuggestions.length > 0 && (
+		              {cityInputFocused && cityQuery && citySuggestions.length > 0 && (
 		                <ul
 		                  className="absolute left-0 right-0 top-full z-[100] mt-1 rounded-xl shadow-lg text-sm"
 		                  style={{

@@ -74,6 +74,10 @@ declare global {
           detail?: string;
         }): Promise<void>;
       };
+      power?: {
+        onResume(callback: () => void): () => void;
+        onUnlock(callback: () => void): () => void;
+      };
       moderation?: never;
     };
   }
