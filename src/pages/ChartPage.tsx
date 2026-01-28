@@ -2673,11 +2673,11 @@ const daraKarakaBody = daraKarakaDescriptionParts.body || (!daraKarakaDescriptio
 
             try {
               const thumbDataUrl = await createThumbDataUrlFromSource(screenshotDataUrl, {
-                width: 220,
-                height: 160,
+                width: 512,
+                height: 512,
                 fit: "contain",
                 mimeType: "image/webp",
-                quality: 0.72,
+                quality: 0.82,
                 background: null,
               });
               if (thumbDataUrl) {

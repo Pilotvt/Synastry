@@ -1587,11 +1587,11 @@ const Questionnaire: React.FC = () => {
         void persistFieldToCloud('mainPhotoStoragePointer', uploaded.storagePointer);
 
         const thumbDataUrl = await createThumbDataUrlFromSource(result, {
-          width: 100,
-          height: 140,
+          width: 200,
+          height: 280,
           fit: "cover",
           mimeType: "image/webp",
-          quality: 0.7,
+          quality: 0.8,
           background: null,
         });
         if (thumbDataUrl) {

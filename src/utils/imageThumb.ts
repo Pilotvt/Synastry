@@ -77,7 +77,10 @@ export async function createThumbDataUrlFromSource(
   }
 
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  try {
+    ctx.imageSmoothingQuality = "high";
+  } catch {
+  }
   ctx.drawImage(img, dx, dy, dw, dh);
 
   try {
@@ -87,4 +90,3 @@ export async function createThumbDataUrlFromSource(
     return null;
   }
 }
-
