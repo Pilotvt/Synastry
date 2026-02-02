@@ -77,9 +77,20 @@ def calculate_node_position(dt: datetime, nodes=None):
         pos = interpolate_between_nodes(dt, nodes)
         return pos
 
-def calculate_nodes(dt: datetime):
+def eclipse_nodes_range(nodes=None):
+    """Return (min_datetime, max_datetime) for the eclipse nodes dataset."""
+    if nodes is None:
+        nodes = load_eclipse_nodes()
+    dts = [n.get('datetime') for n in nodes if n.get('datetime') is not None]
+    if not dts:
+        return None, None
+    return min(dts), max(dts)
+
+
+def calculate_nodes(dt: datetime, nodes=None):
     """Calculate both Rahu and Ketu positions for a given datetime."""
-    nodes = load_eclipse_nodes()
+    if nodes is None:
+        nodes = load_eclipse_nodes()
     
     rahu_lon = calculate_node_position(dt, nodes)
     ketu_lon = (rahu_lon + 180) % 360

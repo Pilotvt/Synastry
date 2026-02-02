@@ -199,7 +199,7 @@ def _compute_eclipse_moments_utc(year: int) -> list[tuple[datetime, str]]:
         lat = abs(_moon_ecliptic_lat_deg(dt))
         if int(phase) == 0 and lat <= 1.5:
             out.append((dt, "solar"))
-        elif int(phase) == 2 and lat <= 1.2:
+        elif int(phase) == 2 and lat <= 1.5:
             out.append((dt, "lunar"))
     return out
 
@@ -242,8 +242,8 @@ def _iter_sankranti_ingresses(year: int) -> list[tuple[datetime, str, str]]:
 
 @lru_cache(maxsize=32)
 def compute_calendar_year(year: int, iana_tz: str) -> dict:
-    if year < 1900 or year > 2050:
-        raise ValueError("Год вне диапазона эфемерид DE421 (1900–2050).")
+    if year < 1850 or year > 2149:
+        raise ValueError("Год вне диапазона эфемерид DE440s (1850–2149).")
 
     tz = pytz.timezone(iana_tz)
     year_start = datetime(year, 1, 1, tzinfo=timezone.utc)

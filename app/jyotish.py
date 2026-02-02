@@ -31,7 +31,7 @@ from iau_constellations.planets.ephemeris import load_ephemeris, planet_position
 from astropy.time import Time
 from astropy.coordinates import CartesianRepresentation
 import os
-from .nodes import calculate_nodes
+from .nodes import calculate_nodes, load_eclipse_nodes, eclipse_nodes_range
 
 import json
 from pathlib import Path
@@ -712,19 +712,82 @@ def compute_chart(data: ChartRequest) -> ChartResponse:
 
     nodes_error = None
     nodes_info = None
-    nodes_method_used = 'eclipse_based'  # Always use eclipse-based calculation
+    nodes_method_used = None
     node_speed_samples = 0  # Always defined for output
+    nodes_range_start = None
+    nodes_range_end = None
+    nodes_in_range = None
+    nodes_dataset = None
 
     try:
-        # Convert datetime to required format for calculate_nodes
-        rahu_lon, ketu_lon = calculate_nodes(dt_utc)
+        nodes_dataset = load_eclipse_nodes()
+        nodes_range_start, nodes_range_end = eclipse_nodes_range(nodes_dataset)
+        if nodes_range_start is not None and nodes_range_end is not None:
+            nodes_in_range = nodes_range_start <= dt_utc <= nodes_range_end
     except Exception as e:
+        nodes_dataset = None
         if nodes_error is None:
             try:
                 nodes_error = str(e)
             except Exception:
                 nodes_error = repr(e)
-        rahu_lon = ketu_lon = None
+
+    nodes_info = {
+        "eclipse_range_start_utc": nodes_range_start.isoformat() if nodes_range_start is not None else None,
+        "eclipse_range_end_utc": nodes_range_end.isoformat() if nodes_range_end is not None else None,
+        "eclipse_in_range": bool(nodes_in_range) if nodes_in_range is not None else None,
+    }
+
+    rahu_lon = ketu_lon = None
+
+    if nodes_in_range:
+        try:
+            # Use eclipse interpolation only within the covered range.
+            rahu_lon, ketu_lon = calculate_nodes(dt_utc, nodes_dataset)
+            nodes_method_used = 'eclipse_based'
+            nodes_error = None
+        except Exception as e:
+            if nodes_error is None:
+                try:
+                    nodes_error = str(e)
+                except Exception:
+                    nodes_error = repr(e)
+            rahu_lon = ketu_lon = None
+    else:
+        nodes_info = {
+            **(nodes_info if isinstance(nodes_info, dict) else {}),
+            "reason": "eclipse_out_of_range" if nodes_in_range is False else "eclipse_unavailable",
+        }
+        try:
+            asc_lon, desc_lon = compute_nodes_from_orbital_plane(eph, dt_utc)
+            if asc_lon is not None and desc_lon is not None:
+                rahu_lon, ketu_lon = asc_lon, desc_lon
+                nodes_method_used = 'orbital_plane'
+                nodes_error = None
+        except Exception as e:
+            if nodes_error is None:
+                try:
+                    nodes_error = str(e)
+                except Exception:
+                    nodes_error = repr(e)
+
+        if rahu_lon is None:
+            try:
+                asc_lon, desc_lon, info = compute_nodes_from_moon_lat_via_positions(
+                    eph, dt_utc, search_days=30.0, return_info=True
+                )
+                if asc_lon is not None and desc_lon is not None:
+                    rahu_lon, ketu_lon = asc_lon, desc_lon
+                    nodes_method_used = 'moon_lat_zero'
+                    nodes_error = None
+                    if isinstance(info, dict):
+                        nodes_info = {**nodes_info, **info} if isinstance(nodes_info, dict) else info
+            except Exception as e:
+                if nodes_error is None:
+                    try:
+                        nodes_error = str(e)
+                    except Exception:
+                        nodes_error = repr(e)
 
     if rahu_lon is not None:
         # Verify that `Rahu` corresponds to the ascending (north) node.

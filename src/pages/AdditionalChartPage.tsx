@@ -909,8 +909,9 @@ const AdditionalChartPage: React.FC = () => {
   const transitChartCacheRef = useRef<Map<string, ChartResponse>>(new Map());
   const [transitTargetMsUtc, setTransitTargetMsUtc] = useState<number | null>(null);
   const vimshottariPeriodsCacheRef = useRef<Map<string, VimshottariCachedPeriod[]>>(new Map());
-  const [vimshottariDepth, setVimshottariDepth] = useState<VimshottariDepth>(4);
+  const [vimshottariDepth, setVimshottariDepth] = useState<VimshottariDepth>(1);
   const [vimshottariFocusMsUtc, setVimshottariFocusMsUtc] = useState<number | null>(null);
+  const vimshottariVisitedRef = useRef(false);
   const [chartTextResources, setChartTextResources] = useState<ChartTextResources | null>(null);
   const [licenseStatus, setLicenseStatus] = useState<ElectronLicenseStatus | null>(null);
   const isLicensed = Boolean(licenseStatus?.licensed);
@@ -996,7 +997,9 @@ const AdditionalChartPage: React.FC = () => {
 
   useEffect(() => {
     if (rightPanelTab !== "vimshottari-dasha") return;
-    setVimshottariDepth(4);
+    if (vimshottariVisitedRef.current) return;
+    setVimshottariDepth(1);
+    vimshottariVisitedRef.current = true;
   }, [rightPanelTab]);
 
   useEffect(() => {
